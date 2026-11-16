@@ -1679,9 +1679,9 @@ TestCase {
         return item.mapToItem(win.contentItem, item.width / 2, item.height / 2)
     }
 
-    // The hover tint loses to the highlight. The pill is behind the row and
-    // surfaceHov is opaque, so a tint drawn over the marked chip would paint
-    // the highlight out from under the pointer.
+    // The hover tint loses to the highlight. The pill is behind the row, so
+    // a tint drawn over the marked chip would muddy the highlight under the
+    // pointer.
     function test_the_marked_chip_takes_no_hover_tint() {
         var win = showPage()
         typeInto(win.page, query)
@@ -1697,7 +1697,7 @@ TestCase {
         // A chip the pill is nowhere near takes the tint, so the tint works.
         var f = centreOf(win, far)
         mouseMove(win.contentItem, f.x, f.y)
-        tryVerify(function () { return sameColor(far.color, Theme.surfaceHov) }, settleMs,
+        tryVerify(function () { return sameColor(far.color, Theme.hoverFill) }, settleMs,
                   "a chip under the pointer does not light up, got " + far.color)
 
         // The chip the pill is on refuses it.

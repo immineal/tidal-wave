@@ -51,12 +51,12 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 24
+        anchors.margins: Theme.space6
         spacing: 0
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 16
+            spacing: Theme.space4
 
             // Same drawn arrow as BackButton, in a 32px target.
             Item {
@@ -75,7 +75,7 @@ Rectangle {
                 Accessible.onPressAction: Window.window.goBack()
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusButton
+                    radius: Theme.radiusMedium
                     color: "transparent"
                     border.width: radioBack.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -85,18 +85,17 @@ Rectangle {
                     width: 18; height: 18
                     name: "chevron-left"
                     color: Theme.textSec
-                    strokeWidth: 2
                 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Window.window.goBack() }
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 4
+                spacing: Theme.space1
                 Text {
                     text: qsTr("Radio")
                     color: Theme.textDim
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMicro
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -104,7 +103,7 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.radioTitle || qsTr("Track Radio")
                     color: Theme.textPrimary
-                    font.pixelSize: 22
+                    font.pixelSize: Theme.fontDisplay
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -119,11 +118,11 @@ Rectangle {
             }
         }
 
-        Item { height: 16 }
+        Item { height: Theme.space4 }
 
         Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
 
-        Item { height: 8 }
+        Item { height: Theme.space2 }
 
         // Where the list would be. A sibling in the same ColumnLayout: a Layout
         // skips an invisible child, so the one drawn gets all the height.
@@ -136,7 +135,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: 10
+                spacing: Theme.space3
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
@@ -145,7 +144,6 @@ Rectangle {
                     Layout.preferredHeight: 40
                     name: "waves"
                     color: Theme.textDim
-                    strokeWidth: 1.5
                 }
 
                 Text {
@@ -154,7 +152,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("No radio for this track")
                     color: Theme.textPrimary
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -167,7 +165,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("Tidal would not build a station from it. The track may have been taken down, or it may not be available where you are.")
                     color: Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     wrapMode: Text.WordWrap
                 }
             }

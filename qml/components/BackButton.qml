@@ -4,7 +4,7 @@ import TidalWave
 
 Rectangle {
     id: root
-    width: 36; height: 36; radius: 18
+    width: 36; height: 36; radius: width / 2
 
     // Sits over a flat hero tint on Album, Playlist and Mix and over the photo
     // on Artist. The border carries the shape where the fill alone would not.
@@ -32,8 +32,8 @@ Rectangle {
     Accessible.name: qsTr("Back", "button, returns to the previous page")
     Accessible.onPressAction: root.Window.window.goBack()
 
-    Behavior on color       { ColorAnimation { duration: Theme.dur(100) } }
-    Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
+    Behavior on color       { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+    Behavior on border.color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
 
     // Drawn, so the arrow does not depend on a font that has the glyph.
     VectorIcon {
@@ -41,7 +41,6 @@ Rectangle {
         name: "chevron-left"
         color: root.ink
         width: 18; height: 18
-        strokeWidth: 2
     }
 
     HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }

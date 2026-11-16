@@ -133,15 +133,15 @@ Rectangle {
                 anchors {
                     left: parent.left; right: parent.right
                     verticalCenter: parent.verticalCenter
-                    leftMargin: 64; rightMargin: 24
+                    leftMargin: Theme.space16; rightMargin: Theme.space6
                 }
-                spacing: 24
+                spacing: Theme.space6
 
                 Rectangle {
                     objectName: "heroArt"
                     width: 180
                     height: 180
-                    radius: Theme.radiusArt
+                    radius: Theme.radiusSmall
                     color: Theme.accentWash
                     clip: true
                     Image {
@@ -153,7 +153,7 @@ Rectangle {
                         smooth: true
                         mipmap: true
                         opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
+                        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
                     }
                     VectorIcon {
                         visible: mixCover.status !== Image.Ready
@@ -162,14 +162,13 @@ Rectangle {
                         color: Theme.accentText
                         width: 64
                         height: 64
-                        strokeWidth: 1.5
                     }
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 8
+                    spacing: Theme.space2
 
                     Text {
                         objectName: "heroKindLabel"
@@ -177,7 +176,7 @@ Rectangle {
                               ? qsTr("Radio", "noun, a track's radio station")
                               : qsTr("Mix", "noun, a Tidal mix")
                         color: Theme.textSec
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontMicro
                         font.bold: true
                         font.letterSpacing: 1
                     }
@@ -187,7 +186,7 @@ Rectangle {
                         Layout.fillWidth: true
                         text: root.title
                         color: Theme.textPrimary
-                        font.pixelSize: 28
+                        font.pixelSize: Theme.fontDisplay
                         font.bold: true
                         wrapMode: Text.WordWrap
                     }
@@ -197,7 +196,7 @@ Rectangle {
                         Layout.fillWidth: true
                         text: root.subtitle
                         color: Theme.textSec
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontBody
                         wrapMode: Text.WordWrap
                     }
 
@@ -205,7 +204,7 @@ Rectangle {
                     Flow {
                         id: heroActions
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.space3
                         // The queue confirmation is drawn just above this row.
                         // Assigned, not bound: an id inside the list's header
                         // component is out of reach from the page root.
@@ -290,7 +289,7 @@ Rectangle {
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: 10
+                spacing: Theme.space3
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
@@ -300,7 +299,6 @@ Rectangle {
                     Layout.preferredHeight: 40
                     name: "mix"
                     color: Theme.textDim
-                    strokeWidth: 1.5
                 }
 
                 Text {
@@ -309,7 +307,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("This mix could not be loaded")
                     color: Theme.textPrimary
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -322,7 +320,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.")
                     color: Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     wrapMode: Text.WordWrap
                 }
             }
@@ -334,7 +332,7 @@ Rectangle {
         }
     }
 
-    BackButton { anchors { top: parent.top; left: parent.left; margins: 16 } }
+    BackButton { anchors { top: parent.top; left: parent.left; margins: Theme.space4 } }
 
     LoadingOverlay { loading: root.loading }
 

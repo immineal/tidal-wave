@@ -190,15 +190,15 @@ Rectangle {
                 anchors {
                     left: parent.left; right: parent.right
                     verticalCenter: parent.verticalCenter
-                    leftMargin: 64; rightMargin: 24
+                    leftMargin: Theme.space16; rightMargin: Theme.space6
                 }
-                spacing: 24
+                spacing: Theme.space6
 
                 Rectangle {
                     objectName: "heroArt"
                     width: 180
                     height: 180
-                    radius: Theme.radiusArt
+                    radius: Theme.radiusSmall
                     color: Theme.accentWash
                     clip: true
                     Image {
@@ -211,7 +211,7 @@ Rectangle {
                         smooth: true
                         mipmap: true
                         opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
+                        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
                     }
                     Grid {
                         id: collageGrid
@@ -238,19 +238,18 @@ Rectangle {
                         color: Theme.accentText
                         width: 64
                         height: 64
-                        strokeWidth: 1.5
                     }
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: 8
+                    spacing: Theme.space2
 
                     Text {
                         text: qsTr("Playlist")
                         color: Theme.textSec
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontMicro
                         font.bold: true
                         font.letterSpacing: 1
                     }
@@ -260,7 +259,7 @@ Rectangle {
                         Layout.fillWidth: true
                         text: root.playlistTitle
                         color: Theme.textPrimary
-                        font.pixelSize: 28
+                        font.pixelSize: Theme.fontDisplay
                         font.bold: true
                         wrapMode: Text.WordWrap
                     }
@@ -270,7 +269,7 @@ Rectangle {
                         Layout.fillWidth: true
                         text: root.playlistDescription
                         color: Theme.textSec
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontMeta
                         wrapMode: Text.WordWrap
                         maximumLineCount: 3
                         elide: Text.ElideRight
@@ -289,7 +288,7 @@ Rectangle {
                                          : qsTr("%Ln track(s)", "", n)
                         }
                         color: Theme.textSec
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontBody
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
@@ -298,7 +297,7 @@ Rectangle {
                     Flow {
                         id: heroActions
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.space3
                         // The queue confirmation is drawn just above this row.
                         // Assigned, not bound: an id inside the list's header
                         // component is out of reach from the page root.
@@ -415,7 +414,7 @@ Rectangle {
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: 10
+                spacing: Theme.space3
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
@@ -425,7 +424,6 @@ Rectangle {
                     Layout.preferredHeight: 40
                     name: "playlist"
                     color: Theme.textDim
-                    strokeWidth: 1.5
                 }
 
                 Text {
@@ -434,7 +432,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("This playlist could not be loaded")
                     color: Theme.textPrimary
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -447,7 +445,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.")
                     color: Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     wrapMode: Text.WordWrap
                 }
             }
@@ -463,7 +461,7 @@ Rectangle {
     Rectangle {
         anchors { top: parent.top; left: parent.left; right: parent.right }
         height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: Theme.space2 } }
     }
 
     LoadingOverlay { loading: root.loading }
@@ -537,8 +535,8 @@ Rectangle {
         closePolicy: editPlaylistPopup.busy
                      ? Popup.NoAutoClose
                      : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-        padding: 20
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+        padding: Theme.space5
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
         // Mirrors NewPlaylistDialog: the field goes read-only and both buttons
         // go quiet while the request is out.
@@ -550,15 +548,15 @@ Rectangle {
 
         Column {
             width: parent.width
-            spacing: 14
+            spacing: Theme.space4
 
-            Text { text: qsTr("Edit Playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+            Text { text: qsTr("Edit Playlist"); color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
-                width: parent.width; height: 36; radius: Theme.radiusField
+                width: parent.width; height: 36; radius: Theme.radiusLarge
                 // The field's own activeFocus: a FocusScope that is a child of
                 // the TextInput never gains activeFocus with it.
                 color: Theme.surface
@@ -566,8 +564,8 @@ Rectangle {
                 TextInput {
                     id: editTitleField
                     objectName: "editPlaylistTitleField"
-                    anchors.fill: parent; anchors.margins: 8
-                    color: Theme.textPrimary; font.pixelSize: 14
+                    anchors.fill: parent; anchors.margins: Theme.space2
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     selectByMouse: true
                     selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
                     // The same cap the create dialog applies, so a title the
@@ -582,17 +580,17 @@ Rectangle {
                 }
             }
 
-            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
-                width: parent.width; height: 72; radius: Theme.radiusField
+                width: parent.width; height: 72; radius: Theme.radiusLarge
                 // See the title field for why this is not a FocusScope.
                 color: Theme.surface
                 border.color: editDescField.activeFocus ? Theme.accent : Theme.border
                 TextEdit {
                     id: editDescField
                     objectName: "editPlaylistDescField"
-                    anchors.fill: parent; anchors.margins: 8
-                    color: Theme.textPrimary; font.pixelSize: 14
+                    anchors.fill: parent; anchors.margins: Theme.space2
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     wrapMode: TextEdit.WordWrap
                     selectByMouse: true
                     selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
@@ -613,13 +611,13 @@ Rectangle {
                 visible: editPlaylistPopup.errorText.length > 0
                 text: editPlaylistPopup.errorText
                 color: Theme.redText
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
 
             RowLayout {
                 width: parent.width
-                spacing: 10
+                spacing: Theme.space3
                 // Away from Save, so it is not hit on the way there.
                 PillButton {
                     objectName: "editPlaylistDelete"

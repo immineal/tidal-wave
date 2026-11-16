@@ -208,7 +208,7 @@ TestCase {
             }
             overlap: 0
             implicitWidth: Theme.menuWidth(probe)
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
             property string longLabel: ""
             property string iconName: ""
             readonly property alias longItem: longEntry

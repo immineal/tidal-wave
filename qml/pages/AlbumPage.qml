@@ -278,15 +278,15 @@ Rectangle {
                     anchors {
                         left: parent.left; right: parent.right
                         verticalCenter: parent.verticalCenter
-                        leftMargin: 64; rightMargin: 24
+                        leftMargin: Theme.space16; rightMargin: Theme.space6
                     }
-                    spacing: 24
+                    spacing: Theme.space6
 
                     Rectangle {
                         objectName: "heroArt"
                         width: 200
                         height: 200
-                        radius: Theme.radiusArt
+                        radius: Theme.radiusSmall
                         color: Theme.surfaceHigh
                         clip: true
                         Image {
@@ -301,12 +301,12 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignVCenter
-                        spacing: 8
+                        spacing: Theme.space2
 
                         Text {
                             text: qsTr("Album")
                             color: Theme.textSec
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontMicro
                             font.bold: true
                             font.letterSpacing: 1
                         }
@@ -315,7 +315,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: albumData.title || ""
                             color: Theme.textPrimary
-                            font.pixelSize: 28
+                            font.pixelSize: Theme.fontDisplay
                             font.bold: true
                             wrapMode: Text.WordWrap
                         }
@@ -325,7 +325,7 @@ Rectangle {
                         ArtistLinks {
                             Layout.fillWidth: true
                             namePrefix: "albumHero"
-                            fontPixelSize: 14
+                            fontPixelSize: Theme.fontBody
                             artistList: root.albumArtistList
                             joinedText: albumData.artists || ""
                             fallbackArtistId: root.effectiveArtistId
@@ -352,7 +352,7 @@ Rectangle {
                                 return parts.filter(function (p) { return p && String(p).length > 0 }).join(" • ")
                             }
                             color: Theme.textSec
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontMeta
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -365,7 +365,7 @@ Rectangle {
                             visible: text.length > 0
                             text: albumData.copyright || ""
                             color: Theme.textDim
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMicro
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -374,7 +374,7 @@ Rectangle {
                         Flow {
                             id: heroActions
                             Layout.fillWidth: true
-                            spacing: 12
+                            spacing: Theme.space3
                             // The queue confirmation is drawn above this row.
                             // Assigned, not bound: an id inside the list's
                             // header component is out of reach from the root.
@@ -426,7 +426,7 @@ Rectangle {
                 }
             }
 
-            Item { height: 8; width: parent.width }
+            Item { height: Theme.space2; width: parent.width }
         }
 
         // A wrapper, so a disc's first row can carry its "Disc n" header.
@@ -443,12 +443,12 @@ Rectangle {
                 x: 16 + 12
                 width: parent.width - 32 - 12
                 height: visible ? implicitHeight : 0
-                topPadding: index === 0 ? 4 : 20
-                bottomPadding: 6
+                topPadding: index === 0 ? Theme.space1 : Theme.space5
+                bottomPadding: Theme.space2
                 text: qsTr("Disc %1", "heading over one disc's tracks on an album page")
                           .arg(trackDelegate.disc.toLocaleString(Qt.locale(), 'f', 0))
                 color: Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
@@ -494,7 +494,7 @@ Rectangle {
                 }
             }
 
-            Item { width: parent.width; height: 32 }
+            Item { width: parent.width; height: Theme.space8 }
         }
 
         ScrollBar.vertical: ScrollBar {
@@ -514,7 +514,7 @@ Rectangle {
         ColumnLayout {
             anchors.centerIn: parent
             width: Math.min(parent.width - 96, 420)
-            spacing: 10
+            spacing: Theme.space3
 
             VectorIcon {
                 Layout.alignment: Qt.AlignHCenter
@@ -522,7 +522,6 @@ Rectangle {
                 Layout.preferredHeight: 40
                 name: "album"
                 color: Theme.textDim
-                strokeWidth: 1.5
             }
 
             Text {
@@ -531,7 +530,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignHCenter
                 text: qsTr("This album is not available")
                 color: Theme.textPrimary
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontSection
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -547,7 +546,7 @@ Rectangle {
                 // call site in a comment.
                 text: qsTr("Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.")
                 color: Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
 
@@ -557,8 +556,8 @@ Rectangle {
             RowLayout {
                 objectName: "albumLoadErrorActions"
                 Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 6
-                spacing: 10
+                Layout.topMargin: Theme.space2
+                spacing: Theme.space3
 
                 PillButton {
                     objectName: "albumLoadErrorFind"
@@ -595,7 +594,7 @@ Rectangle {
                     : root.unsaving      ? qsTr("Removing…")
                     : ""
                 color: root.unsaveRefused ? Theme.redText : Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
         }
@@ -618,29 +617,29 @@ Rectangle {
         }
         color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Math.min(0.95, reveal))
 
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: Theme.space2 } }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 64
-            anchors.rightMargin: 16
-            spacing: 12
+            anchors.leftMargin: Theme.space16
+            anchors.rightMargin: Theme.space4
+            spacing: Theme.space3
             opacity: stickyHeader.reveal
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: Theme.spaceHalf
                 Text {
                     Layout.fillWidth: true
                     text: albumData.title || ""
                     color: Theme.textPrimary
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontBody
                     font.bold: true
                     elide: Text.ElideRight
                 }
                 ArtistLinks {
                     Layout.fillWidth: true
                     namePrefix: "albumSticky"
-                    fontPixelSize: 12
+                    fontPixelSize: Theme.fontMeta
                     artistList: root.albumArtistList
                     joinedText: albumData.artists || ""
                     fallbackArtistId: root.effectiveArtistId

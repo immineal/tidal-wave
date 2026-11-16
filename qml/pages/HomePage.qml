@@ -136,7 +136,7 @@ Rectangle {
 
     ScrollView {
         anchors.fill: parent
-        rightPadding: 14
+        rightPadding: Theme.space4
         contentWidth: availableWidth
         // Stated, because a ScrollView on Qt 6.5 works its content height
         // out once and does not follow the column as rows arrive.
@@ -150,23 +150,23 @@ Rectangle {
             // A ColumnLayout sizes a child from Layout.preferredHeight, so
             // every gap on this page sets that. A gap above a row that can be
             // empty hides with it.
-            Item { Layout.preferredHeight: 24 }
+            Item { Layout.preferredHeight: Theme.space6 }
 
             Text {
-                Layout.leftMargin: 24
+                Layout.leftMargin: Theme.space6
                 text: root.greeting
                 color: Theme.textPrimary
-                font.pixelSize: 28
+                font.pixelSize: Theme.fontDisplay
                 font.bold: true
             }
 
-            Item { Layout.preferredHeight: 24 }
+            Item { Layout.preferredHeight: Theme.space6 }
 
             // The rows, with the gap as spacing: a Layout skips a hidden row
             // and its gap together, so no two gaps ever meet.
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 32
+                spacing: Theme.space8
 
                 HorizontalSection {
                     Layout.fillWidth: true
@@ -199,24 +199,24 @@ Rectangle {
                     objectName: "homeMixesFailed"
                     visible: root.mixesFailed && mixes.length === 0
                     Layout.fillWidth: true
-                    Layout.leftMargin: 24
-                    Layout.rightMargin: 24
-                    spacing: 8
+                    Layout.leftMargin: Theme.space6
+                    Layout.rightMargin: Theme.space6
+                    spacing: Theme.space2
                     Text {
                         text: qsTr("My Mixes")
                         color: Theme.textPrimary
-                        font.pixelSize: 20
+                        font.pixelSize: Theme.fontSection
                         font.bold: true
                     }
                     RowLayout {
-                        spacing: 12
+                        spacing: Theme.space3
                         Text {
                             objectName: "homeMixesFailedText"
                             Layout.fillWidth: true
                             text: bridge.offline ? qsTr("Your mixes could not be loaded: Tidal cannot be reached.")
                                                  : qsTr("Your mixes could not be loaded.")
                             color: Theme.textSec
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontMeta
                             wrapMode: Text.WordWrap
                         }
                         PillButton {
@@ -276,7 +276,7 @@ Rectangle {
                 }
             }
 
-            Item { Layout.preferredHeight: 32 }
+            Item { Layout.preferredHeight: Theme.space8 }
         }
     }
 

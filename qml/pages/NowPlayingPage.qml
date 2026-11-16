@@ -24,8 +24,8 @@ Rectangle {
     // ─── Responsive layout ─────────────────────────────
     // The page margin and the gap between the cover and the text column, named
     // because all the width arithmetic below leans on them.
-    readonly property int pageMargin: 48
-    readonly property int columnGap:  64
+    readonly property int pageMargin: Theme.space12
+    readonly property int columnGap:  Theme.space16
 
     readonly property real contentWidth: Math.max(0, width - 2 * pageMargin)
 
@@ -37,7 +37,7 @@ Rectangle {
 
     // The vertical gap between the two blocks once they are stacked, which is
     // also what stackedCoverRoom has to leave room for.
-    readonly property int stackGap: 32
+    readonly property int stackGap: Theme.space8
 
     // ─── Crossing the breakpoint ───────────────────────
     // How stacked the page is: 0 with the cover beside the text, 1 with it
@@ -47,7 +47,7 @@ Rectangle {
     property real stackness: stackedLayout ? 1 : 0
 
     Behavior on stackness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // ─── Artwork or lyrics ─────────────────────────────
@@ -57,14 +57,14 @@ Rectangle {
     property real lyricsness: showLyrics ? 1 : 0
 
     Behavior on lyricsness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // The same for the credits, and read the same way: 0 artwork, 1 credits.
     property real creditsness: showCredits ? 1 : 0
 
     Behavior on creditsness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // How far the slot is towards being a panel, whichever one. The max, not
@@ -94,7 +94,7 @@ Rectangle {
     property real readingness: readingView ? 1 : 0
 
     Behavior on readingness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // The same, between the windowed panel's value and the reading view's.
@@ -113,8 +113,8 @@ Rectangle {
     // ─── What a panel asks for instead ─────────────────
     // The size the lines are set in: 14 docked, twice that in the reading view,
     // where they are read from further back. Lerped, so it grows with the slot.
-    readonly property int  lyricsSize:  14
-    readonly property int  readingSize: 28
+    readonly property int  lyricsSize:  Theme.fontBody
+    readonly property int  readingSize: Theme.fontDisplay
     readonly property real lyricLineSize: rblend(lyricsSize, readingSize)
 
     // A measure, not a square: 640px is about 90 characters at 14px, past the
@@ -185,7 +185,7 @@ Rectangle {
     // width the row has this frame. The volume's arithmetic below asks it of
     // the settled width, so its threshold holds still during a restack.
     function gapFor(w) {
-        return w >= transportFixedWidth + transportGaps * 16 ? 16 : 8
+        return w >= transportFixedWidth + transportGaps * Theme.space4 ? Theme.space4 : Theme.space2
     }
 
     // ─── Where the volume lives ────────────────────────
@@ -195,11 +195,11 @@ Rectangle {
     readonly property int volumeIconSize:       18
     readonly property int volumePercentWidth:   36
     readonly property int volumeOutputWidth:    32
-    readonly property int volumeClusterSpacing: 10
+    readonly property int volumeClusterSpacing: Theme.space3
     // The gap between speaker and readout, paid as the readout's top padding so
     // the hover target has no dead strip. The bar's extra lift on the same 4 is
     // deliberate: tst_output_picker.qml requires both to render alike.
-    readonly property int volumeStackGap:        4
+    readonly property int volumeStackGap:        Theme.space1
     // As wide as the wider of the two it holds, which is the readout. The
     // speaker is centred in it, and so is the flyout above it.
     readonly property int volumeStackWidth:
@@ -331,7 +331,7 @@ Rectangle {
         id: lyricsScroll
         target: lyricsView
         property: "contentY"
-        duration: Theme.dur(260)
+        duration: Theme.dur(Theme.motionMedium)
         easing.type: Easing.OutCubic
     }
 
@@ -668,7 +668,7 @@ Rectangle {
     // eased: a new track fades its colour in.
     property color gradientTop: coverTint.hasColor ? coverTint.color
                                                    : Theme.accentSoft
-    Behavior on gradientTop { ColorAnimation { duration: Theme.dur(420) } }
+    Behavior on gradientTop { ColorAnimation { duration: Theme.dur(Theme.motionSlow) } }
 
     Rectangle {
         anchors.fill: parent
@@ -699,14 +699,14 @@ Rectangle {
             y: root.pageMargin
             width:  root.contentWidth
             height: Math.max(0, pageFlick.contentHeight - 2 * root.pageMargin)
-            spacing: 32
+            spacing: Theme.space8
 
             // The way out, and the way to make the page the whole screen. The
             // down-arrow mirrors the player bar's up-arrow.
             RowLayout {
                 id: headerRow
                 Layout.fillWidth: true
-                spacing: 12
+                spacing: Theme.space3
 
                 ChromeButton {
                     objectName: "nowPlayingCollapse"
@@ -755,7 +755,7 @@ Rectangle {
                         anchors.centerIn: parent
                         width:  root.coverSize
                         height: root.coverSize
-                        radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
+                        radius: Theme.radiusSmall; color: Theme.surfaceHigh; clip: true
                         opacity: 1 - root.panelness
                         visible: opacity > 0.01
                         Image {
@@ -773,7 +773,7 @@ Rectangle {
                         objectName: "nowPlayingLyricsPanel"
                         anchors.fill: parent
                         // Takes the cover's slot, so it takes the cover's corner too
-                        radius: Theme.radiusArt
+                        radius: Theme.radiusSmall
                         // A box in a window. In the reading view the fill and
                         // the border fade out on the same clock, leaving the
                         // lines on the cover gradient.
@@ -791,7 +791,7 @@ Rectangle {
                             id: lyricsView
                             objectName: "nowPlayingLyricsView"
                             anchors.fill: parent
-                            anchors.margins: 16
+                            anchors.margins: Theme.space4
                             // Content margins, not a smaller viewport: a line
                             // can be drawn anywhere in the box and still be
                             // scrolled clear of the chips.
@@ -800,7 +800,7 @@ Rectangle {
                             clip: true
                             model: root.lyricsData
                             // The gap between lines rides the type size.
-                            spacing: Math.round(8 * root.lyricLineSize / root.lyricsSize)
+                            spacing: Math.round(Theme.space2 * root.lyricLineSize / root.lyricsSize)
                             cacheBuffer: 200
 
                             onMovingChanged: if (moving) root.userScrolled = true
@@ -820,7 +820,7 @@ Rectangle {
                                         && lyricsView.visibleArea.heightRatio < 1
                                         ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                                 visible: policy === ScrollBar.AlwaysOn
-                                padding: 3
+                                padding: Theme.space1
                                 // Set straight on contentY, which never starts
                                 // the view moving, so say it here.
                                 onPressedChanged: if (pressed) root.userScrolled = true
@@ -829,7 +829,7 @@ Rectangle {
                                     implicitWidth: 4
                                     radius: width / 2
                                     color: lyricsBar.pressed || lyricsBar.hovered ? Theme.textSec : Theme.textDim
-                                    Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
+                                    Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
                                 }
                                 background: Rectangle { implicitWidth: 10; color: "transparent" }
                             }
@@ -864,8 +864,8 @@ Rectangle {
                                 opacity: active ? 1.0 : (hovered ? 0.85 : 0.55)
                                 lineHeight: 1.6
                                 wrapMode: Text.WordWrap
-                                Behavior on opacity { NumberAnimation { duration: Theme.dur(180); easing.type: Easing.OutCubic } }
-                                Behavior on color   { ColorAnimation  { duration: Theme.dur(180) } }
+                                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic } }
+                                Behavior on color   { ColorAnimation  { duration: Theme.dur(Theme.motionMedium) } }
 
                                 HoverHandler {
                                     id: hoverHandler
@@ -891,20 +891,20 @@ Rectangle {
                                 anchors.centerIn: parent
                                 visible: root.lyricsState === "loading"
                                 text: qsTr("Loading lyrics…")
-                                color: Theme.textDim; font.pixelSize: 14
+                                color: Theme.textDim; font.pixelSize: Theme.fontBody
                             }
                             Text {
                                 anchors.centerIn: parent
                                 visible: root.lyricsState === "unavailable"
                                 text: qsTr("No lyrics available")
-                                color: Theme.textDim; font.pixelSize: 14
+                                color: Theme.textDim; font.pixelSize: Theme.fontBody
                             }
                             Text {
                                 objectName: "nowPlayingLyricsInstrumental"
                                 anchors.centerIn: parent
                                 visible: root.lyricsState === "instrumental"
                                 text: qsTr("Instrumental", "a track with no words")
-                                color: Theme.textDim; font.pixelSize: 14
+                                color: Theme.textDim; font.pixelSize: Theme.fontBody
                             }
                         }
 
@@ -914,15 +914,15 @@ Rectangle {
                             visible: root.userScrolled && root.lyricsIsTimed && root.lyricsData.length > 0
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
-                            anchors.bottomMargin: 10
-                            width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusChip
+                            anchors.bottomMargin: Theme.space3
+                            width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusFull
                             color: Theme.artScrimStrong
                             border.color: Theme.artBorder
                             Text {
                                 id: rsText
                                 anchors.centerIn: parent
                                 text: qsTr("Resync")
-                                color: Theme.artInk; font.pixelSize: 12
+                                color: Theme.artInk; font.pixelSize: Theme.fontMeta
                             }
                             HoverHandler { cursorShape: Qt.PointingHandCursor }
                             // ReleaseWithinBounds: the default DragThreshold
@@ -947,15 +947,15 @@ Rectangle {
                                      && !(root.userScrolled && root.lyricsIsTimed)
                             anchors.left: parent.left
                             anchors.bottom: parent.bottom
-                            anchors.leftMargin: 16
-                            anchors.bottomMargin: 10
+                            anchors.leftMargin: Theme.space4
+                            anchors.bottomMargin: Theme.space3
                             height: 26
                             width: Math.min(implicitWidth,
                                             Math.max(0, parent.width - panelChips.width - 46))
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                             text: qsTr("Lyrics from %1", "%1 is a lyrics website").arg(root.lyricsSource)
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             font.underline: sourceHover.hovered && sourceUrl.length > 0
                             HoverHandler {
                                 id: sourceHover
@@ -976,15 +976,15 @@ Rectangle {
                                      && !root.userScrolled
                             anchors.left: lyricsSourceText.visible ? lyricsSourceText.right : parent.left
                             anchors.bottom: parent.bottom
-                            anchors.leftMargin: lyricsSourceText.visible ? 10 : 16
-                            anchors.bottomMargin: 10
+                            anchors.leftMargin: lyricsSourceText.visible ? Theme.space3 : Theme.space4
+                            anchors.bottomMargin: Theme.space3
                             height: 26
                             width: Math.min(implicitWidth, Math.max(0, parent.width - panelChips.width - 46
                                        - (lyricsSourceText.visible ? lyricsSourceText.width + 10 : 0)))
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                             text: qsTr("Synced automatically, may be off")
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                         }
                     }
 
@@ -995,7 +995,7 @@ Rectangle {
                         id: creditsPanel
                         objectName: "nowPlayingCreditsPanel"
                         anchors.fill: parent
-                        radius: Theme.radiusArt
+                        radius: Theme.radiusSmall
                         color: Qt.rgba(Theme.surface.r, Theme.surface.g,
                                        Theme.surface.b,
                                        Theme.surface.a * (1 - root.readingness))
@@ -1010,9 +1010,9 @@ Rectangle {
                         // every size below is its docked size times this.
                         readonly property real typeScale:
                             root.lyricLineSize / root.lyricsSize
-                        readonly property int  labelSize: Math.round(11 * typeScale)
-                        readonly property int  nameSize:  Math.round(14 * typeScale)
-                        readonly property int  factSize:  Math.round(12 * typeScale)
+                        readonly property int  labelSize: Math.round(Theme.fontMicro * typeScale)
+                        readonly property int  nameSize:  Math.round(Theme.fontBody * typeScale)
+                        readonly property int  factSize:  Math.round(Theme.fontMeta * typeScale)
                         // Same flip, same reason, as the lyric line's.
                         readonly property int  align: root.readingness >= 0.5
                                                       ? Text.AlignHCenter
@@ -1022,7 +1022,7 @@ Rectangle {
                             id: creditsFlick
                             objectName: "nowPlayingCreditsView"
                             anchors.fill: parent
-                            anchors.margins: 16
+                            anchors.margins: Theme.space4
                             visible: root.creditsState === "ready"
                             // Content margins, not a smaller viewport, as on
                             // the lyric list.
@@ -1040,7 +1040,7 @@ Rectangle {
                             ColumnLayout {
                                 id: creditsColumn
                                 width: creditsFlick.width
-                                spacing: Math.round(16 * creditsPanel.typeScale)
+                                spacing: Math.round(Theme.space4 * creditsPanel.typeScale)
 
                                 // Who played what. The group's type is the
                                 // label's own word for the role, so it is data
@@ -1050,7 +1050,7 @@ Rectangle {
                                     delegate: ColumnLayout {
                                         required property var modelData
                                         Layout.fillWidth: true
-                                        spacing: 2
+                                        spacing: Theme.spaceHalf
 
                                         Text {
                                             Layout.fillWidth: true
@@ -1083,7 +1083,7 @@ Rectangle {
                                 // when the API did not carry it.
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.topMargin: Math.round(8 * creditsPanel.typeScale)
+                                    Layout.topMargin: Math.round(Theme.space2 * creditsPanel.typeScale)
                                     height: 1
                                     color: Theme.border
                                     visible: root.creditsReleaseDate.length > 0
@@ -1168,8 +1168,8 @@ Rectangle {
                         objectName: "nowPlayingPanelChips"
                         anchors.bottom: parent.bottom
                         anchors.right: parent.right
-                        anchors.margins: 10
-                        spacing: 8
+                        anchors.margins: Theme.space3
+                        spacing: Theme.space2
 
                         PanelChip {
                             objectName: "nowPlayingCreditsToggle"
@@ -1220,16 +1220,16 @@ Rectangle {
                     id: infoColumn
                     parent: infoBox
                     width: root.infoWidth
-                    spacing: 24
+                    spacing: Theme.space6
 
                     RowLayout {
                         id: npTransportRow
                         Layout.fillWidth: true
-                        spacing: 16
+                        spacing: Theme.space4
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 8
+                            spacing: Theme.space2
                             // "Playing from" link: back to the playlist, album,
                             // mix or liked songs it started from.
                             Text {
@@ -1245,7 +1245,7 @@ Rectangle {
                                 font.underline: activeFocus
                                 text: qsTr("Playing from: %1").arg(player.sourceName)
                                 color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontMeta
                                 font.letterSpacing: 0.5
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
@@ -1262,7 +1262,7 @@ Rectangle {
                                 id: titleLink
                                 objectName: "nowPlayingTitle"
                                 text: hasTrack ? track.title : "–"; color: Theme.textPrimary
-                                font.pixelSize: 32; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
+                                font.pixelSize: Theme.fontDisplay; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
                                 font.underline: titleHit.containsMouse && hasTrack && Number(track.albumId) > 0
                                 activeFocusOnTab: hasTrack && Number(track.albumId) > 0
                                 Keys.onReturnPressed: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
@@ -1271,7 +1271,7 @@ Rectangle {
                                     x: -4; y: -4
                                     width:  Math.min(parent.width, parent.contentWidth) + 8
                                     height: parent.height + 8
-                                    radius: Theme.radiusButton; color: "transparent"
+                                    radius: Theme.radiusMedium; color: "transparent"
                                     border.width: titleLink.activeFocus ? 2 : 0
                                     border.color: Theme.accent
                                 }
@@ -1290,14 +1290,14 @@ Rectangle {
                             ArtistLinks {
                                 Layout.fillWidth: true
                                 namePrefix: "nowPlaying"
-                                fontPixelSize: 18
+                                fontPixelSize: Theme.fontSection
                                 artistList: root.artistList
                                 joinedText: hasTrack ? track.artists : ""
                                 fallbackArtistId: hasTrack ? Number(track.artistId) : 0
                             }
                             Text {
                                 id: albumLink
-                                text: hasTrack ? track.albumTitle : ""; color: Theme.textSec; font.pixelSize: 15
+                                text: hasTrack ? track.albumTitle : ""; color: Theme.textSec; font.pixelSize: Theme.fontBody
                                 // Same reason as the artist line above.
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
@@ -1309,7 +1309,7 @@ Rectangle {
                                     x: -4; y: -4
                                     width:  Math.min(parent.width, parent.contentWidth) + 8
                                     height: parent.height + 8
-                                    radius: Theme.radiusButton; color: "transparent"
+                                    radius: Theme.radiusMedium; color: "transparent"
                                     border.width: albumLink.activeFocus ? 2 : 0
                                     border.color: Theme.accent
                                 }
@@ -1348,13 +1348,13 @@ Rectangle {
                                 name: "download"
                                 color: root.dlState === "error" ? Theme.redText
                                        : (npDlHov.hovered ? Theme.textPrimary : Theme.textSec)
-                                width: 24; height: 24; strokeWidth: 1.5
+                                width: 24; height: 24
                             }
                             VectorIcon {
                                 anchors.centerIn: parent
                                 visible: root.dlState === "done"
                                 name: "check"; color: Theme.green
-                                width: 24; height: 24; strokeWidth: 2
+                                width: 24; height: 24
                             }
                             Item {
                                 id: npSpinner
@@ -1362,12 +1362,12 @@ Rectangle {
                                 width: 22; height: 22
                                 visible: root.dlState === "busy"
                                 Rectangle {
-                                    width: 3.5; height: 9; radius: 1.75
+                                    width: 3.5; height: 9; radius: width / 2
                                     anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter
                                     color: Theme.accent
                                 }
                                 RotationAnimator {
-                                    target: npSpinner; from: 0; to: 360; duration: Theme.dur(800)
+                                    target: npSpinner; from: 0; to: 360; duration: Theme.dur(Theme.motionSlow * 2)
                                     loops: Theme.reduceMotion ? 1 : Animation.Infinite
                                     running: root.dlState === "busy"
                                 }
@@ -1376,7 +1376,7 @@ Rectangle {
                             TapHandler { onTapped: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track) }
                             ToolTip.visible: npDlHov.hovered && root.dlState === "error"
                             ToolTip.text: qsTr("Download failed. Click to retry.")
-                            ToolTip.delay: 300
+                            ToolTip.delay: Theme.tooltipDelay
                         }
 
                         CtrlBtn {
@@ -1397,13 +1397,13 @@ Rectangle {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.space3
 
                         // Quality badge
                         Rectangle {
                             objectName: "qualityBadge"
                             visible: player.audioQuality.length > 0
-                            height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusBadge
+                            height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusSmall
                             color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
                                    player.audioQuality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
                             Text {
@@ -1426,11 +1426,11 @@ Rectangle {
                             // ring round the glyph is a whole number of pixels:
                             // anchor centring rounds.
                             height: 30
-                            // What the pill actually draws: Theme.radiusChip is
+                            // What the pill actually draws: Theme.radiusFull is
                             // a "round it all the way" sentinel, and Qt clamps
                             // it to half the shorter side.
                             readonly property real cornerRadius:
-                                Math.min(Theme.radiusChip, height / 2)
+                                Math.min(Theme.radiusFull, height / 2)
                             // The clock's box. Everything below is derived from
                             // it and the height. VectorIcon paints its glyph at
                             // 85% of the box.
@@ -1459,7 +1459,7 @@ Rectangle {
                                 root.sleepTimerActive
                                     ? Qt.rgba(Theme.accent.r, Theme.accent.g,
                                               Theme.accent.b, 0.36)
-                                    : Theme.surfaceHov
+                                    : Qt.tint(Theme.surfaceHigh, Theme.hoverFill)
                             readonly property color restBorder:
                                 root.sleepTimerActive ? Theme.accent : Theme.border
                             // The counting pill's border is already the accent
@@ -1471,8 +1471,8 @@ Rectangle {
                             color: sleepMa.containsMouse ? hoverFill : restFill
                             border.color: sleepMa.containsMouse ? hoverBorder : restBorder
                             border.width: 1
-                            Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
-                            Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
+                            Behavior on color        { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+                            Behavior on border.color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
 
                             // Never drawn. One clock per digit, a line each, so its
                             // width is the widest clock as a Text lays it out. A
@@ -1498,7 +1498,7 @@ Rectangle {
                                 anchors.left: parent.left
                                 anchors.leftMargin: sleepTimerBtn.leadInset
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
+                                spacing: Theme.space2
 
                                 VectorIcon {
                                     objectName: "nowPlayingSleepTimerIcon"
@@ -1507,7 +1507,6 @@ Rectangle {
 
                                     // Heavier than VectorIcon's 1.8 default, which
                                     // draws too thin a line at this size.
-                                    strokeWidth: 2.4
 
                                     // Layout.preferredWidth/Height: a layout imposes
                                     // VectorIcon's implicit 24 over a plain
@@ -1534,7 +1533,7 @@ Rectangle {
                                             : implicitWidth
                                     horizontalAlignment: Text.AlignHCenter
                                     color: root.sleepTimerActive ? Theme.accentText : Theme.textSec
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMicro
                                     font.bold: root.sleepTimerActive
                                 }
                             }
@@ -1558,7 +1557,7 @@ Rectangle {
                             Accessible.onPressAction: sleepTimerPopup.open()
                             Rectangle {
                                 anchors.fill: parent
-                                anchors.margins: -3
+                                anchors.margins: -Theme.space1
                                 radius: height / 2
                                 color: "transparent"
                                 border.width: sleepTimerBtn.activeFocus ? 2 : 0
@@ -1573,7 +1572,7 @@ Rectangle {
                         parent: sleepTimerBtn
                         x: sleepTimerBtn.width - width
                         width: 260
-                        padding: 12
+                        padding: Theme.space3
 
                         // ── how tall it is, and which side of the pill it opens on ──
                         // Both come from the content's implicit height. Binding
@@ -1584,7 +1583,7 @@ Rectangle {
                         height: popupHeight
 
                         // The gap to the pill, whichever side it lands on.
-                        readonly property real pillGap: 6
+                        readonly property real pillGap: Theme.space2
 
                         // The pill's top in window coordinates and the room
                         // under it. Summed along the parent chain so every term
@@ -1630,7 +1629,7 @@ Rectangle {
                             color: Theme.surfaceHigh
                             border.color: Theme.border
                             border.width: 1
-                            radius: Theme.radiusPopup
+                            radius: Theme.radiusLarge
                         
                             MouseArea {
                                 anchors.fill: parent
@@ -1644,12 +1643,12 @@ Rectangle {
                         ColumnLayout {
                             id: contentCol
                             anchors.fill: parent
-                            spacing: 12
+                            spacing: Theme.space3
 
                             Text {
                                 text: qsTr("Sleep Timer")
                                 color: Theme.textPrimary
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontBody
                                 font.bold: true
                                 Layout.alignment: Qt.AlignLeft
                             }
@@ -1657,14 +1656,14 @@ Rectangle {
                             // Options container when timer is INACTIVE
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 10
+                                spacing: Theme.space3
                                 visible: !root.sleepTimerActive
 
                                 GridLayout {
                                     Layout.fillWidth: true
                                     columns: 3
-                                    columnSpacing: 8
-                                    rowSpacing: 8
+                                    columnSpacing: Theme.space2
+                                    rowSpacing: Theme.space2
                                 
                                     SleepOptionBtn { id: firstSleepOption; minutes: 5 }
                                     SleepOptionBtn { minutes: 15 }
@@ -1679,8 +1678,8 @@ Rectangle {
                                     objectName: "nowPlayingSleepEndOfTrack"
                                     Layout.fillWidth: true
                                     height: 32
-                                    radius: Theme.radiusButton
-                                    color: maEndOfTrack.containsMouse ? Theme.surfaceHov : Theme.surface
+                                    radius: Theme.radiusMedium
+                                    color: maEndOfTrack.containsMouse ? Qt.tint(Theme.surface, Theme.hoverFill) : Theme.surface
                                     border.color: activeFocus ? Theme.accent : Theme.border
                                     border.width: activeFocus ? 2 : 1
                                     function activate() {
@@ -1696,7 +1695,7 @@ Rectangle {
                                 
                                     RowLayout {
                                         anchors.centerIn: parent
-                                        spacing: 6
+                                        spacing: Theme.space2
                                         VectorIcon {
                                             name: "track"
                                             color: Theme.accentText
@@ -1707,7 +1706,7 @@ Rectangle {
                                             id: endOfTrackText
                                             text: qsTr("Stop at End of Track")
                                             color: Theme.textPrimary
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontMeta
                                             font.bold: true
                                         }
                                     }
@@ -1731,12 +1730,12 @@ Rectangle {
                                 // Custom Slider (using the project's native slider styling)
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    spacing: Theme.space1
                                     Text {
                                         id: customLabel
                                         text: qsTr("Custom: %1 min").arg(customSlider.value)
                                         color: Theme.textSec
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontMeta
                                     }
                                 
                                     Item {
@@ -1770,8 +1769,8 @@ Rectangle {
 
                                         Rectangle {
                                             anchors.fill: parent
-                                            anchors.margins: -3
-                                            radius: Theme.radiusButton
+                                            anchors.margins: -Theme.space1
+                                            radius: Theme.radiusMedium
                                             color: "transparent"
                                             border.width: customSlider.activeFocus ? 2 : 0
                                             border.color: Theme.accent
@@ -1781,7 +1780,7 @@ Rectangle {
                                             id: customTrack
                                             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
                                             // A 3px bar, so the chip radius clamps to a capsule
-                                            height: 3; radius: Theme.radiusChip
+                                            height: 3; radius: Theme.radiusFull
                                             color: Theme.border
 
                                             Rectangle {
@@ -1793,7 +1792,7 @@ Rectangle {
                                             Rectangle {
                                                 x: Math.max(0, Math.min(customTrack.width - width, ((customSlider.value - 1) / 119.0) * customTrack.width - width / 2))
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                width: 10; height: 10; radius: 5
+                                                width: 10; height: 10; radius: width / 2
                                                 color: Theme.textPrimary
                                             }
                                         }
@@ -1821,7 +1820,7 @@ Rectangle {
                                     PillButton {
                                         objectName: "nowPlayingSleepTimerStart"
                                         Layout.fillWidth: true
-                                        Layout.topMargin: 8
+                                        Layout.topMargin: Theme.space2
                                         text: qsTr("Start", "verb, begins the sleep timer")
                                         icon: "play"
                                         accent: true
@@ -1836,7 +1835,7 @@ Rectangle {
                             // Options container when timer is ACTIVE
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 10
+                                spacing: Theme.space3
                                 visible: root.sleepTimerActive
 
                                 Rectangle {
@@ -1845,24 +1844,24 @@ Rectangle {
                                     color: Theme.accentSoft
                                     border.color: Theme.accentDim
                                     border.width: 1
-                                    radius: Theme.radiusCard
+                                    radius: Theme.radiusLarge
                                 
                                     ColumnLayout {
                                         anchors.centerIn: parent
-                                        spacing: 2
+                                        spacing: Theme.spaceHalf
                                         Text {
                                             text: root.sleepStopAtEndOfTrack ? qsTr("Stopping at end of track") : 
                                                   root.sleepIsFading ? qsTr("Fading out audio…") : 
                                                   qsTr("Remaining: %1").arg(root.formatSleepTime(root.sleepTimeLeft))
                                             color: Theme.textPrimary
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontMeta
                                             font.bold: true
                                             Layout.alignment: Qt.AlignHCenter
                                         }
                                         Text {
                                             text: root.sleepStopAtEndOfTrack ? qsTr("Fades out last 15s") : qsTr("Fades out last 30s")
                                             color: Theme.textDim
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             visible: root.sleepFadeOut
                                             Layout.alignment: Qt.AlignHCenter
                                         }
@@ -1874,7 +1873,7 @@ Rectangle {
                                     objectName: "nowPlayingSleepCancel"
                                     Layout.fillWidth: true
                                     height: 32
-                                    radius: Theme.radiusButton
+                                    radius: Theme.radiusMedium
                                     color: Theme.redSoft
                                     border.color: activeFocus ? Theme.accent : Theme.red
                                     border.width: activeFocus ? 2 : 1
@@ -1894,7 +1893,7 @@ Rectangle {
                                         anchors.centerIn: parent
                                         text: qsTr("Cancel Sleep Timer")
                                         color: Theme.redText
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontMeta
                                         font.bold: true
                                     }
                                 
@@ -1918,7 +1917,7 @@ Rectangle {
                                 id: fadeRow
                                 objectName: "nowPlayingSleepFade"
                                 Layout.fillWidth: true
-                                spacing: 12
+                                spacing: Theme.space3
                                 function toggle() {
                                     if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
                                 }
@@ -1936,14 +1935,14 @@ Rectangle {
                                     id: fadeText
                                     text: qsTr("Fade out audio")
                                     color: Theme.textSec
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontMeta
                                     Layout.fillWidth: true
                                 }
                             
                                 Rectangle {
                                     width: 34
                                     height: 18
-                                    radius: Theme.radiusChip
+                                    radius: Theme.radiusFull
                                     color: root.sleepFadeOut ? Theme.accent : Theme.surface
                                     border.color: fadeRow.activeFocus ? Theme.textPrimary : Theme.border
                                     border.width: fadeRow.activeFocus ? 2 : 1
@@ -1953,9 +1952,9 @@ Rectangle {
                                         y: 1
                                         width: 16
                                         height: 16
-                                        radius: 8
+                                        radius: width / 2
                                         color: root.sleepFadeOut ? Theme.accentInk : Theme.textPrimary
-                                        Behavior on x { NumberAnimation { duration: Theme.dur(150) } }
+                                        Behavior on x { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
                                     }
                                 }
                             
@@ -2010,7 +2009,7 @@ Rectangle {
                             Rectangle {
                                 id: npPlayPause
                                 objectName: "nowPlayingPlayButton"
-                                width: 64; height: 64; radius: 32; color: Theme.textPrimary
+                                width: 64; height: 64; radius: width / 2; color: Theme.textPrimary
                                 border.width: activeFocus ? 2 : 0
                                 border.color: Theme.accent
                                 activeFocusOnTab: true
@@ -2026,9 +2025,8 @@ Rectangle {
                                     color: Theme.bg
                                     width: 32
                                     height: 32
-                                    strokeWidth: 1.5
                                 }
-                                scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
+                                scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                                 HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
                                 TapHandler   { onTapped: player.playPause() }
                                 PlayerBar.LoadErrorTip { }
@@ -2087,7 +2085,7 @@ Rectangle {
                         // drops spacing only for an invisible child, and going
                         // invisible would be a step at the end.
                         clip: true
-                        spacing: 12
+                        spacing: Theme.space3
                         // The true play order, shuffle included. queueCount is
                         // read for the dependency, not queueTracks, which
                         // copies the whole queue into JS.
@@ -2100,7 +2098,7 @@ Rectangle {
                         Text {
                             text: qsTr("Up Next")
                             color: Theme.textDim
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMicro
                             font.bold: true
                             font.letterSpacing: 1
                         }
@@ -2111,12 +2109,12 @@ Rectangle {
                                 required property int index
                                 required property var modelData
                                 Layout.fillWidth: true
-                                Layout.topMargin: 4
-                                Layout.bottomMargin: 4
-                                spacing: 12
+                                Layout.topMargin: Theme.space1
+                                Layout.bottomMargin: Theme.space1
+                                spacing: Theme.space3
                                 property var upTrack: modelData
                                 Rectangle {
-                                    width: 44; height: 44; radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
+                                    width: 44; height: 44; radius: Theme.radiusSmall; color: Theme.surfaceHigh; clip: true
                                     Image {
                                         anchors.fill: parent
                                         source: upTrack && upTrack.coverUrl80 ? "image://tidal/" + upTrack.coverUrl80 : ""
@@ -2124,12 +2122,12 @@ Rectangle {
                                     }
                                 }
                                 ColumnLayout {
-                                    Layout.fillWidth: true; spacing: 4
-                                    Text { Layout.fillWidth: true; text: upTrack ? upTrack.title : ""; color: Theme.textPrimary; font.pixelSize: 14; elide: Text.ElideRight }
+                                    Layout.fillWidth: true; spacing: Theme.space1
+                                    Text { Layout.fillWidth: true; text: upTrack ? upTrack.title : ""; color: Theme.textPrimary; font.pixelSize: Theme.fontBody; elide: Text.ElideRight }
                                     ArtistLinks {
                                         Layout.fillWidth: true
                                         namePrefix: "nowPlayingUpNext"
-                                        fontPixelSize: 12
+                                        fontPixelSize: Theme.fontMeta
                                         artistList: upTrack && upTrack.artistList ? upTrack.artistList : []
                                         joinedText: upTrack ? upTrack.artists : ""
                                         fallbackArtistId: upTrack ? Number(upTrack.artistId) : 0
@@ -2152,7 +2150,7 @@ Rectangle {
         signal toggled()
 
         width: chipLabel.implicitWidth + 16
-        height: 26; radius: Theme.radiusChip
+        height: 26; radius: Theme.radiusFull
         color: chip.on ? Theme.accent : Theme.artScrimStrong
         // The focus ring is the text colour, not the accent: an "on" chip is
         // already filled with the accent.
@@ -2175,7 +2173,7 @@ Rectangle {
             anchors.centerIn: parent
             text: chip.label
             color: chip.on ? Theme.accentInk : Theme.artInk
-            font.pixelSize: 11; font.bold: true
+            font.pixelSize: Theme.fontMicro; font.bold: true
         }
 
         HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -2219,20 +2217,19 @@ Rectangle {
         Accessible.name: cb.tip
         Accessible.onPressAction: cb.activated()
 
-        Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
-        Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
+        Behavior on color        { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+        Behavior on border.color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
 
         VectorIcon {
             anchors.centerIn: parent
             name: cb.icon
             color: Theme.textPrimary
             width: 18; height: 18
-            strokeWidth: 2
         }
 
         ToolTip.visible: cbHov.hovered && cb.tip.length > 0
         ToolTip.text: cb.tip
-        ToolTip.delay: 600
+        ToolTip.delay: Theme.tooltipDelay
 
         HoverHandler { id: cbHov; cursorShape: Qt.PointingHandCursor }
         // ReleaseWithinBounds: a DragThreshold TapHandler takes only a passive
@@ -2249,8 +2246,8 @@ Rectangle {
         property string label: qsTr("%1m", "compact duration in minutes").arg(optBtn.minutes)
         Layout.fillWidth: true
         height: 28
-        radius: Theme.radiusButton
-        color: ma.containsMouse ? Theme.surfaceHov : Theme.surface
+        radius: Theme.radiusMedium
+        color: ma.containsMouse ? Qt.tint(Theme.surface, Theme.hoverFill) : Theme.surface
         border.color: activeFocus ? Theme.accent : Theme.border
         border.width: activeFocus ? 2 : 1
         function activate() {
@@ -2268,7 +2265,7 @@ Rectangle {
             anchors.centerIn: parent
             text: optBtn.label
             color: Theme.textPrimary
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontMeta
         }
         
         MouseArea {
@@ -2337,7 +2334,7 @@ Rectangle {
                 Keys.onUpPressed:   volFlyout.slider.stepBy(volFlyout.slider.stepSize)
                 Keys.onDownPressed: volFlyout.slider.stepBy(-volFlyout.slider.stepSize)
                 Rectangle {
-                    anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
+                    anchors.fill: parent; anchors.margins: -Theme.space1; radius: Theme.radiusMedium; color: "transparent"
                     border.width: muteBtn.activeFocus ? 2 : 0
                     border.color: Theme.accent
                 }
@@ -2345,7 +2342,6 @@ Rectangle {
                     anchors.fill: parent
                     name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
                     color: muteHov.hovered ? Theme.textPrimary : Theme.textSec
-                    strokeWidth: 1.5
                 }
                 // A click still mutes, and the hover is what the flyout reads.
                 // A HoverHandler, because the flyout is not a child of this
@@ -2367,7 +2363,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignHCenter
                 text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
                                           .toLocaleString(Qt.locale(), 'f', 0))
-                color: Theme.textDim; font.pixelSize: 12
+                color: Theme.textDim; font.pixelSize: Theme.fontMeta
                 HoverHandler { id: pctHov }
             }
         }
@@ -2428,7 +2424,6 @@ Rectangle {
             color: parent.active ? Theme.accentText : hov.hovered ? Theme.textPrimary : Theme.textSec
             width: parent.size
             height: parent.size
-            strokeWidth: 1.5
         }
         HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
         TapHandler   { onTapped: parent.clicked() }

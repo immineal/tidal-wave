@@ -25,7 +25,7 @@ Item {
     // A Behavior does not run on a binding's first evaluation, so a panel that
     // starts open is open in its first frame.
     Behavior on openness {
-        NumberAnimation { duration: Theme.dur(150); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
     visible: open || openness > 0.001
 
@@ -368,17 +368,17 @@ Item {
                 color: "transparent"
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+                    anchors.leftMargin: Theme.space4
+                    anchors.rightMargin: Theme.space4
+                    Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
                     Item { Layout.fillWidth: true }
-                    Text { text: qsTr("%Ln track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: 12 }
+                    Text { text: qsTr("%Ln track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
                     Text {
                         visible: player.shuffle
                         text: qsTr("· Shuffled")
-                        color: Theme.accentText; font.pixelSize: 12
+                        color: Theme.accentText; font.pixelSize: Theme.fontMeta
                     }
-                    Item { width: 8 }
+                    Item { width: Theme.space2 }
                     // Clears the manual queue and only that: the history and
                     // the album are not the user's list. The hit area is 32
                     // tall around the 12px word.
@@ -396,8 +396,8 @@ Item {
                         Accessible.onPressAction: player.clearManual()
                         Rectangle {
                             anchors.fill: parent
-                            radius: Theme.radiusButton
-                            color: clearHov.hovered ? Theme.surfaceHov : "transparent"
+                            radius: Theme.radiusMedium
+                            color: clearHov.hovered ? Theme.hoverFill : "transparent"
                             border.width: clearBtn.activeFocus ? 2 : 0
                             border.color: Theme.accent
                         }
@@ -406,7 +406,7 @@ Item {
                             anchors.centerIn: parent
                             text: qsTr("Clear", "verb, empties the play queue")
                             color: clearHov.hovered || clearBtn.activeFocus ? Theme.textPrimary : Theme.textSec
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontMeta
                         }
                         HoverHandler { id: clearHov }
                         MouseArea {
@@ -429,15 +429,15 @@ Item {
                         Accessible.onPressAction: root.dismissed()
                         Rectangle {
                             anchors.fill: parent
-                            radius: Theme.radiusButton
-                            color: closeHov.hovered ? Theme.surfaceHov : "transparent"
+                            radius: Theme.radiusMedium
+                            color: closeHov.hovered ? Theme.hoverFill : "transparent"
                             border.width: closeBtn.activeFocus ? 2 : 0
                             border.color: Theme.accent
                         }
                         VectorIcon {
                             anchors.centerIn: parent
                             name: "x"
-                            width: 14; height: 14; strokeWidth: 1.8
+                            width: 14; height: 14
                             color: closeHov.hovered || closeBtn.activeFocus ? Theme.textPrimary : Theme.textSec
                         }
                         HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
@@ -484,7 +484,7 @@ Item {
                         x: 8
                         width: Math.max(0, list.width - 16)
                         height: 2
-                        radius: 1
+                        radius: height / 2
                         z: 3
                         color: Theme.accent
                         y: root.dragTopY
@@ -511,7 +511,7 @@ Item {
                     wrapMode: Text.WordWrap
                     text: qsTr("Nothing queued yet")
                     color: Theme.textDim
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontMeta
                 }
 
                 // Shown when the current track is off screen, on the edge it
@@ -521,23 +521,23 @@ Item {
                     objectName: "queueJumpToCurrent"
                     visible: opacity > 0
                     opacity: (root.hasCurrent && !root.currentOnScreen) ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Theme.dur(140) } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
 
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top:    root.currentAbove ? parent.top : undefined
                     anchors.bottom: root.currentAbove ? undefined : parent.bottom
-                    anchors.topMargin: 10
-                    anchors.bottomMargin: 10
+                    anchors.topMargin: Theme.space3
+                    anchors.bottomMargin: Theme.space3
 
                     width: jumpRow.implicitWidth + 24
                     height: 28
-                    radius: Theme.radiusChip
+                    radius: Theme.radiusFull
                     color: jumpHov.hovered ? Theme.accentDim : Theme.accent
 
                     RowLayout {
                         id: jumpRow
                         anchors.centerIn: parent
-                        spacing: 4
+                        spacing: Theme.space1
                         VectorIcon {
                             name: "chevron-left"
                             // The glyph points left; a quarter turn clockwise
@@ -545,12 +545,11 @@ Item {
                             rotation: root.currentAbove ? 90 : -90
                             color: Theme.accentInk
                             width: root.iconSize; height: root.iconSize
-                            strokeWidth: 2
                         }
                         Text {
                             text: qsTr("Jump to current track")
                             color: Theme.accentInk
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontMeta
                         }
                     }
 
@@ -650,27 +649,26 @@ Item {
                 id: headerIcon
                 visible: entry.kind === "contextHeader"
                 anchors.left: parent.left
-                anchors.leftMargin: 14
+                anchors.leftMargin: Theme.space4
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: 1
                 name: root.contextGlyph(root.contextType)
                 width: root.iconSize; height: root.iconSize
-                strokeWidth: 1.5
                 color: Theme.textDim
             }
 
             Text {
                 anchors.left: headerIcon.visible ? headerIcon.right : parent.left
-                anchors.leftMargin: headerIcon.visible ? 6 : 14
+                anchors.leftMargin: headerIcon.visible ? Theme.space2 : Theme.space4
                 anchors.right: parent.right
-                anchors.rightMargin: 14
+                anchors.rightMargin: Theme.space4
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: 1
                 text: entry.headerText
                 // The manual queue is the one the user built, so it is the one
                 // the eye should land on; the rest are captions.
                 color: entry.kind === "manualHeader" ? Theme.accentText : Theme.textDim
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMicro
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -679,8 +677,8 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
+                anchors.leftMargin: Theme.space4
+                anchors.rightMargin: Theme.space4
                 height: 1
                 // Not above the first heading: there is nothing up there to
                 // be separated from.
@@ -693,14 +691,14 @@ Item {
         Rectangle {
             id: rowBg
             anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            anchors.topMargin: 2
-            anchors.bottomMargin: 2
+            anchors.leftMargin: Theme.space2
+            anchors.rightMargin: Theme.space2
+            anchors.topMargin: Theme.spaceHalf
+            anchors.bottomMargin: Theme.spaceHalf
             visible: !entry.isHeader
-            radius: Theme.radiusRow
+            radius: Theme.radiusMedium
             color: entry.isCurrent ? Theme.accentSoft
-                 : (entry.dragging || qHov.hovered) ? Theme.surfaceHov
+                 : (entry.dragging || qHov.hovered) ? Theme.hoverFill
                  : "transparent"
             border.width: (entry.activeFocus || entry.dragging) ? 2 : 0
             border.color: Theme.accent
@@ -729,9 +727,9 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 4
-                anchors.rightMargin: 8
-                spacing: 8
+                anchors.leftMargin: Theme.space1
+                anchors.rightMargin: Theme.space2
+                spacing: Theme.space2
 
                 // The grip's column is reserved on every track row, so the
                 // artwork keeps one straight edge across section boundaries.
@@ -744,7 +742,6 @@ Item {
                         visible: entry.draggable
                         name: "grip"
                         width: root.iconSize; height: root.iconSize
-                        strokeWidth: 1.5
                         color: entry.dragging ? Theme.accentText : Theme.textDim
                         opacity: qHov.hovered || entry.dragging ? 1 : 0.45
                     }
@@ -755,7 +752,7 @@ Item {
                         // A deliberate bleed, so a 16px-wide grip is not a
                         // 16px-wide target. 4 is what the layout guard in
                         // tests/qml/tst_layout_player.qml allows for overhang.
-                        anchors.margins: -4
+                        anchors.margins: -Theme.space1
                         visible: entry.draggable
                         enabled: entry.draggable
                         cursorShape: entry.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
@@ -794,7 +791,7 @@ Item {
                 Rectangle {
                     Layout.preferredWidth: 36
                     Layout.preferredHeight: 36
-                    radius: Theme.radiusArt
+                    radius: Theme.radiusSmall
                     color: Theme.surfaceHigh
                     clip: true
                     Image {
@@ -812,13 +809,13 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 2
+                    spacing: Theme.spaceHalf
                     // A truncated payload must still read as a row.
                     Text {
                         Layout.fillWidth: true
                         text: entry.titleText
                         color: entry.isCurrent ? Theme.accentText : Theme.textPrimary
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontMeta
                         font.bold: entry.isCurrent
                         elide: Text.ElideRight
                     }
@@ -829,7 +826,7 @@ Item {
                         Layout.fillWidth: true
                         tabStops: false
                         namePrefix: "queue"
-                        fontPixelSize: 11
+                        fontPixelSize: Theme.fontMicro
                         artistList: entry.artistList
                         joinedText: entry.artistsText
                         fallbackArtistId: entry.leadArtistId
@@ -864,7 +861,6 @@ Item {
                             name: "x"
                             color: removeHov.hovered ? Theme.textPrimary : Theme.textSec
                             width: root.iconSize; height: root.iconSize
-                            strokeWidth: 1.8
                         }
                         HoverHandler { id: removeHov }
                         MouseArea {
@@ -896,7 +892,7 @@ Item {
                 }
                 implicitWidth: Theme.menuWidth(this)
                 overlap: 0
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
                 ContextMenu.Entry {
                     text: qsTr("Remove from queue")
                     danger: true

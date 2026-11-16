@@ -16,7 +16,7 @@ Item {
     // `real` and not `int`, because an id is a qint64 in src/api/Models.h and
     // QML's int is 32-bit. TrackRow.trackId is a real for the same reason.
     property real   fallbackArtistId: 0
-    property int    fontPixelSize: 12
+    property int    fontPixelSize: Theme.fontMeta
     property string namePrefix: ""
     // Off inside a list row, where a stop per name would multiply the tab
     // presses by the row count; the row's menu has "Go to artist".
@@ -77,7 +77,7 @@ Item {
             x: -4; y: -4
             width:  Math.min(parent.width, parent.contentWidth) + 8
             height: parent.height + 8
-            radius: Theme.radiusButton; color: "transparent"
+            radius: Theme.radiusMedium; color: "transparent"
             border.width: fallbackLine.activeFocus ? 2 : 0
             border.color: Theme.accent
         }
@@ -154,7 +154,7 @@ Item {
                         x: -4; y: -4
                         width:  parent.width + 8
                         height: parent.height + 8
-                        radius: Theme.radiusButton; color: "transparent"
+                        radius: Theme.radiusMedium; color: "transparent"
                         border.width: name.activeFocus ? 2 : 0
                         border.color: Theme.accent
                     }

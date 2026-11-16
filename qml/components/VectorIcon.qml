@@ -7,7 +7,8 @@ Item {
     id: root
     property string name: ""
     property color color: Theme.textPrimary
-    property real strokeWidth: 1.8
+    // One stroke for every glyph in the app.
+    property real strokeWidth: Theme.iconStroke
 
     implicitWidth: 24
     implicitHeight: 24
@@ -319,7 +320,7 @@ Item {
         }
 
         opacity: animate ? 1 : 0.45
-        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
 
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -390,7 +391,7 @@ Item {
                     Behavior on height {
                         enabled: ind.useSpectrum
                         NumberAnimation {
-                            duration: Theme.dur(70)
+                            duration: Theme.dur(Theme.motionFast)
                             easing.type: Easing.OutQuad
                         }
                     }

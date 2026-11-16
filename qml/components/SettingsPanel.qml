@@ -129,12 +129,12 @@ Popup {
     background: Rectangle {
         color: Theme.surface
         border.color: Theme.border
-        radius: Theme.radiusPopup
+        radius: Theme.radiusLarge
     }
 
     // Margins every section shares, so a section is one ColumnLayout and not a
     // set of four numbers copied six times.
-    readonly property int sideMargin: 20
+    readonly property int sideMargin: Theme.space5
 
     // The panel's own ground at a given alpha. "transparent" is transparent
     // *black*, which greys a fade out on the two light themes.
@@ -156,13 +156,13 @@ Popup {
             id: headerRow
             anchors {
                 top: parent.top; left: parent.left; right: parent.right
-                topMargin: 20; leftMargin: root.sideMargin; rightMargin: 16
+                topMargin: Theme.space5; leftMargin: root.sideMargin; rightMargin: Theme.space4
             }
 
             Text {
                 text: qsTr("Settings")
                 color: Theme.textPrimary
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontTitle
                 font.bold: true
                 Layout.fillWidth: true
             }
@@ -179,7 +179,7 @@ Popup {
                 Accessible.onPressAction: root.close()
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusButton
+                    radius: Theme.radiusMedium
                     color: "transparent"
                     border.width: settingsClose.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -189,7 +189,6 @@ Popup {
                     name: "x"
                     color: closeHov.hovered || settingsClose.activeFocus ? Theme.textPrimary : Theme.textSec
                     width: 14; height: 14
-                    strokeWidth: 1.8
                 }
                 HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
                 TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.close() }
@@ -215,7 +214,7 @@ Popup {
 
         // The bar gets a gutter of its own rather than being laid over the
         // right edge of the content it describes.
-        rightPadding: 10
+        rightPadding: Theme.space3
 
         // parent, x, y and height are spelled out because ScrollView only lays
         // out the scrollbar it makes for itself. One handed to it is left at
@@ -229,15 +228,15 @@ Popup {
             // ScrollView's rectangular clip does not follow. The top needs
             // none: it is the straight edge under the fixed header.
             y: scroller.topPadding
-            height: scroller.availableHeight - Theme.radiusPopup
+            height: scroller.availableHeight - Theme.radiusLarge
             policy: ScrollBar.AlwaysOn
-            padding: 3
+            padding: Theme.space1
 
             contentItem: Rectangle {
                 implicitWidth: 4
                 radius: width / 2
                 color: vbar.pressed || vbar.hovered ? Theme.textSec : Theme.textDim
-                Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
+                Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
             }
 
             // A groove the full height of the view, so the handle's length
@@ -267,13 +266,13 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 1
+                        spacing: Theme.spaceHalf
                         Text {
                             text: "Tidal Wave"; color: Theme.textPrimary
-                            font.pixelSize: 14; font.bold: true
+                            font.pixelSize: Theme.fontBody; font.bold: true
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
                         Text {
@@ -283,7 +282,7 @@ Popup {
                             // number, and prefs.appVersion() is bare.
                             readonly property string ver: prefs.appVersion()
                             text: qsTr("Version %1").arg(ver.length > 0 ? "v" + ver : ver)
-                            color: Theme.textDim; font.pixelSize: 12
+                            color: Theme.textDim; font.pixelSize: Theme.fontMeta
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
                     }
@@ -298,7 +297,7 @@ Popup {
 
                 Text {
                     text: qsTr("Theme")
-                    color: Theme.textSec; font.pixelSize: 13
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
@@ -307,7 +306,7 @@ Popup {
                 // up row by row as a grid of three colour families.
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
                     ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
                 }
@@ -318,22 +317,22 @@ Popup {
                 RowLayout {
                     objectName: "settingsTintedBlock"
                     Layout.fillWidth: true
-                    Layout.topMargin: 2
-                    spacing: 12
+                    Layout.topMargin: Theme.spaceHalf
+                    spacing: Theme.space3
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsTintedLabel"
                             text: qsTr("Let the colour in")
-                            color: Theme.textPrimary; font.pixelSize: 14
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                         Text {
                             objectName: "settingsTintedNote"
                             text: qsTr("Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.")
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                     }
@@ -354,21 +353,21 @@ Popup {
                     objectName: "settingsOledBlock"
                     visible: ThemePalette.isDark
                     Layout.fillWidth: true
-                    Layout.topMargin: 2
-                    spacing: 12
+                    Layout.topMargin: Theme.spaceHalf
+                    spacing: Theme.space3
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: Theme.spaceHalf
                         Text {
                             text: qsTr("Pure black")
-                            color: Theme.textPrimary; font.pixelSize: 14
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                         Text {
                             objectName: "settingsOledNote"
                             text: qsTr("Saves power on OLED screens.")
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                     }
@@ -387,22 +386,22 @@ Popup {
                 RowLayout {
                     objectName: "settingsCoverGradientBlock"
                     Layout.fillWidth: true
-                    Layout.topMargin: 2
-                    spacing: 12
+                    Layout.topMargin: Theme.spaceHalf
+                    spacing: Theme.space3
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsCoverGradientLabel"
                             text: qsTr("Colour fullscreen Now Playing from the cover")
-                            color: Theme.textPrimary; font.pixelSize: 14
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                         Text {
                             objectName: "settingsCoverGradientNote"
                             text: qsTr("The background takes its colour from the album art. Dimmed to keep the words on top of it readable.")
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                     }
@@ -421,16 +420,16 @@ Popup {
                     objectName: "settingsSpectrumBlock"
                     visible: Spectrum.available
                     Layout.fillWidth: true
-                    Layout.topMargin: 2
-                    spacing: 12
+                    Layout.topMargin: Theme.spaceHalf
+                    spacing: Theme.space3
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsSpectrumLabel"
                             text: qsTr("Bars follow the music")
-                            color: Theme.textPrimary; font.pixelSize: 14
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                         Text {
@@ -439,7 +438,7 @@ Popup {
                             // attached while a track plays delivers nothing for
                             // it. tests/tst_spectrum.cpp pins the line.
                             text: qsTr("The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.")
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                     }
@@ -454,8 +453,8 @@ Popup {
 
                 Text {
                     text: qsTr("Language")
-                    color: Theme.textSec; font.pixelSize: 13
-                    Layout.topMargin: 4
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                    Layout.topMargin: Theme.space1
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
                 SettingSelect {
@@ -467,8 +466,8 @@ Popup {
 
                 Text {
                     text: qsTr("Reduce motion")
-                    color: Theme.textSec; font.pixelSize: 13
-                    Layout.topMargin: 4
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                    Layout.topMargin: Theme.space1
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
                 SettingSelect {
@@ -491,10 +490,10 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     Text {
                         text: qsTr("Closing the window quits Tidal Wave")
-                        color: Theme.textPrimary; font.pixelSize: 14
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Toggle {
@@ -510,17 +509,17 @@ Popup {
                     // switch above: it starts working when a tray appears, and
                     // a StatusNotifier host can turn up long after login.
                     text: qsTr("While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.")
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 8
-                    spacing: 12
+                    Layout.topMargin: Theme.space2
+                    spacing: Theme.space3
                     Text {
                         text: qsTr("Show a notification when a new track starts")
-                        color: Theme.textPrimary; font.pixelSize: 14
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Toggle {
@@ -532,7 +531,7 @@ Popup {
                 Text {
                     objectName: "settingsTrackNotificationsNote"
                     text: qsTr("Not while the Tidal Wave window is in front.")
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
@@ -545,7 +544,7 @@ Popup {
 
                 Text {
                     text: qsTr("Streaming quality")
-                    color: Theme.textSec; font.pixelSize: 13
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
                 SettingSelect {
@@ -567,13 +566,13 @@ Popup {
                 // every box with no audio backend at all.
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 4
-                    spacing: 5
+                    Layout.topMargin: Theme.space1
+                    spacing: Theme.space1
                     visible: root.audioDevices.length > 0
 
                     Text {
                         text: qsTr("Audio output")
-                        color: Theme.textSec; font.pixelSize: 13
+                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     SettingSelect {
@@ -588,7 +587,7 @@ Popup {
                         // at right now, so "System default" is not a guess.
                         text: qsTr("The system default is currently %1.").arg(root.defaultDeviceLabel)
                         visible: root.defaultDeviceLabel.length > 0
-                        color: Theme.textDim; font.pixelSize: 11
+                        color: Theme.textDim; font.pixelSize: Theme.fontMicro
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                 }
@@ -596,22 +595,22 @@ Popup {
                 // Where the save dialog of a track download opens.
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 4
-                    spacing: 5
+                    Layout.topMargin: Theme.space1
+                    spacing: Theme.space1
                     visible: root.downloads !== null
 
                     Text {
                         text: qsTr("Download folder")
-                        color: Theme.textSec; font.pixelSize: 13
+                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.space3
                         Text {
                             objectName: "settingsDownloadFolder"
                             text: root.downloads ? root.downloads.folder : ""
-                            color: Theme.textPrimary; font.pixelSize: 13
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontMeta
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true
                         }
@@ -623,7 +622,7 @@ Popup {
                     }
                     Text {
                         text: qsTr("Each download asks for a file name and format, starting in this folder.")
-                        color: Theme.textDim; font.pixelSize: 11
+                        color: Theme.textDim; font.pixelSize: Theme.fontMicro
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                 }
@@ -637,10 +636,10 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     Text {
                         text: qsTr("Hardware acceleration")
-                        color: Theme.textPrimary; font.pixelSize: 14
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Toggle {
@@ -657,10 +656,10 @@ Popup {
                 // application object exists.
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     Text {
                         text: qsTr("Interface size")
-                        color: Theme.textPrimary; font.pixelSize: 14
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     // The number, always, so a size can be reported back.
@@ -673,7 +672,7 @@ Popup {
                                 ? prefs.uiScale.toLocaleString(Qt.locale(), 'f', 2) + "x"
                                 : qsTr("Automatic", "interface size, the default")
                         }
-                        color: Theme.textSec; font.pixelSize: 13
+                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
                     }
                     Slider {
                         objectName: "settingsUiScaleSlider"
@@ -705,7 +704,7 @@ Popup {
                     visible: app.scaleWasChosenAutomatically()
                              && !app.scaleIsEnvironmentOverridden()
                     text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
@@ -713,7 +712,7 @@ Popup {
                     objectName: "settingsUiScaleEnvNote"
                     visible: app.scaleIsEnvironmentOverridden()
                     text: qsTr("The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.")
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
@@ -723,7 +722,7 @@ Popup {
                     // this cannot take effect live. Said in the panel, not in a
                     // tooltip.
                     text: qsTr("Takes effect after you restart Tidal Wave.")
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
@@ -736,10 +735,10 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     Text {
                         text: qsTr("Check for updates automatically")
-                        color: Theme.textPrimary; font.pixelSize: 14
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     Toggle {
@@ -751,7 +750,7 @@ Popup {
                 }
                 Text {
                     text: qsTr("At most once a day, using the GitHub releases page.")
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
                 PanelButton {
@@ -776,14 +775,14 @@ Popup {
                 Text {
                     objectName: "settingsFeedbackNote"
                     text: qsTr("Found a bug, or want to ask for something? Either way works.")
-                    color: Theme.textSec; font.pixelSize: 13
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
                 RowLayout {
                     objectName: "settingsFeedbackRow"
                     Layout.fillWidth: true
-                    spacing: 10
+                    spacing: Theme.space3
 
                     PanelButton {
                         objectName: "settingsIssueButton"
@@ -812,7 +811,7 @@ Popup {
                     // Feedback, the one copy of it in the project.
                     text: qsTr("The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.")
                               .arg(Feedback.mailAddress())
-                    color: Theme.textDim; font.pixelSize: 11
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
@@ -822,7 +821,7 @@ Popup {
             Section {
                 heading: qsTr("Keyboard shortcuts")
                 key: "shortcuts"
-                spacing: 6
+                spacing: Theme.space2
 
                 // The keys are named by id. The sequences live in the Shortcuts
                 // table in src/ui/Shortcuts.cpp, which Main.qml also binds
@@ -849,9 +848,9 @@ Popup {
                     delegate: RowLayout {
                         required property var modelData
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.space3
                         Rectangle {
-                            color: Theme.surface; radius: Theme.radiusBadge
+                            color: Theme.surface; radius: Theme.radiusSmall
                             border.color: Theme.border
                             implicitWidth: shortcutLabel.implicitWidth + 14
                             implicitHeight: 22
@@ -861,13 +860,13 @@ Popup {
                                           return Shortcuts.display(id)
                                       }).join(" / ")
                                 color: Theme.textPrimary
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMicro
                                 font.family: Shortcuts.monospaceFamily()
                             }
                         }
                         Text {
                             text: modelData.d; color: Theme.textSec
-                            font.pixelSize: 12; wrapMode: Text.Wrap
+                            font.pixelSize: Theme.fontMeta; wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
                     }
@@ -955,8 +954,8 @@ Popup {
                 Layout.fillWidth: true
                 Layout.leftMargin: root.sideMargin
                 Layout.rightMargin: root.sideMargin
-                Layout.topMargin: 28
-                Layout.bottomMargin: 20
+                Layout.topMargin: Theme.space8
+                Layout.bottomMargin: Theme.space5
                 onActivated: logOutDialog.ask()
             }
         }
@@ -989,7 +988,7 @@ Popup {
         readonly property bool moreAbove: flick ? flick.contentY > 1 : false
         opacity: moreAbove ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
         gradient: Gradient {
             GradientStop { position: 0;    color: root.fadeStop(1) }
             GradientStop { position: 0.5;  color: root.fadeStop(0.25) }
@@ -1010,7 +1009,7 @@ Popup {
             flick ? flick.contentHeight - flick.contentY - flick.height > 1 : false
         opacity: moreBelow ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
         // Weighted to the last few pixels: a linear fade over 28px takes a
         // readable line and leaves it half there, which is worse than either
         // showing it or cutting it.
@@ -1037,20 +1036,20 @@ Popup {
 
         // The card's own inset. Its children are already 20px in from the
         // panel edge, so this is air inside the card and not a second margin.
-        readonly property int cardPad: 14
+        readonly property int cardPad: Theme.space4
 
         Layout.fillWidth: true
         Layout.leftMargin: root.sideMargin
         Layout.rightMargin: root.sideMargin
-        Layout.topMargin: 18
+        Layout.topMargin: Theme.space5
         Layout.bottomMargin: 0
-        spacing: 8
+        spacing: Theme.space2
 
         data: [
             Text {
                 text: sec.heading
                 color: Theme.textDim
-                font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             },
@@ -1062,7 +1061,7 @@ Popup {
                 // read its own height, so this cannot feed back.
                 Layout.preferredHeight: body.implicitHeight + 2 * sec.cardPad
                 color: Theme.surfaceHigh
-                radius: Theme.radiusCard
+                radius: Theme.radiusLarge
                 border.width: 1
                 border.color: Theme.border
 
@@ -1070,7 +1069,7 @@ Popup {
                     id: body
                     anchors.fill: parent
                     anchors.margins: sec.cardPad
-                    spacing: 10
+                    spacing: Theme.space3
                 }
             }
         ]
@@ -1086,19 +1085,19 @@ Popup {
         property bool checked
         signal toggled()
         Layout.fillWidth: true
-        spacing: 12
+        spacing: Theme.space3
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 2
+            spacing: Theme.spaceHalf
             Text {
                 text: lyricsSwitch.title
-                color: Theme.textPrimary; font.pixelSize: 14
+                color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                 wrapMode: Text.Wrap; Layout.fillWidth: true
             }
             Text {
                 objectName: lyricsSwitch.noteName
                 text: lyricsSwitch.note
-                color: Theme.textDim; font.pixelSize: 11
+                color: Theme.textDim; font.pixelSize: Theme.fontMicro
                 wrapMode: Text.Wrap; Layout.fillWidth: true
             }
         }
@@ -1116,7 +1115,7 @@ Popup {
     component PrivacyLine : Text {
         objectName: "settingsPrivacyText"
         color: Theme.textSec
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontMeta
         lineHeight: 1.25
         wrapMode: Text.Wrap
         Layout.fillWidth: true
@@ -1148,9 +1147,9 @@ Popup {
 
         Rectangle {
             anchors.fill: parent
-            radius: Theme.radiusButton
+            radius: Theme.radiusMedium
             color: btn.danger && btnHov.hovered ? Theme.red
-                 : btnHov.hovered               ? Theme.surfaceHov
+                 : btnHov.hovered               ? Qt.tint(Theme.surface, Theme.hoverFill)
                                                 : Theme.surface
             border.width: btn.activeFocus ? 2 : 1
             border.color: btn.activeFocus ? Theme.accent
@@ -1160,13 +1159,12 @@ Popup {
         Row {
             id: btnContent
             anchors.centerIn: parent
-            spacing: 6
+            spacing: Theme.space2
             VectorIcon {
                 name: btn.icon
                 visible: btn.icon !== ""
                 color: btnLabel.color
                 width: 13; height: 13
-                strokeWidth: 1.8
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
@@ -1174,7 +1172,7 @@ Popup {
                 text: btn.label
                 color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.redText)
                                   : Theme.textPrimary
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontMeta
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
@@ -1217,7 +1215,7 @@ Popup {
         Rectangle {
             id: track
             anchors.fill: parent
-            radius: Theme.radiusChip
+            radius: Theme.radiusFull
             color: tg.checked ? Theme.accent : Theme.surface
             // The rainbow carries no resting border: a thin solid ring around a
             // gradient reads as a frame bolted onto it. Focus still draws its
@@ -1234,7 +1232,7 @@ Popup {
                 visible: tg.rainbow && tg.checked
                 anchors.fill: parent
                 anchors.margins: track.border.width
-                radius: Theme.radiusChip
+                radius: Theme.radiusFull
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0;       color: tg.rainbowStop(0) }
@@ -1250,12 +1248,12 @@ Popup {
             Rectangle {
                 width: parent.height - 6
                 height: width
-                radius: Theme.radiusChip
+                radius: Theme.radiusFull
                 y: 3
                 x: tg.checked ? parent.width - width - 3 : 3
                 color: tg.checked ? Theme.accentInk : Theme.textSec
                 Behavior on x {
-                    NumberAnimation { duration: Theme.dur(120); easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: Theme.dur(Theme.motionFast); easing.type: Easing.OutCubic }
                 }
             }
         }
@@ -1279,13 +1277,13 @@ Popup {
         Layout.preferredWidth: 0
         Layout.minimumWidth: 0
         Layout.alignment: Qt.AlignTop
-        spacing: 6
+        spacing: Theme.space2
 
         Text {
             objectName: "settingsThemeGroupLabel"
             text: group.title
             color: Theme.textDim
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontMicro
             elide: Text.ElideRight
             Layout.fillWidth: true
         }
@@ -1325,7 +1323,7 @@ Popup {
 
         Rectangle {
             anchors.fill: parent
-            radius: Theme.radiusRow
+            radius: Theme.radiusMedium
             color: tile.selected   ? Theme.accentSoft
                  : tileHov.hovered ? Theme.hoverFill
                                    : "transparent"
@@ -1335,9 +1333,9 @@ Popup {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 6
-            anchors.rightMargin: 6
-            spacing: 8
+            anchors.leftMargin: Theme.space2
+            anchors.rightMargin: Theme.space2
+            spacing: Theme.space2
 
             // Ground, edge and accent, which is as much of a palette as fits
             // in 34x20 and enough to tell all six apart. Two of the six are
@@ -1346,7 +1344,7 @@ Popup {
                 objectName: "settingsThemeSwatch"
                 Layout.preferredWidth: 34
                 Layout.preferredHeight: 20
-                radius: Theme.radiusArt
+                radius: Theme.radiusSmall
                 color: tile.swatch.bg
                 border.width: 1
                 border.color: tile.swatch.border
@@ -1357,18 +1355,18 @@ Popup {
                     // to see that it differs while the grounds match.
                     objectName: "settingsThemeSwatchAccent"
                     width: 10; height: 10
-                    radius: Theme.radiusChip
+                    radius: Theme.radiusFull
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
-                    anchors.rightMargin: 4
+                    anchors.rightMargin: Theme.space1
                     color: tile.swatch.accent
                 }
                 Rectangle {
                     width: 10; height: 3
-                    radius: Theme.radiusBadge
+                    radius: Theme.radiusSmall
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
-                    anchors.leftMargin: 4
+                    anchors.leftMargin: Theme.space1
                     color: tile.swatch.border
                 }
             }
@@ -1376,7 +1374,7 @@ Popup {
             Text {
                 text: tile.label
                 color: tile.selected ? Theme.textPrimary : Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -1389,7 +1387,6 @@ Popup {
                 // out at VectorIcon's 24px implicit size.
                 Layout.preferredWidth: 14
                 Layout.preferredHeight: 14
-                strokeWidth: 2
             }
         }
 
@@ -1442,12 +1439,12 @@ Popup {
             contentItem: Text {
                 text: modelData.label
                 color: highlighted ? Theme.textPrimary : Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }
             background: Rectangle {
-                color: highlighted ? Theme.surfaceHov : Theme.surfaceHigh
+                color: highlighted ? Qt.tint(Theme.surfaceHigh, Theme.hoverFill) : Theme.surfaceHigh
             }
         }
 
@@ -1482,11 +1479,11 @@ Popup {
         }
 
         contentItem: Text {
-            leftPadding: 10
-            rightPadding: sel.indicator.width + 15
+            leftPadding: Theme.space3
+            rightPadding: sel.indicator.width + Theme.space4
             text: sel.displayText
             color: Theme.textPrimary
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontMeta
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
         }
@@ -1497,19 +1494,19 @@ Popup {
             border.color: sel.pressed ? Theme.accent : Theme.border
             border.width: 1
             color: Theme.surfaceHigh
-            radius: Theme.radiusButton
+            radius: Theme.radiusMedium
         }
 
         popup: Popup {
             y: sel.height + 2
             width: sel.width
             implicitHeight: contentItem.implicitHeight
-            padding: 1
+            padding: Theme.spaceHalf
             background: Rectangle {
                 border.color: Theme.border
                 border.width: 1
                 color: Theme.surfaceHigh
-                radius: Theme.radiusPopup
+                radius: Theme.radiusLarge
             }
             contentItem: ListView {
                 clip: true

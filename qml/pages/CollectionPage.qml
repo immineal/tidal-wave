@@ -82,8 +82,8 @@ Rectangle {
     // the remainder is split between the two edge insets.
     readonly property int gridTargetCell: 184
     readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
-    readonly property int gridGutter: 24     // breathing room in a cell, split either side of the card
-    readonly property int gridEdge: 24       // the pane inset, matching the header above
+    readonly property int gridGutter: Theme.space6     // breathing room in a cell, split either side of the card
+    readonly property int gridEdge: Theme.space6       // the pane inset, matching the header above
 
     function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge) }
     function gridColumns(w) {
@@ -118,7 +118,7 @@ Rectangle {
         target: root
         property: "contentIn"
         from: 0; to: 1
-        duration: Theme.dur(170)
+        duration: Theme.dur(Theme.motionMedium)
         easing.type: Easing.OutCubic
     }
 
@@ -189,20 +189,20 @@ Rectangle {
 
         // A ColumnLayout reads Layout.preferredHeight, not a plain height, so
         // these spacers have to declare it or they collapse to nothing.
-        Item { Layout.preferredHeight: 24 }
+        Item { Layout.preferredHeight: Theme.space6 }
         Text {
-            Layout.leftMargin: 24
+            Layout.leftMargin: Theme.space6
             text: qsTr("My Collection")
             color: Theme.textPrimary
-            font.pixelSize: 28; font.bold: true
+            font.pixelSize: Theme.fontDisplay; font.bold: true
         }
-        Item { Layout.preferredHeight: 16 }
+        Item { Layout.preferredHeight: Theme.space4 }
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            spacing: 16
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
+            spacing: Theme.space4
 
             // A Flow, not a Row: five tab labels with counts are wider than the
             // pane at 640, so they wrap. The sort pills stay right.
@@ -211,7 +211,7 @@ Rectangle {
                 objectName: "collectionTabsRow"
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 4
+                spacing: Theme.space1
 
                 // ── the highlight, as one pill that travels ────────────────
                 // One pill that moves between the chips. Only `markT` is
@@ -231,7 +231,7 @@ Rectangle {
 
                 Behavior on markT {
                     enabled: !tabsRow.markResetting
-                    NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
                 }
 
                 // The end it set off from, or the destination itself when there
@@ -276,7 +276,7 @@ Rectangle {
                         id: collectionTab
                         required property string modelData
                         required property int    index
-                        height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusChip
+                        height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusFull
                         // Every chip rests on the same surface, including the
                         // current one. The pill marks it, drawn here in slices.
                         color: Theme.surfaceHigh
@@ -304,7 +304,7 @@ Rectangle {
                         // chip, half the row's gap, so the slices meet.
                         Item {
                             anchors.fill: parent
-                            anchors.margins: -2
+                            anchors.margins: -Theme.spaceHalf
                             clip: true
                             Rectangle {
                                 objectName: "collectionTabPillSlice"
@@ -312,7 +312,7 @@ Rectangle {
                                 y: tabsRow.markY - collectionTab.y + 2
                                 width:  tabsRow.markW
                                 height: tabsRow.markH
-                                radius: Theme.radiusChip
+                                radius: Theme.radiusFull
                                 color: Theme.accent
                             }
                         }
@@ -334,7 +334,7 @@ Rectangle {
                             visible: !collectionTab.labelFullyInked
                             // A font weight does not interpolate, so it lands
                             // in the frame of the click.
-                            font.pixelSize: 14; font.bold: root.activeTab === index
+                            font.pixelSize: Theme.fontBody; font.bold: root.activeTab === index
                         }
 
                         // The label again in the accent's ink, clipped to the
@@ -378,7 +378,7 @@ Rectangle {
             Row {
                 visible: root.activeTab < 4
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 4
+                spacing: Theme.space1
                 Repeater {
                     model: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A")]
                     Rectangle {
@@ -387,7 +387,7 @@ Rectangle {
                         id: sortPill
                         objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
-                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusChip
+                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusFull
                         color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
                         // One of three, so it reads as a radio button. The ring
                         // is outside the pill, apart from the chosen fill.
@@ -403,8 +403,8 @@ Rectangle {
                         Accessible.onToggleAction: root.sortMode = index
                         Rectangle {
                             anchors.fill: parent
-                            anchors.margins: -3
-                            radius: Theme.radiusChip
+                            anchors.margins: -Theme.space1
+                            radius: Theme.radiusFull
                             color: "transparent"
                             border.width: sortPill.activeFocus ? 2 : 0
                             border.color: Theme.accent
@@ -413,7 +413,7 @@ Rectangle {
                             id: sortLbl; anchors.centerIn: parent
                             text: modelData
                             color: root.sortMode === index ? Theme.accentInk : Theme.textSec
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontMeta
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -423,22 +423,22 @@ Rectangle {
                         HoverHandler { id: sortHov }
                         ToolTip.visible: hint.length > 0 && (sortHov.hovered || sortPill.activeFocus)
                         ToolTip.text: hint
-                        ToolTip.delay: 600
+                        ToolTip.delay: Theme.tooltipDelay
                     }
                 }
             }
         }
 
-        Item { Layout.preferredHeight: 10 }
+        Item { Layout.preferredHeight: Theme.space3 }
 
         // The field gets its own row: with the tabs and the sort pills the
         // header overflows the pane. "New playlist" shares this row, directly
         // over the grid it adds to.
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            spacing: 12
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
+            spacing: Theme.space3
 
             SearchBar {
                 id: collectionSearch
@@ -472,7 +472,7 @@ Rectangle {
             }
         }
 
-        Item { Layout.preferredHeight: 16 }
+        Item { Layout.preferredHeight: Theme.space4 }
 
         // Tracks Tab: virtualized ListView
         ListView {
@@ -533,7 +533,7 @@ Rectangle {
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -604,7 +604,7 @@ Rectangle {
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -662,7 +662,7 @@ Rectangle {
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -720,15 +720,15 @@ Rectangle {
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyPlaylistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "playlist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyPlaylistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "playlist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
                 // An account with no playlists is the one that needs one.
                 PillButton {
                     objectName: "collectionEmptyNewPlaylistButton"
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
+                    Layout.topMargin: Theme.space1
                     text: qsTr("New playlist")
                     icon: "plus"
                     accent: true
@@ -752,7 +752,7 @@ Rectangle {
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -801,10 +801,10 @@ Rectangle {
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyMixesIcon"; Layout.alignment: Qt.AlignHCenter; name: "mix"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyMixesIcon"; Layout.alignment: Qt.AlignHCenter; name: "mix"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
 
@@ -815,10 +815,10 @@ Rectangle {
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyTracksIcon"; Layout.alignment: Qt.AlignHCenter; name: "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved tracks"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Like tracks to see them here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyTracksIcon"; Layout.alignment: Qt.AlignHCenter; name: "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved tracks"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Like tracks to see them here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
 
@@ -829,10 +829,10 @@ Rectangle {
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyAlbumsIcon"; Layout.alignment: Qt.AlignHCenter; name: "album"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyAlbumsIcon"; Layout.alignment: Qt.AlignHCenter; name: "album"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
 
@@ -847,22 +847,22 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 48, 420)
-                spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "search"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                spacing: Theme.space3
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "search"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
                 Text {
                     objectName: "collectionNoMatchesText"
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: qsTr("Nothing matches \"%1\"").arg(root.searchPattern)
-                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
                 }
                 Text {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: qsTr("Try other words, or clear the search to see everything.")
-                    color: Theme.textSec; font.pixelSize: 13
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
                 }
             }
         }
@@ -878,8 +878,8 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 48, 420)
-                spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: ["heart", "album", "artist", "playlist", "mix"][root.activeTab] || "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                spacing: Theme.space3
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: ["heart", "album", "artist", "playlist", "mix"][root.activeTab] || "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
                 Text {
                     objectName: "collectionUnavailableText"
                     Layout.fillWidth: true
@@ -887,19 +887,19 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     text: root.activeTab === 4 ? qsTr("Mixes could not be loaded")
                                                : qsTr("Your library could not be loaded")
-                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
                 }
                 Text {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: qsTr("Tidal could not be reached. It loads again by itself once the connection is back.")
-                    color: Theme.textSec; font.pixelSize: 13
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
                 }
                 PillButton {
                     objectName: "collectionUnavailableRetry"
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
+                    Layout.topMargin: Theme.space1
                     text: qsTr("Try again")
                     accent: false
                     onClicked: {
@@ -917,10 +917,10 @@ Rectangle {
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyArtistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "artist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No followed artists"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Follow artists to see them here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyArtistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "artist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No followed artists"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Follow artists to see them here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
     }

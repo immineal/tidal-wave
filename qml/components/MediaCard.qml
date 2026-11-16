@@ -62,9 +62,9 @@ Item {
 
     // The gaps the card is built from, so its height below and the art box's
     // position stay one piece of arithmetic.
-    readonly property int artGap:    8   // art to title
-    readonly property int lineGap:   2   // title to subtitle
-    readonly property int bottomPad: 8
+    readonly property int artGap:    Theme.space2   // art to title
+    readonly property int lineGap:   Theme.spaceHalf   // title to subtitle
+    readonly property int bottomPad: Theme.space2
 
     width: cardSize
     // Spelled out, not measured from a ColumnLayout: a layout caches a child's
@@ -109,7 +109,7 @@ Item {
         // that loads into it may move it or its neighbours.
         width:  root.cardSize
         height: root.cardSize
-        radius: root.roundArt ? width / 2 : Theme.radiusCard
+        radius: root.roundArt ? width / 2 : Theme.radiusLarge
         color: Theme.surfaceHigh
         clip: true
         // No focus ring here: a Rectangle paints its border under its own
@@ -127,7 +127,7 @@ Item {
             smooth: true
             mipmap: true
             opacity: status === Image.Ready ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
+            Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
         }
 
         // Qt clips to an item's bounding box, never to its rounded outline, so
@@ -155,7 +155,6 @@ Item {
             color: Theme.textDim
             width: 48
             height: 48
-            strokeWidth: 1.5
         }
 
         Rectangle {
@@ -166,7 +165,7 @@ Item {
             // Dims the art so the play button reads; a wash over cover art
             // cannot follow the ground, so it is the same in every theme.
             color: hov.hovered || root.keyboardOn ? Theme.artScrim : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.dur(150) } }
+            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
 
             Rectangle {
                 id: playButton
@@ -184,13 +183,13 @@ Item {
                 border.color: Theme.textPrimary
                 width: 44
                 height: 44
-                radius: 22
+                radius: width / 2
                 // A square card has a corner to tuck the button into. On a
                 // disc that corner is off the art, so the button is centred.
                 anchors.centerIn: root.roundArt ? parent : undefined
                 anchors.bottom:   root.roundArt ? undefined : parent.bottom
                 anchors.right:    root.roundArt ? undefined : parent.right
-                anchors.margins:  root.roundArt ? 0 : 12
+                anchors.margins:  root.roundArt ? 0 : Theme.space3
                 color: Theme.accent
 
                 VectorIcon {
@@ -205,7 +204,7 @@ Item {
                 }
 
                 scale: playHov.hovered ? 1.05 : 1
-                Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
+                Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
                 TapHandler   { onTapped: root.playClicked() }
             }
@@ -236,7 +235,7 @@ Item {
         width: root.cardSize
         text: root.title
         color: Theme.textPrimary
-        font.pixelSize: 14
+        font.pixelSize: Theme.fontBody
         font.bold: true
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
@@ -250,7 +249,7 @@ Item {
         width: root.cardSize
         text: root.subtitle
         color: Theme.textSec
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontMeta
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
     }
