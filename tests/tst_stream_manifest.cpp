@@ -234,6 +234,9 @@ private slots:
         QCOMPARE(m.bitDepth, 16);
         QCOMPARE(m.replayGainTrack, 10.29);
         QCOMPARE(m.replayGainAlbum, -5.3);
+        // The badge reads the format.
+        QCOMPARE(m.format, QStringLiteral("FLAC"));
+        QCOMPARE(m.bandwidth, 570611);
         // The manifest text itself, which is what DashFetcher parses.
         QVERIFY(m.url.startsWith(QStringLiteral("<?xml")));
         QVERIFY(m.url.contains(QStringLiteral("<Representation id=\"FLAC,44100,16\"")));
@@ -263,6 +266,8 @@ private slots:
         QCOMPARE(m.codec, QStringLiteral("HIGH"));
         QCOMPARE(m.sampleRate, 44100);
         QCOMPARE(m.bitDepth, 16);
+        QCOMPARE(m.format, QStringLiteral("AACLC"));
+        QCOMPARE(m.bandwidth, 570611);
     }
 
     // This endpoint has no assetpresentation parameter and says what it gave in

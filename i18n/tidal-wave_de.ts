@@ -1104,6 +1104,14 @@
         <source>Low</source>
         <translation>Low</translation>
     </message>
+    <message>
+        <source>%1-bit / %2 kHz FLAC</source>
+        <translation>%1 Bit / %2 kHz FLAC</translation>
+    </message>
+    <message>
+        <source>%1 %2 kbps</source>
+        <translation>%1 %2 kbit/s</translation>
+    </message>
 </context>
 <context>
     <name>PlayerBar</name>

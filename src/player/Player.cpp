@@ -11,6 +11,7 @@
 #include <QMediaDevices>
 #include <QAudio>
 #include <QFileInfo>
+#include <QLocale>
 #include <QMutex>
 #include <QSaveFile>
 #include <QScopeGuard>
@@ -1251,6 +1252,7 @@ void Player::restOn(int index, Travel travel) {
     setLoading(false);
     tellPlaying();
     m_streamedQuality.clear();
+    m_streamInfo = {};
     if (m_queue[index].track.value("id").toLongLong() != m_currentTrack.id)
         m_pendingSeek = 0;
     m_currentTrack = trackFromMap(m_queue[index].track);
@@ -1275,6 +1277,7 @@ void Player::startLoad(int index, bool wait) {
     const qlonglong rowId = m_queue[index].track.value("id").toLongLong();
     QTemporaryFile *same = nullptr;
     const QString sameQuality = m_streamedQuality;
+    const StreamManifest sameInfo = m_streamInfo;
     if (!casting() && m_mpdTempFile && rowId == m_currentTrack.id && !m_loadOwed
         && !m_player->source().isEmpty()) {
         same = m_mpdTempFile;
@@ -1288,6 +1291,7 @@ void Player::startLoad(int index, bool wait) {
     tellPlaying();
 
     m_streamedQuality.clear();
+    m_streamInfo = {};
     m_loadOwed = false;
     // A position held for a track that never loaded does not carry to another.
     if (m_queue[index].track.value("id").toLongLong() != m_currentTrack.id)
@@ -1310,7 +1314,7 @@ void Player::startLoad(int index, bool wait) {
 
     if (same) {
         noteRecentlyPlayed(m_queue[index].track);
-        playFile(same, sameQuality);
+        playFile(same, sameQuality, sameInfo);
         return;
     }
     // A file on disk costs nothing, so it is taken at once. Anything that
@@ -1366,15 +1370,17 @@ bool Player::adoptPreload(quint64 serial) {
     if (!m_preloadTempFile) return false;
     QTemporaryFile *file = m_preloadTempFile;
     const QString quality = m_preloadQuality;
+    const StreamManifest info = m_preloadInfo;
     m_preloadTempFile = nullptr;
     cancelPreload();
-    playFile(file, quality);
+    playFile(file, quality, info);
     return true;
 }
 
-void Player::playFile(QTemporaryFile *file, const QString &quality) {
+void Player::playFile(QTemporaryFile *file, const QString &quality, const StreamManifest &info) {
     m_mpdTempFile     = file;
     m_streamedQuality = quality;
+    m_streamInfo      = info;
     emit currentTrackChanged();
     // Still loading until the media status says the file is open.
     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
@@ -1469,10 +1475,12 @@ void Player::takeOverPreloadJoin() {
     DashFetcher *fetcher = std::exchange(m_preloadDash, nullptr);
     if (!fetcher) return;
     const QString quality = m_preloadQuality;
+    const StreamManifest info = m_preloadInfo;
     // Not deleted here: m_preloadDash is already null.
     cancelPreload();
     m_dash = fetcher;
     m_streamedQuality = quality;
+    m_streamInfo      = info;
     emit currentTrackChanged();
     followJoin(m_loadSerial, fetcher);
     if (fetcher->segmentsReady() >= 2)
@@ -1558,8 +1566,9 @@ void Player::preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file)
     }
     if (waiting && waiting == m_loadSerial && m_loading && m_currentTrack.id == trackId) {
         const QString quality = m_preloadQuality;
+        const StreamManifest info = m_preloadInfo;
         cancelPreload();
-        playFile(file, quality);
+        playFile(file, quality, info);
         return;
     }
     m_preloadTempFile = file;
@@ -1663,6 +1672,8 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                 return;
             }
             m_streamedQuality = manifest.codec;
+            m_streamInfo      = manifest;
+            m_streamInfo.url.clear();
             emit currentTrackChanged();
 
             if (manifest.type == StreamManifest::BTS) {
@@ -1913,6 +1924,7 @@ void Player::cancelPreload() {
     m_preloadReady     = false;
     m_preloadLookingUp = false;
     m_preloadQuality   = {};
+    m_preloadInfo      = {};
 }
 
 void Player::preloadGaveUp(qlonglong trackId) {
@@ -2019,6 +2031,8 @@ void Player::requestPreload(quint64 gen, int next, qlonglong trackId, bool twinS
         }
 
         m_preloadQuality = manifest.codec;
+        m_preloadInfo    = manifest;
+        m_preloadInfo.url.clear();
 
         if (manifest.type == StreamManifest::BTS) {
             m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, gen, trackId](QByteArray data, QString dlErr) {
@@ -2082,6 +2096,32 @@ QString Player::audioQuality() const {
         case AudioQuality::HiResLossless: return QStringLiteral("HI_RES_LOSSLESS");
     }
     return QStringLiteral("LOSSLESS");
+}
+
+QString Player::audioFormat() const {
+    if (m_streamedQuality.isEmpty()) return {};
+    return formatLabel(m_streamInfo);
+}
+
+QString Player::formatLabel(const StreamManifest &info) {
+    const QString format = info.format.toUpper();
+    const QString tier   = info.codec;
+    const bool lossless = format.startsWith(QLatin1String("FLAC"))
+        || (format.isEmpty() && (tier == QLatin1String("LOSSLESS") || tier == QLatin1String("HI_RES_LOSSLESS")));
+    if (lossless) {
+        if (info.bitDepth <= 0 || info.sampleRate <= 0) return QStringLiteral("FLAC");
+        // 44.1, 48, 96, 192: as many decimals as the rate needs.
+        const QString khz = QLocale().toString(info.sampleRate / 1000.0, 'g', 4);
+        return tr("%1-bit / %2 kHz FLAC").arg(info.bitDepth).arg(khz);
+    }
+    const bool he = format.startsWith(QLatin1String("HEAAC"))
+        || (format.isEmpty() && tier == QLatin1String("LOW"));
+    // The manifest's bandwidth where it has one, else the tier's stated rate.
+    int kbps = info.bandwidth > 0 ? (info.bandwidth + 500) / 1000 : 0;
+    if (kbps == 0) kbps = tier == QLatin1String("LOW") ? 96 : tier == QLatin1String("HIGH") ? 320 : 0;
+    const QString name = he ? QStringLiteral("HE-AAC") : QStringLiteral("AAC");
+    if (format.isEmpty() && tier != QLatin1String("LOW") && tier != QLatin1String("HIGH")) return {};
+    return kbps > 0 ? tr("%1 %2 kbps").arg(name).arg(kbps) : name;
 }
 
 QString Player::qualityLabel(const QString &code) const {

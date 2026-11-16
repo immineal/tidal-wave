@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QMetaObject>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QThreadPool>
 #include <QSet>
 #include <algorithm>
@@ -921,6 +922,10 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
         if (end > from) {
             const QStringList bits = m.url.mid(from, end - from).split(QLatin1Char(','));
             if (!bits.first().isEmpty()) format = bits.first();
+            // The Representation's bandwidth, for the bit rate of a lossy stream.
+            const QRegularExpression bw(QStringLiteral("bandwidth=\"(\\d+)\""));
+            const QRegularExpressionMatch hit = bw.match(m.url, at);
+            if (hit.hasMatch()) m.bandwidth = hit.captured(1).toInt();
             // Left at the CD defaults when the id has no usable numbers:
             // Downloader picks its PCM width off bitDepth.
             if (bits.size() >= 3) {
@@ -932,7 +937,8 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
             }
         }
     }
-    m.codec = tierForFormat(format);
+    m.codec  = tierForFormat(format);
+    m.format = format;
     return m;
 }
 
@@ -1061,6 +1067,12 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
                     m.type     = StreamManifest::BTS;
                     m.url      = urls[0].toString();
                     m.mimeType = bts["mimeType"].toString();
+                    // "mp4a.40.5" is HE-AAC, "mp4a.40.2" AAC LC, else "flac".
+                    const QString codecs = bts["codecs"].toString().toLower();
+                    m.format = codecs.startsWith(QLatin1String("flac")) ? QStringLiteral("FLAC")
+                             : codecs == QLatin1String("mp4a.40.5")     ? QStringLiteral("HEAACV1")
+                             : codecs.startsWith(QLatin1String("mp4a")) ? QStringLiteral("AACLC")
+                                                                        : QString();
                 }
             } else {
                 // MPD: the MPEG-DASH manifest XML itself.

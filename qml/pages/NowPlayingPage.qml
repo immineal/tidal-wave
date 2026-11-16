@@ -1395,7 +1395,10 @@ Rectangle {
                             Text {
                                 id: qlbl; objectName: "qualityBadgeText"
                                 anchors.centerIn: parent
-                                text: player.qualityLabel(player.audioQuality)
+                                // The tier and the real format, e.g. "Max · 24-bit / 96 kHz FLAC".
+                                text: player.audioFormat.length > 0
+                                      ? player.qualityLabel(player.audioQuality) + " · " + player.audioFormat
+                                      : player.qualityLabel(player.audioQuality)
                                 color: Theme.textPrimary; font.pixelSize: 11; font.bold: true
                             }
                         }

@@ -42,6 +42,9 @@ class Player : public QObject {
     Q_PROPERTY(bool       shuffle      READ shuffle WRITE setShuffle  NOTIFY shuffleChanged)
     Q_PROPERTY(int        repeatMode   READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString    audioQuality READ audioQuality NOTIFY currentTrackChanged)
+    // The stream's real format, such as "24-bit / 96 kHz FLAC" or "AAC 320 kbps".
+    // Empty until a stream was given.
+    Q_PROPERTY(QString    audioFormat  READ audioFormat  NOTIFY currentTrackChanged)
     Q_PROPERTY(int        queueCount      READ queueCount      NOTIFY queueChanged)
     // Its own notifier: an advance must not republish the whole queue.
     Q_PROPERTY(int        queueIndex      READ queueIndex      NOTIFY currentIndexChanged)
@@ -83,6 +86,9 @@ public:
     QString     audioQuality()const;
     // Maps a Tidal quality code such as HI_RES_LOSSLESS to its label.
     Q_INVOKABLE QString qualityLabel(const QString &code) const;
+    QString     audioFormat() const;
+    // The badge text for a stream: format, bit depth and rate, or bit rate.
+    static QString formatLabel(const StreamManifest &info);
     int          queueCount()    const { return m_queue.count(); }
     int          queueIndex()    const { return m_index; }
     QVariantList queueTracks()   const;
@@ -304,7 +310,7 @@ private:
     // A preload's file arrived, or with null its attempt ended.
     void preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file);
     // The current track's file is on disk: hands it to the backend.
-    void playFile(QTemporaryFile *file, const QString &quality);
+    void playFile(QTemporaryFile *file, const QString &quality, const StreamManifest &info);
 
     // ── Progressive start ───────────────────────────────────────────────
     // A lossless track plays from the front of its join, served over
@@ -608,4 +614,7 @@ private:
     void dropAudioFile(QTemporaryFile *&f);
     QNetworkReply       *m_preloadDownload = nullptr;
     DashFetcher         *m_preloadDash     = nullptr;
+    // What the manifests said, without the manifest itself.
+    StreamManifest       m_streamInfo;
+    StreamManifest       m_preloadInfo;
 };
