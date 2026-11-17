@@ -1962,6 +1962,28 @@ public:
         m_queue.move(m_index + 1 + from, m_index + 1 + to);
         emit queueChanged();
     }
+    // The real Player's rule, so the panel's rows follow a drop.
+    Q_INVOKABLE void moveQueueRow(const QString &fromSection, int fromSlot,
+                                  const QString &toSection, int toSlot) {
+        note(QStringLiteral("moveQueueRow %1 %2 %3 %4")
+                 .arg(fromSection).arg(fromSlot).arg(toSection).arg(toSlot));
+        const auto known = [](const QString &s) {
+            return s == QLatin1String("manual") || s == QLatin1String("context");
+        };
+        if (!known(fromSection) || !known(toSection)) return;
+        const bool fromManual = fromSection == QLatin1String("manual");
+        const bool toManual   = toSection   == QLatin1String("manual");
+        const int start   = m_index + 1;
+        const int context = int(m_queue.size()) - start - m_manualCount;
+        if (fromSlot < 0 || fromSlot >= (fromManual ? m_manualCount : context)) return;
+        const int manualLeft = m_manualCount - (fromManual ? 1 : 0);
+        const int slot = qBound(0, toSlot, toManual ? manualLeft : context - (fromManual ? 0 : 1));
+        if (fromManual == toManual && slot == fromSlot) return;
+        const QVariant row = m_queue.takeAt(start + (fromManual ? 0 : m_manualCount) + fromSlot);
+        m_queue.insert(start + (toManual ? 0 : manualLeft) + slot, row);
+        setManualCount(manualLeft + (toManual ? 1 : 0));
+        emit queueChanged();
+    }
     Q_INVOKABLE void clearManual() {
         note(QStringLiteral("clearManual"));
         if (m_manualCount <= 0) return;

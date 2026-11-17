@@ -344,7 +344,7 @@ TestCase {
         verify(!btn || !btn.visible, "a context row offered a remove button")
     }
 
-    // ── drag to reorder, inside the manual queue and nowhere else ────────
+    // ── drag to reorder ──────────────────────────────────────────────────
 
     function test_dragging_reorders_the_manual_queue() {
         player.setQueueForTest(makeTracks(6, "Ctx"), 2)
@@ -395,18 +395,17 @@ TestCase {
                "the drop indicator outlived the drag")
     }
 
-    // The drag is confined to its section: a manual row dropped over the
-    // context below, over the history above, or off the panel entirely is
-    // not moved at all. A slip of the hand must not be an edit.
-    function test_a_drag_cannot_leave_the_manual_section_data() {
+    // A drag is confined to what is still to come: dropped over the history,
+    // the playing row or off the panel, a row is not moved at all. A slip of
+    // the hand must not be an edit.
+    function test_a_drag_cannot_land_in_the_history_or_off_the_panel_data() {
         return [
-            { tag: "down into the context", dx: 0,   dy:  5 },
             { tag: "up into the played",    dx: 0,   dy: -5 },
             { tag: "sideways onto the page", dx: -600, dy: 1 }
         ]
     }
 
-    function test_a_drag_cannot_leave_the_manual_section(row) {
+    function test_a_drag_cannot_land_in_the_history_or_off_the_panel(row) {
         player.setQueueForTest(makeTracks(6, "Ctx"), 2)
         player.setCurrentTrackForTest(makeTrack(2, "Ctx"))
         player.setManualForTest(makeTracks(3, "Manual"))
@@ -425,39 +424,151 @@ TestCase {
         mouseMove(host.contentItem, toX, toY)
         wait(1)
         verify(!findByName(panel, "queueDropIndicator").visible,
-               "the indicator should go dark once the pointer leaves the section ("
+               "the indicator should go dark once the pointer leaves the queue ("
                + row.tag + ")")
         mouseRelease(host.contentItem, toX, toY)
         settle(host.contentItem)
 
         compare(player.queueCalls.length, 0,
                 "a drop " + row.tag + " reached the player")
-        compare(player.queueManual[0].title + "," + player.queueManual[1].title + ","
-                + player.queueManual[2].title,
-                "Manual 0,Manual 1,Manual 2",
-                "a drop " + row.tag + " reordered the manual queue")
         compare(rowTitles(panel).join(","),
                 "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Manual 2,Ctx 3,Ctx 4,Ctx 5",
                 "the list reordered anyway after a drop " + row.tag)
     }
 
-    function test_only_manual_rows_have_a_grip_data() {
-        return [{ tag: "played" }, { tag: "current" }, { tag: "context" }]
+    // Drags a row by its grip by `dy` pixels and drops it there.
+    function dragRow(host, panel, flatIndex, dy) {
+        var grip = findByName(entryAt(panel, flatIndex), "queueDragArea")
+        verify(grip && grip.enabled, "the row at " + flatIndex + " cannot be dragged")
+        var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
+        mousePress(host.contentItem, from.x, from.y)
+        // In steps, as a hand moves, so the drag starts before it lands.
+        mouseMove(host.contentItem, from.x, from.y + dy / 2)
+        mouseMove(host.contentItem, from.x, from.y + dy)
+        wait(1)
+        verify(findByName(panel, "queueDropIndicator").visible,
+               "the drop indicator never showed")
+        mouseRelease(host.contentItem, from.x, from.y + dy)
+        settle(host.contentItem)
     }
 
-    function test_only_manual_rows_have_a_grip(row) {
+    // The rest of the album is the user's to reorder too.
+    function test_dragging_reorders_the_context() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        dragRow(host, panel, panel.contextAt, 2 * panel.rowHeight)
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 context 2",
+                "the drop asked the player for the wrong move")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Ctx 4,Ctx 5,Ctx 3",
+                "the visible order did not follow the drop")
+    }
+
+    // Across the line between the two, a row takes the section it lands in,
+    // as in Spotify's queue.
+    function test_a_context_row_dropped_in_the_queue_joins_it() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        // Up over the context heading and one queued row: between the two.
+        dragRow(host, panel, panel.contextAt, -(2 * panel.rowHeight + panel.headerHeight))
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 manual 1",
+                "the drop asked the player for the wrong move")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 0,Ctx 3,Manual 1,Ctx 4,Ctx 5",
+                "the row did not land in the queue")
+        compare(panel.manualCount, 3, "the row did not join the queue")
+    }
+
+    function test_a_queued_row_dropped_in_the_context_leaves_the_queue() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        dragRow(host, panel, panel.manualAt, 5 * panel.rowHeight)
+        compare(player.queueCalls.join(","), "moveQueueRow manual 0 context 3",
+                "the drop asked the player for the wrong move")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 1,Ctx 3,Ctx 4,Ctx 5,Manual 0",
+                "the row did not land at the end of the album")
+        compare(panel.manualCount, 1, "the row stayed in the queue")
+    }
+
+    // A row is dragged by its body as well as by the grip, as in Spotify and
+    // Tidal; a press that does not travel is still a click.
+    function test_a_row_drags_by_its_body_too() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        var row = entryAt(panel, panel.contextAt)
+        var from = pointIn(host, row, row.width - 60, row.height / 2)
+        mousePress(host.contentItem, from.x, from.y)
+        mouseMove(host.contentItem, from.x, from.y + panel.rowHeight / 2)
+        mouseMove(host.contentItem, from.x, from.y + panel.rowHeight)
+        wait(1)
+        verify(panel.dragging, "a drag on the row's body did not pick it up")
+        mouseRelease(host.contentItem, from.x, from.y + panel.rowHeight)
+        settle(host.contentItem)
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 context 1",
+                "a drag by the body did not move the row")
+    }
+
+    // Held at the bottom edge, the list scrolls under the row, so a row can
+    // travel further than one screen. The row being dragged outlives the scroll.
+    function test_a_drag_held_at_the_edge_scrolls_the_list() {
+        player.setQueueForTest(makeTracks(200, "Ctx"), 0)
+        player.setCurrentTrackForTest(makeTrack(0, "Ctx"))
+        player.setPlaybackSource("album", "42", "Life 1")
+        player.resetQueueCallsForTest()
+        var host = showHost()
+        var panel = openPanel(host)
+        var view = panel.queueList
+        view.positionViewAtBeginning()
+        settle(host.contentItem)
+        var top = view.contentY
+
+        var grip = findByName(entryAt(panel, panel.contextAt), "queueDragArea")
+        var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
+        var edge = view.mapToItem(host.contentItem, 0, view.height - 4).y
+        mousePress(host.contentItem, from.x, from.y)
+        mouseMove(host.contentItem, from.x, (from.y + edge) / 2)
+        mouseMove(host.contentItem, from.x, edge)
+        tryVerify(function () { return view.contentY > top + 20 * panel.rowHeight }, 5000,
+                  "holding a row at the bottom edge did not scroll the list")
+        var target = panel.dragTo
+        verify(target > 20, "the drop is still aimed at slot " + target)
+        mouseRelease(host.contentItem, from.x, edge)
+        settle(host.contentItem)
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 context " + target,
+                "the drop after the scroll did not reach the player")
+        compare(player.queueContext[target].title, "Ctx 1",
+                "the row did not land where the indicator was")
+    }
+
+    function test_only_upcoming_rows_have_a_grip_data() {
+        return [{ tag: "played", can: false }, { tag: "current", can: false },
+                { tag: "manual", can: true }, { tag: "context", can: true }]
+    }
+
+    function test_only_upcoming_rows_have_a_grip(row) {
         seedAll()
         var host = showHost()
         var panel = openPanel(host)
 
         var at = row.tag === "played"  ? panel.playedAt
                : row.tag === "current" ? panel.currentAt
+               : row.tag === "manual"  ? panel.manualAt
                                        : panel.contextAt
         var entry = entryAt(panel, at)
         verify(entry, "the " + row.tag + " row was never drawn")
         compare(entry.kind, row.tag, "the index arithmetic put the wrong row here")
         var grip = findByName(entry, "queueDragArea")
-        verify(!grip || !grip.enabled, "a " + row.tag + " row can be dragged")
+        compare(!!(grip && grip.enabled), row.can,
+                "a " + row.tag + " row " + (row.can ? "cannot" : "can") + " be dragged")
     }
 
     // ── going back to something already played ───────────────────────────

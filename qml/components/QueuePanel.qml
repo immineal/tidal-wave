@@ -294,48 +294,136 @@ Item {
     // user was reading, which is what the jump pill is for.
     onVisibleChanged: if (visible) Qt.callLater(revealCurrent)
 
-    // ── dragging inside the manual queue ─────────────────────────────────
-    // Same shape as the sidebar's pinned block (SideBar.qml): the live state
-    // sits here, because the drop indicator belongs to the list.
+    // ── dragging what is still to come ───────────────────────────────────
+    // A queued row or one of the context's, by its grip or its body, to any
+    // gap in either section; dropped in the other section it joins that one.
+    // The live state sits here, because the drop indicator belongs to the list.
+    property string dragKind: ""
     property int  dragFrom:   -1
-    property int  dragTo:     -1
+    property int  dragFlat:   -1
     property real dragOffset: 0
-    // Content y of the first manual row, measured off the dragged delegate
-    // at press time, because the view only estimates positions.
-    property real dragTopY:   0
-    // Whether the pointer is still inside the manual queue. A drag that ends
-    // anywhere else is abandoned, not clamped: a queued track must not land
-    // in the history or in the album by a slip of the hand.
+    // Content y of the dragged row and of the press, measured off the
+    // delegate at press time, because the view only estimates positions.
+    property real dragRowY:   0
+    property real dragPressY: 0
+    // The pointer in the list's own coordinates, for the edge scroll.
+    property real dragViewX:  0
+    property real dragViewY:  0
+    // Where it lands: a section, a gap in it, and the row's slot after the move.
+    property string dropKind: ""
+    property int  dropGap:    -1
+    property int  dragTo:     -1
+    // Off the queue, over the history or the playing row, a drop is abandoned,
+    // not clamped: a slip of the hand must not be an edit.
     property bool dropValid:  false
     readonly property bool dragging: dragFrom >= 0
+    property int _currentBefore: -1
 
-    function manualSlotAt(from, offset) {
-        return Math.max(0, Math.min(manualCount - 1,
-                                    from + Math.round(offset / rowHeight)))
+    readonly property int upcomingCount: manualCount + contextCount
+
+    // Content y of the top of flat row i, worked out from the dragged row:
+    // every track row is rowHeight tall and every heading headerHeight.
+    function flatY(i) {
+        var heads = [playedHeaderAt, nowHeaderAt, manualHeaderAt, contextHeaderAt]
+        var a = Math.min(i, dragFlat), b = Math.max(i, dragFlat), short = 0
+        for (var k = 0; k < heads.length; ++k)
+            if (heads[k] >= a && heads[k] < b) short++
+        var d = (b - a) * rowHeight - short * (rowHeight - headerHeight)
+        return dragRowY + (i >= dragFlat ? d : -d)
     }
 
-    function beginDrag(slot, rowY) {
+    function beginDrag(kind, slot, flat, rowY, pressY) {
+        dragKind   = kind
         dragFrom   = slot
-        dragTo     = slot
+        dragFlat   = flat
         dragOffset = 0
-        dragTopY   = rowY - slot * rowHeight
-        dropValid  = true
+        dragRowY   = rowY
+        dragPressY = pressY
+        // The current item outlives a scroll, so the dragged row keeps its
+        // delegate, and with it the pointer grab, however far the list moves.
+        _currentBefore = list.currentIndex
+        list.currentIndex = flat
+        aimDrop(dragRowY + rowHeight / 2, true)
+    }
+
+    // Aims the drop at the gap nearest the dragged row's middle.
+    function aimDrop(centre, inside) {
+        var kind = "", gap = -1
+        var manualTop = manualHeaderAt >= 0 ? flatY(manualHeaderAt) : -1
+        var contextTop = contextHeaderAt >= 0 ? flatY(contextHeaderAt) : -1
+        var split = contextTop >= 0 ? contextTop + headerHeight / 2 : Infinity
+        if (inside && manualTop >= 0 && centre >= manualTop && centre < split) {
+            kind = "manual"
+            gap = Math.floor((centre - flatY(manualAt)) / rowHeight + 0.5)
+            gap = Math.max(0, Math.min(manualCount, gap))
+        } else if (inside && contextTop >= 0 && centre >= Math.min(split, contextTop)
+                   && (manualTop < 0 || centre >= split)) {
+            kind = "context"
+            gap = Math.floor((centre - flatY(contextAt)) / rowHeight + 0.5)
+            gap = Math.max(0, Math.min(contextCount, gap))
+        }
+        dropKind  = kind
+        dropGap   = gap
+        dropValid = kind !== ""
+        dragTo    = !dropValid ? -1 : (kind === dragKind && gap > dragFrom ? gap - 1 : gap)
+    }
+
+    // The pointer moved, or the list moved under it.
+    function moveDrag(viewX, viewY) {
+        if (!dragging) return
+        dragViewX = viewX
+        dragViewY = viewY
+        dragOffset = list.contentY + viewY - dragPressY
+        aimDrop(dragRowY + rowHeight / 2 + dragOffset, viewX >= 0 && viewX <= list.width)
     }
 
     function cancelDrag() {
+        if (dragging && list.currentIndex === dragFlat && _currentBefore < list.count)
+            list.currentIndex = _currentBefore
+        dragKind   = ""
         dragFrom   = -1
-        dragTo     = -1
+        dragFlat   = -1
         dragOffset = 0
+        dropKind   = ""
+        dropGap    = -1
+        dragTo     = -1
         dropValid  = false
     }
 
     function endDrag() {
-        var from = dragFrom
-        var to   = dragTo
-        var ok   = dropValid
+        var kind = dragKind, from = dragFrom, toKind = dropKind, to = dragTo, ok = dropValid
         cancelDrag()
-        if (!ok || from < 0 || to < 0 || from === to) return
-        player.moveManual(from, to)
+        if (!ok || from < 0 || to < 0 || (kind === toKind && from === to)) return
+        if (kind === "manual" && toKind === "manual") player.moveManual(from, to)
+        else player.moveQueueRow(kind, from, toKind, to)
+    }
+
+    // A track ending or the queue changing under a drag moves the rows it
+    // was aimed at; the drag is dropped rather than landing a row off by one.
+    onPlayIndexChanged: if (dragging) cancelDrag()
+    onRowsChanged: if (dragging) cancelDrag()
+
+    // Held near the top or bottom edge, the list scrolls under the row,
+    // faster the closer the pointer is to the edge.
+    readonly property int edgeBand: 48
+    Timer {
+        id: edgeScroll
+        interval: 16
+        repeat: true
+        running: root.dragging
+        onTriggered: {
+            var y = root.dragViewY, step = 0
+            if (y < root.edgeBand) step = -Math.ceil((root.edgeBand - y) / 4)
+            else if (y > list.height - root.edgeBand)
+                step = Math.ceil((y - (list.height - root.edgeBand)) / 4)
+            if (step === 0) return
+            var top = list.originY
+            var end = top + Math.max(0, list.contentHeight - list.height)
+            var to = Math.max(top, Math.min(end, list.contentY + step))
+            if (to === list.contentY) return
+            list.contentY = to
+            root.moveDrag(root.dragViewX, root.dragViewY)
+        }
     }
 
     Rectangle {
@@ -520,9 +608,9 @@ Item {
                         radius: height / 2
                         z: 3
                         color: Theme.accent
-                        y: root.dragTopY
-                           + (root.dragTo > root.dragFrom ? root.dragTo + 1 : root.dragTo)
-                             * root.rowHeight - 1
+                        y: !root.dropValid ? 0
+                           : root.flatY((root.dropKind === "manual" ? root.manualAt : root.contextAt)
+                                        + root.dropGap) - 1
                     }
 
                     // Everything that moves the current track in or out of the
@@ -615,8 +703,20 @@ Item {
         readonly property bool isPlayed:  kind === "played"
         readonly property bool isManual:  kind === "manual"
         readonly property bool actionable: !isHeader
-        readonly property bool draggable:  isManual && root.manualCount > 1
-        readonly property bool dragging:   isManual && root.dragFrom === slot
+        readonly property bool upcoming:   isManual || kind === "context"
+        readonly property bool draggable:  upcoming && root.upcomingCount > 1
+        readonly property bool dragging:   root.dragging && root.dragFlat === rowIndex
+
+        // Starts a drag on this row from a press at (x, y) of `area`.
+        function startDrag(area, x, y) {
+            var p = area.mapToItem(list, x, y)
+            root.beginDrag(kind, slot, rowIndex, entry.y, list.contentY + p.y)
+            root.moveDrag(p.x, p.y)
+        }
+        function followDrag(area, x, y) {
+            var p = area.mapToItem(list, x, y)
+            root.moveDrag(p.x, p.y)
+        }
 
         objectName: "queueEntry"
         height: isHeader ? root.headerHeight : root.rowHeight
@@ -730,8 +830,10 @@ Item {
             anchors.bottomMargin: Theme.spaceHalf
             visible: !entry.isHeader
             radius: Theme.radiusMedium
-            color: entry.isCurrent ? Theme.accentSoft
-                 : (entry.dragging || qHov.hovered || rowMenu.visible) ? Theme.hoverFill
+            // A dragged row is lifted: opaque, so the rows it passes stay under it.
+            color: entry.dragging ? Theme.surfaceHigh
+                 : entry.isCurrent ? Theme.accentSoft
+                 : (qHov.hovered || rowMenu.visible) ? Theme.hoverFill
                  : "transparent"
             border.width: (entry.activeFocus || entry.dragging) ? 2 : 0
             border.color: Theme.accent
@@ -745,21 +847,31 @@ Item {
             // Declared before the content, so the grip and the remove button
             // in front of it still get their own clicks.
             MouseArea {
+                id: rowArea
                 anchors.fill: parent
                 enabled: !entry.isHeader
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
-                // A drag on a row is not a scroll: the grip moves rows and the
+                // A drag on a row is not a scroll: it moves the row, and the
                 // wheel scrolls. A press that travelled is not a click either.
                 preventStealing: true
                 property point pressAt
                 property bool travelled: false
                 onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
                 onPositionChanged: function (mouse) {
+                    if (entry.dragging) { entry.followDrag(rowArea, mouse.x, mouse.y); return }
                     if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
                             || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
                         travelled = true
+                    // The body drags as the grip does, as in Spotify and Tidal.
+                    if (travelled && entry.draggable && !root.dragging
+                            && (mouse.buttons & Qt.LeftButton)) {
+                        entry.startDrag(rowArea, pressAt.x, pressAt.y)
+                        entry.followDrag(rowArea, mouse.x, mouse.y)
+                    }
                 }
+                onReleased: if (entry.dragging) root.endDrag()
+                onCanceled: if (entry.dragging) root.cancelDrag()
                 onClicked: function (mouse) {
                     if (travelled) return
                     if (mouse.button === Qt.RightButton) {
@@ -794,6 +906,7 @@ Item {
                     }
 
                     MouseArea {
+                        id: gripArea
                         objectName: "queueDragArea"
                         anchors.fill: parent
                         // A deliberate bleed, so the grip's target is wider
@@ -807,31 +920,14 @@ Item {
                         // and takes the grab away mid-reorder.
                         preventStealing: true
 
-                        // Where the press landed, in the list's content
-                        // coordinates, which do not move when the list scrolls.
-                        property real pressY: 0
-
-                        onPressed: function (mouse) {
-                            pressY = mapToItem(list.contentItem, mouse.x, mouse.y).y
-                            root.beginDrag(entry.slot, entry.y)
-                        }
+                        // The event arrives in the handle's own moving
+                        // coordinates; the row maps it back into the list's.
+                        onPressed: function (mouse) { entry.startDrag(gripArea, mouse.x, mouse.y) }
                         onPositionChanged: function (mouse) {
-                            if (!entry.dragging) return
-                            // The event arrives in the handle's own moving
-                            // coordinates; mapToItem puts the pointer back into
-                            // the list's content space.
-                            var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                            root.dragOffset = p.y - pressY
-                            root.dragTo     = root.manualSlotAt(entry.slot, root.dragOffset)
-                            // Confined to the manual queue, in both directions:
-                            // the history above it, the context below it, and
-                            // the page beside it.
-                            root.dropValid = p.y >= root.dragTopY
-                                && p.y < root.dragTopY + root.manualCount * root.rowHeight
-                                && p.x >= 0 && p.x <= list.width
+                            if (entry.dragging) entry.followDrag(gripArea, mouse.x, mouse.y)
                         }
-                        onReleased: root.endDrag()
-                        onCanceled: root.cancelDrag()
+                        onReleased: if (entry.dragging) root.endDrag()
+                        onCanceled: if (entry.dragging) root.cancelDrag()
                     }
                 }
 
