@@ -1341,10 +1341,6 @@
         <comment>the track was started from the search results</comment>
         <translation>Wiedergabe von: Suche „%1“</translation>
     </message>
-    <message>
-        <source>Play a track, an album or a playlist and it shows here.</source>
-        <translation>Was du abspielst, erscheint hier. Starte einen Titel, ein Album oder eine Playlist.</translation>
-    </message>
 </context>
 <context>
     <name>OfflineNotice</name>
