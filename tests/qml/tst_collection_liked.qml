@@ -1,5 +1,6 @@
-// Collection's tab labels. A tab whose list is still on its way says no
-// count rather than "(0)". Every title is invented.
+// Collection's tab labels and Liked tracks' buttons. A tab whose list is
+// still on its way says no count rather than "(0)", and Liked tracks has a
+// Play beside Shuffle, as a playlist has. Every title is invented.
 
 import QtQuick
 import QtQuick.Controls
@@ -74,5 +75,28 @@ TestCase {
         bridge.setKindLoadingForTest("tracks", true)
         var page = makeCollection()
         compare(tabLabels(page)[0], "Tracks (3)")
+    }
+
+    function test_liked_tracks_has_play_beside_shuffle() {
+        bridge.setFavoriteTracksListForTest(tracks())
+        var page = makeCollection()
+        var play = findChild(page, "collectionPlayButton")
+        var shuffle = findChild(page, "collectionSurpriseButton")
+        verify(play && play.visible, "Liked tracks has no Play")
+        verify(play.accent, "Play is not the page's filled pill")
+        verify(play.x < shuffle.x, "Play is not before Shuffle")
+        mouseClick(play)
+        compare(player.queueTracks.map(function (t) { return t.title }).join(","),
+                "Erstes,Zweites,Drittes")
+        compare(player.queueIndex, 0, "Play did not start at the top")
+        compare(player.shuffle, false, "Play turned shuffle on")
+        compare(player.sourceType, "collection")
+    }
+
+    function test_the_other_tabs_have_no_play() {
+        var page = makeCollection()
+        page.activeTab = 1
+        var play = findChild(page, "collectionPlayButton")
+        verify(!play || !play.visible, "an album grid offers to play the tab")
     }
 }
