@@ -39,6 +39,9 @@ class TidalBridge : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Use the bridge context property")
     Q_PROPERTY(QString preferredQuality READ preferredQuality WRITE setPreferredQuality NOTIFY preferredQualityChanged)
+    // Which version lists show of a release Tidal has explicit and clean.
+    // Explicit unless set, as in Tidal's own apps. Persisted.
+    Q_PROPERTY(bool preferExplicit READ preferExplicit WRITE setPreferExplicit NOTIFY preferExplicitChanged)
     // True until the newest liked songs have arrived after a sign-in.
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoriteTracksChanged)
     // The other three sign-in lists, each true until its own reply is in, the
@@ -63,6 +66,9 @@ public:
     // One of "LOW", "HIGH", "LOSSLESS", "HI_RES_LOSSLESS". Persisted across launches.
     QString preferredQuality() const;
     void    setPreferredQuality(const QString &q);
+
+    bool preferExplicit() const;
+    void setPreferExplicit(bool on);
 
     Q_INVOKABLE void fetchHomeMixes     (QJSValue cb);
     Q_INVOKABLE void fetchMixTracks     (const QString &mixId, QJSValue cb);
@@ -211,6 +217,7 @@ public:
 
 signals:
     void preferredQualityChanged();
+    void preferExplicitChanged();
     void favoriteTracksChanged();
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
@@ -318,6 +325,11 @@ private:
     QSet<qlonglong> m_favoriteTrackIds;
     // The last favorites/ids answer for songs, kept in step with likes here.
     QSet<qlonglong> m_likedTrackIds;
+
+    // A list with each release it holds explicit and clean cut to the
+    // preferred version; see preferredVersions(). Saved ones always stay.
+    QList<Album> shownVersions(const QList<Album> &albums) const;
+    QList<Track> shownVersions(const QList<Track> &tracks) const;
     int             m_likedIdsGen = 0;
     bool            m_likedIdsInFlight = false;
     // The liked-songs listing on hand was paged because one page was refused.

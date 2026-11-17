@@ -155,6 +155,7 @@ class StubBridge : public StubCallbackObject {
 public:
     explicit StubBridge(QObject *parent = nullptr) : StubCallbackObject(parent) {}
 
+    Q_PROPERTY(bool preferExplicit MEMBER m_preferExplicit NOTIFY preferExplicitChanged)
     QString preferredQuality() const { return m_preferredQuality; }
     void setPreferredQuality(const QString &q) {
         if (m_preferredQuality == q) return;
@@ -1293,6 +1294,7 @@ public:
 
 signals:
     void preferredQualityChanged();
+    void preferExplicitChanged();
     void favoriteTracksChanged();
     void favoriteMixesChanged();
     void favoriteAlbumsChanged();
@@ -1335,6 +1337,7 @@ private:
     bool         m_libraryFromCache = false;
     int          m_retryCalls = 0;
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
+    bool    m_preferExplicit = true;
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
     // how many times it was asked: once per accepted mutation, never otherwise.
