@@ -43,6 +43,9 @@ int main(int argc, char **argv) {
     // is constructed.
     Application::applyScaleFactor();
 
+    // Before Application::run() builds the QML engine, which reads it once.
+    Application::useWholeHeapQmlCollector();
+
     QApplication qapp(argc, argv);
     Application app;
     return app.run(argc, argv);
