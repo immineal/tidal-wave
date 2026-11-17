@@ -180,6 +180,18 @@ TestCase {
                ? { left: f.leftMargin, right: f.rightMargin } : { left: 0, right: 0 }
     }
 
+    // x plus any Translate: a list's header is moved out that way, as its x
+    // is the view's. A scale is motion, not layout, and does not count.
+    function laidOutX(c) {
+        var x = c.x
+        for (var i = 0; i < c.transform.length; ++i) {
+            var t = c.transform[i]
+            if (t.x !== undefined && t.xScale === undefined && t.angle === undefined)
+                x += t.x
+        }
+        return x
+    }
+
     // Recursive: nothing visible leaves its parent's horizontal bounds, and no
     // Text without an elide mode is truncated.
     function audit(item, label) {
@@ -193,11 +205,13 @@ TestCase {
             if (c.width === undefined || c.width <= 0) continue
             if (drawnOutsideOnPurpose(c)) continue
 
-            verify(c.x + c.width <= item.width + m.right + overflowSlack,
-                   label + ": " + describe(c) + " ends at " + (c.x + c.width).toFixed(1)
+            var left = laidOutX(c)
+            var right = left + c.width
+            verify(right <= item.width + m.right + overflowSlack,
+                   label + ": " + describe(c) + " ends at " + right.toFixed(1)
                    + " inside a parent " + item.width.toFixed(1) + " wide")
-            verify(c.x >= -m.left - overflowSlack,
-                   label + ": " + describe(c) + " starts at " + c.x.toFixed(1))
+            verify(left >= -m.left - overflowSlack,
+                   label + ": " + describe(c) + " starts at " + left.toFixed(1))
 
             if (isText(c) && c.elide === Text.ElideNone && ("" + c.text).length > 0)
                 verify(!c.truncated,
