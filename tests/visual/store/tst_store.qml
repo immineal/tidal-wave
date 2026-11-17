@@ -1,4 +1,4 @@
-// The five store screenshots: the whole app window, 1280x800, on invented data.
+// The five store screenshots: the whole app window, 1280x800, on the store library.
 //
 // Main.qml itself is what gets drawn, so the sidebar, the pages and the player
 // bar are laid out by the app and reached through its own navigate().
@@ -27,6 +27,16 @@ TestCase {
         // The design is drawn in Inter. A fallback face reflows every line,
         // and the pictures would still be written.
         verify(Qt.fontFamilies().indexOf("Inter") !== -1, "the Inter font is not installed")
+        if (shotTheme.length > 0) {
+            var known = ThemePalette.available().some(function (t) { return t.name === shotTheme })
+            verify(known, "no theme is called " + shotTheme)
+            prefs.theme = shotTheme
+        }
+    }
+
+    // store_home becomes store_home_sky when run.sh names a theme.
+    function fileName(name) {
+        return shotTheme.length > 0 ? name + "_" + shotTheme : name
     }
 
     function init() {
@@ -168,7 +178,7 @@ TestCase {
         // What the page does when the favourites change under it.
         page.refreshRows()
         verify(page.recentAlbums.length > 0, "the saved albums never reached the home page")
-        shoot(win, "store_home")
+        shoot(win, fileName("store_home"))
     }
 
     function test_collection() {
@@ -180,7 +190,7 @@ TestCase {
         compare(page.filteredAlbums.length, D.albums().length)
         var grid = findNamed(page, "collectionAlbumsGrid")
         verify(grid, "no album grid on the collection page")
-        shoot(win, "store_collection", grid)
+        shoot(win, fileName("store_collection"), grid)
     }
 
     function test_album() {
@@ -194,7 +204,7 @@ TestCase {
         compare(page.tracks.length, D.albumTracks(D.heroAlbum).length)
         var list = findNamed(page, "albumTracksList")
         verify(list, "no track list on the album page")
-        shoot(win, "store_album", list)
+        shoot(win, fileName("store_album"), list)
     }
 
     function test_nowplaying() {
@@ -205,7 +215,7 @@ TestCase {
         // The stub bridge serves no lyrics; this is the page once some arrived.
         page.lyricsData = D.heroLyrics
         page.lyricsState = "ready"
-        shoot(win, "store_nowplaying")
+        shoot(win, fileName("store_nowplaying"))
     }
 
     function test_search() {
@@ -219,6 +229,6 @@ TestCase {
         compare(page.sectionOrder[0], page.kArtists)
         // A focused field draws a caret, and a caret blinks.
         page.releaseFocus()
-        shoot(win, "store_search")
+        shoot(win, fileName("store_search"))
     }
 }

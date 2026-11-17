@@ -9,7 +9,8 @@
 #           tests/TestStubs.h by the tst_shots runner built from
 #           tests/visual/CMakeLists.txt and grabbed with grabToImage.
 #   store   The five store screenshots: Main.qml whole, 1280x800, on the
-#           invented library in tests/visual/store/. Same runner as shots.
+#           library in tests/visual/store/, once in a dark and once in a light
+#           theme (store_<scene>_<theme>.png). Same runner as shots.
 #
 # Usage
 #   tests/visual/run.sh                  all of them
@@ -19,6 +20,7 @@
 #   tests/visual/run.sh --clean          also throw the harness build away first
 #   tests/visual/run.sh --keep           leave the sandbox behind for poking at
 #   DWELL=12 tests/visual/run.sh         seconds to let each app launch live
+#   STORE_THEMES='sea sky' tests/visual/run.sh store   the themes the store set is drawn in
 #   TIDALWAVE_BIN=/path/to/tidal-wave tests/visual/run.sh
 #   TW_VISUAL_BUILD=/path tests/visual/run.sh   where the shot runner is built
 #   tests/visual/run.sh --qt=/path/to/Qt/6.x/gcc_64   the Qt to build it against
@@ -66,6 +68,8 @@ WANTED=()
 
 # The six palette names in src/ui/ThemePalette.cpp: three dark, then three light.
 THEMES=(sea pine rust clay sky sand)
+# The store set: the default dark theme and its light counterpart.
+read -r -a STORE_THEMES <<< "${STORE_THEMES:-sea sky}"
 
 # The width the layout was designed against (tests/qml/tst_layout_player.qml).
 SHOT_W=960
@@ -76,7 +80,7 @@ for arg in "$@"; do
         --keep)  KEEP=1 ;;
         --clean) CLEAN=1 ;;
         --qt=*)  QT_PREFIX=${arg#--qt=} ;;
-        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,47p' "$0"; exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *)  WANTED+=("$arg") ;;
     esac
@@ -464,12 +468,12 @@ if wanted shots; then
     fi
 fi
 
-# ── the store screenshots: the whole window, on invented data ───────────────
+# ── the store screenshots: the whole window, on the store library ───────────
 
 STORE_SHOTS=(home collection album nowplaying search)
 
 if wanted store; then
-    head2 "store screenshots, Main.qml on the invented library"
+    head2 "store screenshots, Main.qml on the store library"
 
     if [ "$OFFSCREEN" -eq 1 ]; then
         skip store "drawn at 2x on an X display, and QT_QPA_PLATFORM=offscreen was asked for"
@@ -480,36 +484,38 @@ if wanted store; then
             skip store "no free X display between :90 and :99, or Xvfb never came up"
         else
             info "private display $DISP (pid $XVFB_PID) at 2600x3300"
-            sandbox store
-            log=$BOX/logs/store.log
-            # Gone first, so a picture left by an earlier run cannot stand in
-            # for one this run failed to write.
-            for shot in "${STORE_SHOTS[@]}"; do rm -f "$OUT/store_$shot.png"; done
-            # Twice the pixels, averaged back down when each shot is saved: at
-            # 1x the app's hairline icon strokes come out broken.
-            scale=2
-            # Qt packs its glyph atlas in QSet order, which is random per
-            # process unless the seed is pinned, and the text pixels follow it.
-            seed=0
-            env -i "${BOX_ENV[@]}" DISPLAY="$DISP" TW_SHOT_OUT="$OUT" \
-                QT_SCALE_FACTOR=$scale QT_HASH_SEED=$seed \
-                timeout -s TERM 300 "$HARNESS_BUILD/tst_shots" \
-                -input "$SELF_DIR/store" >"$log" 2>&1
-            status=$?
-            missing=()
-            for shot in "${STORE_SHOTS[@]}"; do
-                [ -s "$OUT/store_$shot.png" ] || missing+=("store_$shot.png")
+            for theme in "${STORE_THEMES[@]}"; do
+                sandbox "store-$theme"
+                log=$BOX/logs/store.log
+                # Gone first, so a picture left by an earlier run cannot stand
+                # in for one this run failed to write.
+                for shot in "${STORE_SHOTS[@]}"; do rm -f "$OUT/store_${shot}_$theme.png"; done
+                # Twice the pixels, averaged back down when each shot is saved:
+                # at 1x the app's hairline icon strokes come out broken.
+                scale=2
+                # Qt packs its glyph atlas in QSet order, which is random per
+                # process unless the seed is pinned, and the text pixels follow it.
+                seed=0
+                env -i "${BOX_ENV[@]}" DISPLAY="$DISP" TW_SHOT_OUT="$OUT" \
+                    TW_SHOT_THEME="$theme" QT_SCALE_FACTOR=$scale QT_HASH_SEED=$seed \
+                    timeout -s TERM 300 "$HARNESS_BUILD/tst_shots" \
+                    -input "$SELF_DIR/store" >"$log" 2>&1
+                status=$?
+                missing=()
+                for shot in "${STORE_SHOTS[@]}"; do
+                    [ -s "$OUT/store_${shot}_$theme.png" ] || missing+=("store_${shot}_$theme.png")
+                done
+                if [ "$status" -ne 0 ]; then
+                    fail "store-$theme" "the shot runner exited $status"
+                    grep -aE '^(FAIL|QFATAL|QWARN)' "$log" | head -20 | sed 's/^/         /'
+                elif [ ${#missing[@]} -gt 0 ]; then
+                    fail "store-$theme" "not written: ${missing[*]}"
+                else
+                    pass "store-$theme" "$theme: $(grep -m1 '^Totals:' "$log")"
+                fi
+                guard_check "store-$theme"
             done
-            if [ "$status" -ne 0 ]; then
-                fail store "the shot runner exited $status"
-                grep -aE '^(FAIL|QFATAL|QWARN)' "$log" | head -20 | sed 's/^/         /'
-            elif [ ${#missing[@]} -gt 0 ]; then
-                fail store "not written: ${missing[*]}"
-            else
-                pass store "$(grep -m1 '^Totals:' "$log")"
-            fi
             reap_all
-            guard_check store
         fi
     fi
 fi
