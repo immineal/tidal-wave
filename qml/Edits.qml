@@ -212,6 +212,51 @@ QtObject {
         if (list.length > 0) edits.playlistPickRequested(list)
     }
 
+    // cb(true) when the playlist holds every one of trackIds, for the
+    // picker's tick. Reads are kept per playlist until it changes or its
+    // count no longer fits, and at most two go out at once.
+    property var _heldCache: ({})
+    property var _heldWaiting: []
+    property int _heldInFlight: 0
+    readonly property int heldReadsAtOnce: 2
+    onPlaylistChanged: (uuid) => { delete edits._heldCache[uuid] }
+
+    function playlistHolds(uuid, numTracks, trackIds, cb) {
+        var ids = (trackIds || []).map(Number)
+        if (!uuid || ids.length === 0) { cb(false); return }
+        var answer = function (rows) {
+            cb(ids.every(function (id) { return edits._count(rows, id) > 0 }))
+        }
+        var known = edits._heldCache[uuid]
+        if (known && (numTracks === undefined || known.length === Number(numTracks))) {
+            answer(known); return
+        }
+        delete edits._heldCache[uuid]
+        edits._heldWaiting.push({ uuid: uuid, answer: answer, fail: function () { cb(false) } })
+        edits._readHeld()
+    }
+
+    function _readHeld() {
+        while (edits._heldInFlight < edits.heldReadsAtOnce && edits._heldWaiting.length > 0) {
+            var w = edits._heldWaiting.shift()
+            // An earlier read of the same playlist may have answered it.
+            if (edits._heldCache[w.uuid]) { w.answer(edits._heldCache[w.uuid]); continue }
+            edits._heldInFlight++
+            bridge.readPlaylistTrackIds(w.uuid, (function (w) {
+                return function (ok, rows) {
+                    edits._heldInFlight--
+                    if (ok === true) {
+                        edits._heldCache[w.uuid] = (rows || []).map(Number)
+                        w.answer(edits._heldCache[w.uuid])
+                    } else {
+                        w.fail()
+                    }
+                    edits._readHeld()
+                }
+            })(w))
+        }
+    }
+
     function _count(ids, trackId) {
         var n = 0
         for (var i = 0; i < ids.length; i++) if (Number(ids[i]) === Number(trackId)) n++

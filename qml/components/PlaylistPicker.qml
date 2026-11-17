@@ -19,6 +19,14 @@ Popup {
 
     // The track ids the pick is for.
     property var trackIds: []
+    // Every playlist on offer, and the words typed into the search field.
+    property var playlists: []
+    property string query: ""
+    // uuid -> true for a playlist that holds every track already. Replaced,
+    // not changed in place, so the rows' bindings see it.
+    property var held: ({})
+    // Bumped on every open, so an answer about the last open is dropped.
+    property int generation: 0
 
     signal chosen(string uuid, string title)
     signal newPlaylistRequested()
@@ -26,9 +34,40 @@ Popup {
     // Only the user's own playlists: Tidal refuses a song for an
     // editorial one or another user's saved here.
     function fillFrom(pls) {
-        plPickerModel.clear()
+        var mine = []
         for (var i = 0; i < (pls || []).length; i++)
-            if (pls[i].editable === true) plPickerModel.append(pls[i])
+            if (pls[i].editable === true) mine.push(pls[i])
+        picker.playlists = mine
+        refill()
+    }
+
+    // Case and accents do not count, as in Search; see SearchPage.fold().
+    function fold(s) {
+        if (typeof s !== "string" || s.length === 0) return ""
+        var d = (typeof s.normalize === "function") ? s.normalize("NFD") : s
+        return d.replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/ß/g, "ss")
+    }
+
+    // The rows whose title holds every word typed.
+    function refill() {
+        var words = fold(picker.query).split(/\s+/).filter(function (w) { return w.length > 0 })
+        plPickerModel.clear()
+        for (var i = 0; i < picker.playlists.length; i++) {
+            var p = picker.playlists[i], hay = fold(p.title)
+            if (words.every(function (w) { return hay.indexOf(w) >= 0 })) plPickerModel.append(p)
+        }
+    }
+    onQueryChanged: refill()
+
+    // A row asks once it is drawn, so only playlists on screen are read.
+    function askHeld(uuid, numTracks) {
+        var gen = picker.generation, ids = picker.trackIds
+        Edits.playlistHolds(uuid, numTracks, ids, function (all) {
+            if (gen !== picker.generation || !all) return
+            var next = Object.assign({}, picker.held)
+            next[uuid] = true
+            picker.held = next
+        })
     }
 
     // Filled from the bridge's cache, which is paged in at sign-in and
@@ -36,8 +75,15 @@ Popup {
     // cache cannot be told from one the paging has not reached yet.
     function openFor(ids) {
         picker.trackIds = Array.isArray(ids) ? ids.map(Number) : [Number(ids)]
+        picker.generation++
+        picker.held = ({})
+        picker.playlists = []
+        picker.query = ""
+        searchField.text = ""
         plPickerModel.clear()
         open()
+        // Typing goes straight into the search, as in Spotify's picker.
+        searchField.takeFocus()
 
         var cached = bridge.getUserPlaylists()
         if (cached && cached.length > 0) { fillFrom(cached); return }
@@ -102,6 +148,25 @@ Popup {
             }
         }
         Rectangle { width: parent.width; height: 1; color: Theme.border }
+
+        // ── finding one by name, first, as Spotify's "Find a playlist" ───
+        Item {
+            width: parent.width
+            height: searchField.implicitHeight + 2 * Theme.space2
+            SearchBar {
+                id: searchField
+                objectName: "pickerSearchField"
+                anchors.left: parent.left; anchors.right: parent.right
+                anchors.margins: Theme.space3
+                anchors.verticalCenter: parent.verticalCenter
+                placeholder: qsTr("Find a playlist", "search field in the Add to playlist picker")
+                onEmptyEscape: picker.close()
+                onTextEdited: (txt) => { picker.query = txt }
+                // Return picks the one row the words leave.
+                onSubmitted: if (plPickerModel.count === 1)
+                                 picker.choose(plPickerModel.get(0).uuid, plPickerModel.get(0).title)
+            }
+        }
 
         // ── "New playlist…", above the list it adds to ───────────────────
         // First in the popup: the list underneath scrolls, and a row at the
@@ -184,6 +249,9 @@ Popup {
                 width: plPickerList.width
                 height: 44
                 function choose() { picker.choose(model.uuid, model.title) }
+                // Holds every track already: Spotify's tick, and words for it.
+                readonly property bool holds: picker.held[model.uuid] === true
+                Component.onCompleted: picker.askHeld(model.uuid, model.numTracks)
                 // One tab stop for the list, the current row; the ListView
                 // walks it with Up and Down.
                 activeFocusOnTab: activeFocus || ListView.isCurrentItem || plPickerList.currentIndex < 0
@@ -192,6 +260,7 @@ Popup {
                 Keys.onSpacePressed:  choose()
                 Accessible.role: Accessible.ListItem
                 Accessible.name: model.title
+                Accessible.description: holds ? heldText.text : ""
                 Accessible.onPressAction: choose()
                 Rectangle {
                     anchors.fill: parent
@@ -202,8 +271,19 @@ Popup {
                     border.color: Theme.accent
                     HoverHandler { id: plHov2 }
                     TapHandler { onTapped: pickRow.choose() }
+                    VectorIcon {
+                        id: heldMark
+                        objectName: "pickerRowHeldMark"
+                        visible: pickRow.holds
+                        anchors.right: parent.right; anchors.rightMargin: Theme.space3
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "check"
+                        width: 16; height: 16
+                        color: Theme.accentText
+                    }
                     Row {
                         anchors.left: parent.left; anchors.leftMargin: Theme.space3
+                        anchors.right: heldMark.left; anchors.rightMargin: Theme.space2
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.space3
                         // 28px box, decoded at twice that.
@@ -221,10 +301,27 @@ Popup {
                                 text: model.title; color: Theme.textPrimary; font.pixelSize: Theme.fontMeta
                             }
                             // Named so a test can read what the row actually draws.
-                            Text {
-                                objectName: "pickerRowTrackCount"
-                                text: qsTranslate("TrackRow", "%Ln track(s)", "", model.numTracks)
-                                color: Theme.textSec; font.pixelSize: Theme.fontMicro
+                            Row {
+                                spacing: Theme.space1
+                                Text {
+                                    objectName: "pickerRowTrackCount"
+                                    text: qsTranslate("TrackRow", "%Ln track(s)", "", model.numTracks)
+                                    color: Theme.textSec; font.pixelSize: Theme.fontMicro
+                                }
+                                Text {
+                                    visible: pickRow.holds
+                                    text: "·"
+                                    color: Theme.textSec; font.pixelSize: Theme.fontMicro
+                                }
+                                Text {
+                                    id: heldText
+                                    objectName: "pickerRowHeldText"
+                                    visible: pickRow.holds
+                                    text: picker.trackIds.length > 1
+                                          ? qsTr("Has all of these already", "picker row: the playlist holds every track being added")
+                                          : qsTr("Has this track already", "picker row: the playlist holds the track being added")
+                                    color: Theme.accentText; font.pixelSize: Theme.fontMicro
+                                }
                             }
                         }
                     }

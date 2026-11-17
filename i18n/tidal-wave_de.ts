@@ -1587,6 +1587,24 @@
     </message>
 </context>
 <context>
+    <name>PlaylistPicker</name>
+    <message>
+        <source>Find a playlist</source>
+        <comment>search field in the Add to playlist picker</comment>
+        <translation>Playlist suchen</translation>
+    </message>
+    <message>
+        <source>Has all of these already</source>
+        <comment>picker row: the playlist holds every track being added</comment>
+        <translation>Alle schon darin</translation>
+    </message>
+    <message>
+        <source>Has this track already</source>
+        <comment>picker row: the playlist holds the track being added</comment>
+        <translation>Schon darin</translation>
+    </message>
+</context>
+<context>
     <name>QueuePanel</name>
     <message>
         <source>Queue</source>

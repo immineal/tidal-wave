@@ -785,6 +785,12 @@ Item {
                     root.addToPlaylist(uuid, title)
                 }
                 if (pickerLoader.item) pickerLoader.item.close()
+                // Then to the new playlist, as Spotify goes; it reloads when
+                // the add is confirmed.
+                var w = root.Window.window
+                if (uuid.length > 0 && w && typeof w.navigate === "function")
+                    w.navigate("playlist", { playlistUuid: uuid, playlistTitle: title,
+                                             coverUrl: "", playlistType: "USER" })
             }
         }
     }

@@ -16,6 +16,8 @@ Rectangle {
     property bool  focused: input.activeFocus
     property string placeholder: qsTr("Search…")
     signal submitted(string text)
+    // Escape on an empty field, for a popup that closes on it.
+    signal emptyEscape()
     signal textEdited(string text)
 
     function releaseFocus() {
@@ -60,8 +62,9 @@ Rectangle {
                     if (event.key === Qt.Key_Escape) event.accepted = true
                 }
                 Keys.onEscapePressed: {
-                    if (text.length > 0) text = ""
-                    else                 root.releaseFocus()
+                    if (text.length > 0) { text = ""; return }
+                    root.releaseFocus()
+                    root.emptyEscape()
                 }
                 onTextChanged: root.textEdited(text)
             }
