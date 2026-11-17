@@ -1683,12 +1683,31 @@ Rectangle {
                                     columnSpacing: Theme.space2
                                     rowSpacing: Theme.space2
                                 
-                                    SleepOptionBtn { id: firstSleepOption; minutes: 5 }
-                                    SleepOptionBtn { minutes: 15 }
-                                    SleepOptionBtn { minutes: 30 }
-                                    SleepOptionBtn { minutes: 45 }
-                                    SleepOptionBtn { minutes: 60 }
-                                    SleepOptionBtn { minutes: 90 }
+                                    // A preset starts at once; the slider below needs Start.
+                                    PillButton { id: firstSleepOption; objectName: "nowPlayingSleepOption"; readonly property int minutes: 5
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 15
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 30
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 45
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 60
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 90
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
                                 }
 
                                 Rectangle {
@@ -1756,80 +1775,17 @@ Rectangle {
                                         font.pixelSize: Theme.fontMeta
                                     }
                                 
-                                    Item {
+                                    // The volume's slider, in whole minutes.
+                                    VolumeSlider {
                                         id: customSlider
                                         objectName: "nowPlayingSleepSlider"
-                                        property int value: 20
-                                        // Read by the accessible value interface,
-                                        // which also steps it on increase/decrease.
-                                        readonly property int from: 1
-                                        readonly property int to: 120
-                                        readonly property int stepSize: 1
-                                        function stepBy(d) { value = Math.max(from, Math.min(to, value + d)) }
                                         Layout.fillWidth: true
-                                        height: 20
-                                        activeFocusOnTab: true
-                                        Keys.onPressed: (event) => {
-                                            switch (event.key) {
-                                            case Qt.Key_Right: case Qt.Key_Up:   customSlider.stepBy(1); break
-                                            case Qt.Key_Left:  case Qt.Key_Down: customSlider.stepBy(-1); break
-                                            case Qt.Key_PageUp:   customSlider.stepBy(10); break
-                                            case Qt.Key_PageDown: customSlider.stepBy(-10); break
-                                            case Qt.Key_Home: customSlider.value = customSlider.from; break
-                                            case Qt.Key_End:  customSlider.value = customSlider.to; break
-                                            default: return
-                                            }
-                                            event.accepted = true
-                                        }
-                                        Accessible.role: Accessible.Slider
-                                        Accessible.name: qsTr("Custom length", "sleep timer slider, in minutes")
+                                        from: 1; to: 120; stepSize: 1; pageStep: 10
+                                        snapToStep: true
+                                        value: 20
+                                        onMoved: (v) => customSlider.value = v
+                                        accessibleName: qsTr("Custom length", "sleep timer slider, in minutes")
                                         Accessible.description: customLabel.text
-
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            anchors.margins: -Theme.space1
-                                            radius: Theme.radiusMedium
-                                            color: "transparent"
-                                            border.width: customSlider.activeFocus ? 2 : 0
-                                            border.color: Theme.accent
-                                        }
-                                    
-                                        Rectangle {
-                                            id: customTrack
-                                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
-                                            // A 3px bar, so the chip radius clamps to a capsule
-                                            height: 3; radius: Theme.radiusFull
-                                            color: Theme.border
-
-                                            Rectangle {
-                                                width: ((customSlider.value - 1) / 119.0) * customTrack.width
-                                                height: parent.height; radius: parent.radius
-                                                color: Theme.accent
-                                            }
-
-                                            Rectangle {
-                                                x: Math.max(0, Math.min(customTrack.width - width, ((customSlider.value - 1) / 119.0) * customTrack.width - width / 2))
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                width: 10; height: 10; radius: width / 2
-                                                color: Theme.textPrimary
-                                            }
-                                        }
-
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            preventStealing: true
-                                            onPressed: (mouse) => {
-                                                var pct = Math.max(0, Math.min(1, mouse.x / width))
-                                                customSlider.value = Math.round(1 + pct * 119)
-                                            }
-                                            onPositionChanged: (mouse) => {
-                                                if (pressed) {
-                                                    var pct = Math.max(0, Math.min(1, mouse.x / width))
-                                                    customSlider.value = Math.round(1 + pct * 119)
-                                                }
-                                            }
-                                            cursorShape: Qt.PointingHandCursor
-                                        }
                                     }
 
                                     // The popup's primary action, the PillButton
@@ -2179,46 +2135,14 @@ Rectangle {
             onTapped: chip.toggled()
         }
     }
-    component SleepOptionBtn : Rectangle {
-        id: optBtn
-        objectName: "nowPlayingSleepOption"
-        property int minutes
-        // Derived, so the unit suffix is one translatable string instead of six
-        property string label: qsTr("%1m", "compact duration in minutes").arg(optBtn.minutes)
-        Layout.fillWidth: true
-        height: 28
-        radius: Theme.radiusMedium
-        color: ma.containsMouse ? Qt.tint(Theme.surface, Theme.hoverFill) : Theme.surface
-        border.color: activeFocus ? Theme.accent : Theme.border
-        border.width: activeFocus ? 2 : 1
-        function activate() {
-            root.startSleepTimer(optBtn.minutes, false)
-            sleepTimerPopup.close()
-        }
-        activeFocusOnTab: true
-        Keys.onReturnPressed: activate()
-        Keys.onSpacePressed:  activate()
-        Accessible.role: Accessible.Button
-        Accessible.name: qsTr("%1 minutes", "sleep timer option, for a screen reader").arg(optBtn.minutes)
-        Accessible.onPressAction: activate()
-        
-        Text {
-            anchors.centerIn: parent
-            text: optBtn.label
-            color: Theme.textPrimary
-            font.pixelSize: Theme.fontMeta
-        }
-        
-        MouseArea {
-            id: ma
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: {
-                root.startSleepTimer(optBtn.minutes, false)
-                sleepTimerPopup.close()
-            }
-        }
+    // The six presets' words and press, written once.
+    function sleepPresetLabel(minutes) { return qsTr("%1m", "compact duration in minutes").arg(minutes) }
+    function sleepPresetName(minutes) {
+        return qsTr("%1 minutes", "sleep timer option, for a screen reader").arg(minutes)
+    }
+    function startSleepPreset(minutes) {
+        root.startSleepTimer(minutes, false)
+        sleepTimerPopup.close()
     }
 
     // ─── The volume cluster, written once and placed twice ─────────────
