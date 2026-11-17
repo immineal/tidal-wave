@@ -102,7 +102,9 @@ public:
                               QStringLiteral("--format=float32le"), QStringLiteral("--channels=1"),
                               QStringLiteral("--rate=%1").arg(kRate), QStringLiteral("--latency-msec=10"),
                               QStringLiteral("--raw") });
-        return m_proc.waitForStarted(5000);
+        // Started is not recording: parec on Debian 13 takes about 2 s to
+        // deliver its first bytes, and a track played meanwhile loses its start.
+        return m_proc.waitForStarted(5000) && m_proc.waitForReadyRead(10000);
     }
     QVector<double> stop() {
         m_proc.terminate();
