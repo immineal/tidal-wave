@@ -757,23 +757,9 @@ Item {
         active: false
         // Parented to the row rather than to this Loader, which is a zero
         // sized item at the row's origin.
-        sourceComponent: Menu {
+        // The panel, fades and insets every menu shares; see MenuBase.qml.
+        sourceComponent: MenuBase {
             parent: root
-            // The same arrival as every other menu in the app; see
-            // ContextMenu.qml for why it is opacity and nothing else.
-            enter: ContextMenu.OpenFade { }
-            exit:  ContextMenu.CloseFade { }
-            // Insets reset, not inherited; see ContextMenu.qml.
-            leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-
-            // Assigned where it exists (Qt 6.8); see ContextMenu.qml.
-            Component.onCompleted: {
-                if (this.popupType !== undefined) this.popupType = Popup.Item
-            }
-            implicitWidth: Theme.menuWidth(this)
-            overlap: 0
-            padding: Theme.menuPadding
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
             // So a test can read the two queue labels without walking a
             // popup's contents, the way ContextMenu exposes its pin item.
@@ -912,26 +898,13 @@ Item {
             // More than one, and the names go in a submenu rather than the one
             // row picking the lead for you. Its row in this menu comes from the
             // `delegate` above.
-            Menu {
+            MenuBase {
                 id: artistSubMenu
                 // A Popup is a QObject and not an Item, so it is in no item's
                 // children; the objectName is how a test reaches it, the way
                 // QueuePanel's per-row menu is reached.
                 objectName: "goToArtistSubMenu"
                 title: qsTr("Go to artist")
-
-                // The same treatment as the menu above: insets reset,
-                // popupType assigned where it exists, opacity-only fades.
-                // See ContextMenu.qml.
-                leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-                Component.onCompleted: {
-                    if (this.popupType !== undefined) this.popupType = Popup.Item
-                }
-                enter: ContextMenu.OpenFade { }
-                exit:  ContextMenu.CloseFade { }
-                implicitWidth: Theme.menuWidth(this)
-                padding: Theme.menuPadding
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
                 // Instantiator and not a Repeater: a Repeater is an Item, so a
                 // Menu would take it for an entry of its own. This is the shape
