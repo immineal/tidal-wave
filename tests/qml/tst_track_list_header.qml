@@ -384,6 +384,20 @@ TestCase {
         return page
     }
 
+    // Every row there is liked, so every row has the filled heart; a row
+    // unliked there leaves the list.
+    function test_every_liked_track_shows_its_heart() {
+        var page = makeCollection()
+        var list = findByName(page, "collectionTracksList")
+        tryVerify(function () { return list.itemAtIndex(3) !== null })
+        for (var i = 0; i < 4; ++i)
+            verify(findByName(list.itemAtIndex(i), "trackLikeButton").liked,
+                   "row " + i + " of Liked tracks has no heart")
+        list.itemAtIndex(1).toggleLike()
+        tryCompare(list, "count", 3)
+        verify(!bridge.isTrackFavorite(12), "the unlike did not reach the bridge")
+    }
+
     function test_liked_tracks_sort_in_the_headings_and_play_in_that_order() {
         var page = makeCollection()
         var head = findByName(page, "collectionTracksHeader")
