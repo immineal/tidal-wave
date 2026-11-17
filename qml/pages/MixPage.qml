@@ -257,9 +257,13 @@ Rectangle {
         }
 
         ScrollBar.vertical: ScrollBar {
+            objectName: "mixScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
         }
+        WheelStep { view: tracksList }
     }
 
     DetailBar {

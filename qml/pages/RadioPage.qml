@@ -61,7 +61,13 @@ Rectangle {
         clip: true
         model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: ScrollBar {
+            objectName: "radioScrollBar"
+            policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
+        }
+        WheelStep { view: trackList }
 
         // The radio has no artwork of its own, so the hero shows the covers
         // of the first four tracks in it.

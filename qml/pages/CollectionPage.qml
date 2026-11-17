@@ -456,6 +456,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: tracksList }
         }
 
         // Tab 1: Albums Tab (virtualized GridView)
@@ -530,6 +531,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: albumsGrid }
         }
 
         // Tab 2: Artists Tab (virtualized GridView)
@@ -589,6 +591,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: artistsGrid }
         }
 
         // Tab 3: Playlists Tab (virtualized GridView)
@@ -650,6 +653,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: playlistsGrid }
         }
 
         // Empty state for playlists
@@ -733,6 +737,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: mixesGrid }
         }
 
         // Empty state for mixes
