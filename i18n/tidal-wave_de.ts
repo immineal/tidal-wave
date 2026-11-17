@@ -1437,6 +1437,11 @@
         <comment>noun, opens the play queue</comment>
         <translation>Warteschlange</translation>
     </message>
+    <message>
+        <source>Sleep timer: %1</source>
+        <comment>player bar, the time left or End of track</comment>
+        <translation>Sleep-Timer: %1</translation>
+    </message>
 </context>
 <context>
     <name>PlaylistPage</name>

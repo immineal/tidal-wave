@@ -171,4 +171,96 @@ TestCase {
         verify(!hint.visible, "the hint stays once a track is playing")
         verify(sleep.visible, "the sleep timer does not come back with a track")
     }
+
+    // ── the sleep timer in the bar ───────────────────────────────────────
+
+    Component {
+        id: sleepBarHost
+        Window {
+            id: sw
+            width: 1280; height: 200
+            property alias bar: spb
+            property bool sleepTimerActive: false
+            property bool sleepStopAtEndOfTrack: false
+            property int  sleepTimeLeft: 0
+            function formatSleepTime(seconds) {
+                return Math.floor(seconds / 60) + ":" + ("0" + (seconds % 60)).slice(-2)
+            }
+            PlayerBar { id: spb; width: sw.width; anchors.bottom: parent.bottom }
+        }
+    }
+
+    // A timer that is counting shows in the bar, so it is not forgotten on
+    // every page but Now Playing.
+    function test_a_running_sleep_timer_shows_in_the_bar() {
+        var host = show(sleepBarHost)
+        var ind = findByName(host.bar, "playerBarSleepIndicator")
+        verify(ind, "the bar has no sleep timer indicator")
+        verify(!ind.visible, "the indicator shows with no timer running")
+        var transport = findByName(host.bar, "playerBarPlayButton")
+        var x0 = transport.mapToItem(host.contentItem, 0, 0).x
+
+        host.sleepTimeLeft = 754
+        host.sleepTimerActive = true
+        tryVerify(function () { return ind.visible }, 1000, "a running timer is not shown")
+        var label = findByName(ind, "playerBarSleepLabel")
+        compare(label.text, "12:34")
+        host.sleepStopAtEndOfTrack = true
+        compare(label.text, qsTranslate("NowPlayingPage", "End of track"))
+        compare(transport.mapToItem(host.contentItem, 0, 0).x, x0,
+                "the transport moved when the timer started")
+
+        host.sleepTimerActive = false
+        tryVerify(function () { return !ind.visible }, 1000, "the indicator stays after the timer")
+    }
+
+    // ── the wheel over the volume ────────────────────────────────────────
+
+    function test_the_wheel_over_the_bar_volume_moves_it() {
+        player.setVolume(0.5)
+        player.setMuted(false)
+        var host = show(barHost)
+        var speaker = host.bar.volumeButton
+        mouseWheel(speaker, speaker.width / 2, speaker.height / 2, 0, 120)
+        fuzzyCompare(player.volume, 0.55, 1e-9, "one notch up is not one step")
+        mouseWheel(speaker, speaker.width / 2, speaker.height / 2, 0, -240)
+        fuzzyCompare(player.volume, 0.45, 1e-9, "two notches down are not two steps")
+        var pct = host.bar.volumePercentText
+        mouseWheel(pct, pct.width / 2, pct.height / 2, 0, 120)
+        fuzzyCompare(player.volume, 0.5, 1e-9, "the readout does not take the wheel")
+    }
+
+    // A touchpad sends small steps; they add up to a notch.
+    function test_small_wheel_steps_add_up() {
+        player.setVolume(0.5)
+        var host = show(barHost)
+        var speaker = host.bar.volumeButton
+        for (var i = 0; i < 4; ++i)
+            mouseWheel(speaker, speaker.width / 2, speaker.height / 2, 0, 30)
+        fuzzyCompare(player.volume, 0.55, 1e-9)
+    }
+
+    function test_the_wheel_over_now_playing_volume_moves_it_not_the_page() {
+        player.setVolume(0.5)
+        var host = show(npHost)
+        var mute = findByName(host.page, "nowPlayingMuteButton")
+        verify(mute)
+        var flick = findByName(host.page, "nowPlayingScroll")
+        var y0 = flick.contentY
+        mouseWheel(mute, mute.width / 2, mute.height / 2, 0, 120)
+        fuzzyCompare(player.volume, 0.55, 1e-9)
+        compare(flick.contentY, y0, "the page scrolled as well")
+    }
+
+    // The slider that comes up over the speaker takes the wheel as well.
+    function test_the_wheel_over_the_volume_slider_steps_it() {
+        player.setVolume(0.5)
+        var host = show(barHost)
+        var slider = host.bar.hoverVolumeSlider
+        host.bar.hoverVolumePopup.open()
+        tryVerify(function () { return slider.visible && slider.height > 0 }, 1000)
+        mouseWheel(slider, slider.width / 2, slider.height / 2, 0, -120)
+        fuzzyCompare(player.volume, 0.45, 1e-9, "a notch down over the slider is not a step")
+        host.bar.hoverVolumePopup.close()
+    }
 }

@@ -123,6 +123,15 @@ Item {
             return root.clamped(root.from + f * (root.to - root.from))
         }
         function axisOf(mouse) { return root.upright ? mouse.y : mouse.x }
+        // A notch of the wheel is a step, as an arrow key is.
+        property real pendingWheel: 0
+        onWheel: (wheel) => {
+            pendingWheel += wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
+            var n = pendingWheel > 0 ? Math.floor(pendingWheel / 120) : Math.ceil(pendingWheel / 120)
+            if (n === 0) return
+            pendingWheel -= n * 120
+            root.stepBy(n * root.stepSize)
+        }
         onPressed: (mouse) => moved(valueAt(axisOf(mouse)))
         onPositionChanged: (mouse) => { if (pressed) moved(valueAt(axisOf(mouse))) }
         cursorShape: Qt.PointingHandCursor
