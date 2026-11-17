@@ -371,6 +371,17 @@ void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
         res["totalArtists"]   = r.totalArtists;
         res["totalPlaylists"] = r.totalPlaylists;
         res["totalMixes"]     = r.totalMixes;
+        // {kind, item}, the item in the shape its own list uses. Absent when
+        // the reply named none.
+        if (!r.topHitKind.isEmpty()) {
+            QVariantMap hit;
+            hit["kind"] = r.topHitKind;
+            if      (r.topHitKind == QLatin1String("track"))  hit["item"] = trackToMap(r.topTrack);
+            else if (r.topHitKind == QLatin1String("album"))  hit["item"] = albumToMap(r.topAlbum);
+            else if (r.topHitKind == QLatin1String("artist")) hit["item"] = artistToMap(r.topArtist);
+            else                                               hit["item"] = playlistToMap(r.topPlaylist);
+            res["topHit"] = hit;
+        }
         call(cb, { qjsEngine(this)->toScriptValue(res), qjsEngine(this)->toScriptValue(err) });
     }, limit, offset);
 }

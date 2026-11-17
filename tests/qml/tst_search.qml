@@ -1768,6 +1768,104 @@ TestCase {
                   + visibleCopy(win.contentItem))
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  The top result, the empty page
+    // ════════════════════════════════════════════════════════════════════
+    // `topHit` is the server's own best match. It leads the All tab as one
+    // card of its own; the type tabs are lists of one kind and do without it.
+
+    function test_the_servers_top_hit_leads_the_all_tab() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), fakeAlbums(2), fakeArtists(2), [])
+        bridge.setSearchTopHitForTest({ kind: "artist",
+                                        item: { id: 7002, name: "Beispielkapelle 2", coverUrl: "" } })
+        search(win, query)
+        frame(win.contentItem)
+
+        var card = findByName(win.page, "searchTopHit")
+        verify(card, "the page has no top result at all")
+        verify(card.visible, "the server named a top hit and the All tab does not show it")
+        verify(visibleTextsSaying(card, "Beispielkapelle 2").length > 0,
+               "the top result does not name the hit: " + visibleCopy(card))
+        verify(visibleTextsSaying(card, "Artist").length > 0,
+               "the top result does not say what kind of thing it is: " + visibleCopy(card))
+        verify(visibleTextsSaying(win.page, "Top result").length > 0,
+               "the card has no heading")
+
+        // Above every section.
+        var tracksHeading = visibleTextsSaying(resultsArea(win.page), "Tracks")
+        verify(tracksHeading.length > 0)
+        var cardY = card.mapToItem(win.contentItem, 0, 0).y
+        var tracksY = tracksHeading[0].mapToItem(win.contentItem, 0, 0).y
+        verify(cardY < tracksY, "the top result is not above the sections")
+
+        mouseClick(card)
+        compare(win.navCalls.length, 1, "a click on the top artist opened nothing")
+        compare(win.navCalls[0].page, "artist")
+        compare(win.navCalls[0].params.artistId, 7002)
+    }
+
+    function test_a_top_track_plays_on_a_click() {
+        var win = showPage()
+        var tracks = fakeTracks(3)
+        bridge.setSearchResultsForTest(tracks, [], [], [])
+        bridge.setSearchTopHitForTest({ kind: "track", item: tracks[1] })
+        search(win, query)
+        frame(win.contentItem)
+
+        var card = findByName(win.page, "searchTopHit")
+        verify(card && card.visible, "the top track is not shown")
+        mouseClick(card)
+        compare(player.currentTrack.id, tracks[1].id,
+                "a click on the top track did not play it")
+        compare(win.navCalls.length, 0, "a click on a track navigated away")
+    }
+
+    function test_the_top_hit_is_left_to_the_all_tab() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), fakeAlbums(2), [], [])
+        bridge.setSearchTopHitForTest({ kind: "album",
+                                        item: { id: 8001, title: "Erfundenes Album 1",
+                                                artists: "Beispielkapelle", coverUrl: "" } })
+        search(win, query)
+        win.page.activeTab = 2
+        frame(win.contentItem)
+        var card = findByName(win.page, "searchTopHit")
+        verify(!card || !card.visible, "the Albums tab repeats the top result above its grid")
+    }
+
+    function test_no_top_hit_draws_no_card() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        search(win, query)
+        frame(win.contentItem)
+        var card = findByName(win.page, "searchTopHit")
+        verify(!card || !card.visible, "a reply without a top hit drew an empty card")
+        verify(!saysSomethingContaining(win.page, "Top result"),
+               "a heading over no top result")
+    }
+
+    // The list hangs under the field, where the eye is after a click into
+    // it, and not in the middle of an empty page.
+    function test_recent_searches_sit_under_the_field() {
+        var win = showPage()
+        bridge.setRecentSearchesForTest(["grubenlampe", "beispielkapelle"])
+        frame(win.contentItem)
+
+        var bar = findByName(win.page, "searchPageBar")
+        var list = findByName(win.page, "searchRecents")
+        verify(list && list.visible, "the recent searches are not shown")
+        var barBottom = bar.mapToItem(win.contentItem, 0, bar.height).y
+        var listTop = list.mapToItem(win.contentItem, 0, 0).y
+        verify(listTop - barBottom < 64,
+               "the recent searches float " + (listTop - barBottom)
+               + " px below the field, in the middle of the page")
+        var barLeft = bar.mapToItem(win.contentItem, 0, 0).x
+        var listLeft = list.mapToItem(win.contentItem, 0, 0).x
+        verify(Math.abs(listLeft - barLeft) <= Theme.space3,
+               "the list does not line up with the field: " + listLeft + " vs " + barLeft)
+    }
+
     // Every Item in the tree with this objectName, in tree order.
     function findAllByName(item, name) {
         return collectByName(item, name, [])

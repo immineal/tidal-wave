@@ -236,6 +236,9 @@ public:
     // server's relevance order.
     static QList<Mix> parseSearchMixes(const QJsonObject &node);
 
+    // A whole search response, `topHit` included.
+    static SearchResults parseSearch(const QJsonObject &root);
+
     // The cursor for the next page of v2/favorites/mixes, or "" when the run
     // is over. `previous` is the cursor this page was fetched with. The
     // endpoint reports no total, so this alone ends a run.

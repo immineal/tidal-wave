@@ -1869,6 +1869,26 @@
         <source>Try again</source>
         <translation>Erneut versuchen</translation>
     </message>
+    <message>
+        <source>Top result</source>
+        <comment>heading over the one best match of a search</comment>
+        <translation>Top-Ergebnis</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>the kind of a search's top result</comment>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <comment>the kind of a search's top result</comment>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Playlist</source>
+        <comment>the kind of a search's top result</comment>
+        <translation>Playlist</translation>
+    </message>
 </context>
 <context>
     <name>SeekBar</name>

@@ -426,6 +426,15 @@ struct SearchResults {
     int totalPlaylists = 0;
     // The count before the video filter, so it bounds paging. Never shown.
     int totalMixes     = 0;
+
+    // The server's one best match, from `topHit`: "track", "album", "artist"
+    // or "playlist", and "" when the reply named none or a kind the app
+    // cannot open (a video). Only the member of that kind is filled.
+    QString  topHitKind;
+    Track    topTrack;
+    Album    topAlbum;
+    Artist   topArtist;
+    Playlist topPlaylist;
 };
 
 } // namespace Tidal
