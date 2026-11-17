@@ -324,6 +324,58 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
+            // A running sleep timer, so it is seen on every page. Opens Now
+            // Playing, where the timer is set.
+            Rectangle {
+                id: sleepIndicator
+                objectName: "playerBarSleepIndicator"
+                readonly property var host: Window.window
+                readonly property bool active: !!host && host.sleepTimerActive === true
+                visible: active
+                Layout.alignment: Qt.AlignVCenter
+                Layout.leftMargin: Theme.space2
+                implicitWidth: sleepRow.implicitWidth + 2 * Theme.space2
+                implicitHeight: 24
+                radius: Theme.radiusFull
+                color: sleepHov.hovered ? Qt.tint(Theme.accentTint, Theme.hoverFill) : Theme.accentTint
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.accent
+                activeFocusOnTab: active
+                Keys.onReturnPressed: root.showNowPlaying()
+                Keys.onSpacePressed:  root.showNowPlaying()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Sleep timer: %1", "player bar, the time left or End of track")
+                                     .arg(sleepLabel.text)
+                Accessible.onPressAction: root.showNowPlaying()
+                ToolTip.visible: sleepHov.hovered
+                ToolTip.text: qsTranslate("NowPlayingPage", "Sleep timer")
+                ToolTip.delay: Theme.tooltipDelay
+
+                Row {
+                    id: sleepRow
+                    anchors.centerIn: parent
+                    spacing: Theme.space1
+                    VectorIcon {
+                        name: "clock"; width: 14; height: 14
+                        color: Theme.accentText
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        id: sleepLabel
+                        objectName: "playerBarSleepLabel"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: !sleepIndicator.active ? ""
+                              : sleepIndicator.host.sleepStopAtEndOfTrack === true
+                                ? qsTranslate("NowPlayingPage", "End of track")
+                                : sleepIndicator.host.formatSleepTime(sleepIndicator.host.sleepTimeLeft)
+                        color: Theme.accentText
+                        font.pixelSize: Theme.fontMeta; font.bold: true
+                    }
+                }
+                HoverHandler { id: sleepHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler   { onTapped: root.showNowPlaying() }
+            }
+
             // The speaker over the readout as one object, so the flyout
             // parented to it stands over both. Nothing here is given a `width`
             // or a `height`: a Layout owns its children's size.
@@ -350,6 +402,7 @@ Rectangle {
                     Keys.onUpPressed:   volumeFlyout.slider.stepBy(volumeFlyout.slider.stepSize)
                     Keys.onDownPressed: volumeFlyout.slider.stepBy(-volumeFlyout.slider.stepSize)
                     Accessible.description: volPct.text
+                    VolumeWheel { }
                 }
 
                 // The level, in words, at rest. Layout.preferredWidth and not
@@ -372,6 +425,7 @@ Rectangle {
                             .toLocaleString(Qt.locale(), 'f', 0))
                     color: Theme.textDim; font.pixelSize: Theme.fontMeta
                     HoverHandler { id: volPctHov }
+                    VolumeWheel { }
                 }
             }
 
@@ -817,6 +871,24 @@ Rectangle {
                          && (orow.label !== orow.fullLabel || orowLabel.truncated)
         ToolTip.text: orow.fullLabel
         ToolTip.delay: Theme.tooltipDelay
+    }
+
+    // The wheel over a volume control moves the volume a step per notch.
+    // Small touchpad steps add up to a notch. Buttons go through to the
+    // control underneath.
+    component VolumeWheel : MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.NoButton
+        property real pending: 0
+        onWheel: (wheel) => {
+            pending += wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
+            var notches = pending > 0 ? Math.floor(pending / 120) : Math.ceil(pending / 120)
+            if (notches === 0) return
+            pending -= notches * 120
+            var v = Math.round((player.volume + notches * 0.05) * 100) / 100
+            player.setMuted(false)
+            player.setVolume(Math.max(0, Math.min(1, v)))
+        }
     }
 
     // Says player.loadError once, above the play button it is placed in, and

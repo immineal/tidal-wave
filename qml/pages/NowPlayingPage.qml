@@ -2213,6 +2213,7 @@ Rectangle {
                 // item and cannot see a MouseArea's containsMouse.
                 HoverHandler { id: muteHov; cursorShape: Qt.PointingHandCursor }
                 MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
+                PlayerBar.VolumeWheel { }
             }
 
             Text {
@@ -2230,6 +2231,7 @@ Rectangle {
                                           .toLocaleString(Qt.locale(), 'f', 0))
                 color: Theme.textDim; font.pixelSize: Theme.fontMeta
                 HoverHandler { id: pctHov }
+                PlayerBar.VolumeWheel { }
             }
         }
 
