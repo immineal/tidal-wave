@@ -1537,7 +1537,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.</source>
+        <source>Your desktop reports no scale for this high-density screen, so Tidal Wave uses %1x. Move the slider to change it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1605,7 +1605,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Let the colour in</source>
+        <source>Tinted greys</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1657,7 +1657,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.</source>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, searches and every page and track you open or play, with your access token. resources.tidal.com serves cover art without the token. Only while casting, your local network sees mDNS discovery and a short-lived HTTP server that serves the playing track to the device. It has no password, so anything on your network can read it during the cast. api.github.com gets the update check, at most once a day, with no account data, and sees your IP address and app version. Lyrics sites get track details as described below: lrclib.net unless you switch it off, the others once you switch them on.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1665,11 +1665,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while the now playing page is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <source>Lyrics from other sites are looked up only for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked. It gets the artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in order: music.163.com (NetEase Cloud Music) with artist and title, lyrics.kugou.com (KuGou) with artist, title and length, genius.com with artist and title. music.163.com and lyrics.kugou.com are in China. The search stops at the first synced lyrics. Sites are asked only while the now playing page is open, and each sees your IP address and the app&apos;s name and version. Results are kept here. Synced lyrics are not looked up again, plain or missing ones after 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Syncing plain lyrics, on by default, happens on this machine: the track&apos;s audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
+        <source>Syncing plain lyrics is on by default and runs on this machine. The audio already downloaded for playback is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1677,7 +1677,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.</source>
+        <source>Feedback: the two buttons above hand a URL to your browser or mail client and do nothing else. Tidal Wave opens no connection for them and sends nothing. Nothing leaves this machine until you send it from that program, to a public GitHub issue or the tidal-wave@linu.li mailbox, whichever you picked. The prefilled part holds the app version, the operating system and both Qt versions, with no account data and nothing about what you have played.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
