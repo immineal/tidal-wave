@@ -56,8 +56,8 @@ jobs:
             tests/visual/out/store_album_sea.png
             tests/visual/out/store_nowplaying_sea.png
             tests/visual/out/store_search_sea.png
-            tests/visual/out/store_home_sky.png
-            tests/visual/out/store_collection_sky.png
-            tests/visual/out/store_album_sky.png
-            tests/visual/out/store_nowplaying_sky.png
-            tests/visual/out/store_search_sky.png
+            tests/visual/out/store_home_clay.png
+            tests/visual/out/store_collection_clay.png
+            tests/visual/out/store_album_clay.png
+            tests/visual/out/store_nowplaying_clay.png
+            tests/visual/out/store_search_clay.png

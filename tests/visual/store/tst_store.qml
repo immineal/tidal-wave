@@ -34,7 +34,7 @@ TestCase {
         }
     }
 
-    // store_home becomes store_home_sky when run.sh names a theme.
+    // store_home becomes store_home_clay when run.sh names a theme.
     function fileName(name) {
         return shotTheme.length > 0 ? name + "_" + shotTheme : name
     }
