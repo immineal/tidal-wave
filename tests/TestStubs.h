@@ -30,6 +30,7 @@
 #include "api/TidalBridge.h"   // withRecentSearch / kRecentSearchCap
 #include "ui/Application.h"
 #include "ui/ThemePalette.h"
+#include "ui/TidalLink.h"
 
 // ─── shared plumbing ────────────────────────────────────────────────────────
 
@@ -2220,6 +2221,16 @@ public:
     // The page saved by the last run, which the real Application reads once.
     Q_INVOKABLE QString startPage() const { return m_startPage; }
     Q_INVOKABLE void setStartPageForTest(const QString &page) { m_startPage = page; }
+    // The real Application parses with the same TidalLink. A track link
+    // needs an album lookup there; here it opens nothing.
+    Q_INVOKABLE bool isTidalLink(const QString &text) const {
+        return TidalLink::parse(text).isValid();
+    }
+    Q_INVOKABLE void openLink(const QString &text) {
+        const TidalLink link = TidalLink::parse(text);
+        if (link.isValid() && link.kind != QLatin1String("track"))
+            emit openRequested(link.kind, link.id);
+    }
 
     // test hooks
     Q_INVOKABLE int quitCountForTest() const { return m_quitCount; }

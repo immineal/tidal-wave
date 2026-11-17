@@ -10,8 +10,8 @@ MprisRoot::MprisRoot(MprisManager *manager)
 
 void MprisRoot::Raise() { emit m_manager->raiseRequested(); }
 
-MprisPlayer::MprisPlayer(Player *player, QObject *parent)
-    : QDBusAbstractAdaptor(parent), m_player(player)
+MprisPlayer::MprisPlayer(Player *player, MprisManager *manager)
+    : QDBusAbstractAdaptor(manager), m_player(player), m_manager(manager)
 {
     setAutoRelaySignals(true);
 
@@ -194,6 +194,13 @@ void MprisPlayer::Seek(qlonglong offsetMicros) {
     if (length > 0 && to >= length) { Next(); return; }
     m_player->seek(qMax<qint64>(0, to));
 }
+void MprisPlayer::OpenUri(const QString &uri) {
+    // "If the uri scheme or the mime-type of the uri to open is not supported,
+    // this method does nothing."
+    if (!uri.startsWith(QLatin1String("tidal:"), Qt::CaseInsensitive)) return;
+    emit m_manager->openUriRequested(uri);
+}
+
 void MprisPlayer::SetPosition(const QDBusObjectPath &trackId, qlonglong posMicros) {
     // A call that names another track was meant for one that has since gone.
     const QVariantMap current = metadata();

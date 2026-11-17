@@ -8,6 +8,7 @@
 #include "ui/ReducedMotion.h"
 #include "ui/ThemePalette.h"
 #include "ui/RemoteControl.h"
+#include "ui/TidalLink.h"
 #include "ui/TrackNotifier.h"
 #include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
@@ -784,6 +785,12 @@ int Application::run(int argc, char **argv) {
     m_mpris  = new MprisManager(m_player, this);
     // Raise takes the way back that the tray's Show item takes.
     connect(m_mpris, &MprisManager::raiseRequested, this, &Application::showWindow);
+    // A link from a desktop widget goes the way a link on the command line goes.
+    connect(m_mpris, &MprisManager::openUriRequested, this, [this](const QString &uri) {
+        LaunchRequest request;
+        request.urls = { uri };
+        m_remote->submit(request);
+    });
 #endif
     // The same calls as the tray and the player bar.
     connect(m_remote, &RemoteControl::playPauseRequested, m_player, [this] { m_player->playPause(); });
@@ -1024,6 +1031,17 @@ void Application::trackWindowState(QWindow *window, const QRect &restored) {
         m_prefs->setWindowGeometry(*normal);
         m_prefs->setWindowMaximized(*maximized);
     });
+}
+
+bool Application::isTidalLink(const QString &text) const {
+    return TidalLink::parse(text.trimmed()).isValid();
+}
+
+void Application::openLink(const QString &text) {
+    LaunchRequest request;
+    request.show = false;
+    request.urls = { text.trimmed() };
+    m_remote->submit(request);
 }
 
 void Application::quit() {

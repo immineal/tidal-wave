@@ -191,6 +191,16 @@ Rectangle {
             Layout.rightMargin: Theme.space6
             placeholder: qsTr("Search tracks, albums, artists, playlists…")
             onTextEdited: (text) => {
+                // A link pasted in whole opens its page. Typed a letter at a
+                // time, it is a search like any other.
+                var before = root.query
+                if (text.length > before.length + 1 && app.isTidalLink(text)) {
+                    searchBar.text = ""
+                    root.query = ""
+                    clearResults()
+                    app.openLink(text)
+                    return
+                }
                 root.query = text
                 if (text.length === 0) { clearResults(); return }
                 if (text.length < 2) { root.holdResults(); return }
