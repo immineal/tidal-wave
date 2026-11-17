@@ -26,7 +26,7 @@ public:
     explicit MprisRoot(MprisManager *manager);
     bool        canQuit()             const { return true; }
     bool        canRaise()            const { return true; }
-    bool        hasTrackList()        const { return false; }
+    bool        hasTrackList()        const { return true; }
     QString     identity()            const { return "Tidal Wave"; }
     // Must name the installed <app-id>.desktop, the only entry Flatpak exports:
     // clients resolve DesktopEntry to find the icon and name.
@@ -128,6 +128,47 @@ private:
     bool          m_stateChanged = false;
 };
 
+// The rows around the current one: a few that played and the next ones up.
+// Read-only: a client cannot add or remove rows, only skip to one.
+class MprisTrackList : public QDBusAbstractAdaptor {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.mpris.MediaPlayer2.TrackList")
+    Q_PROPERTY(QList<QDBusObjectPath> Tracks READ tracks)
+    Q_PROPERTY(bool CanEditTracks READ canEditTracks CONSTANT)
+public:
+    MprisTrackList(Player *player, MprisManager *manager);
+    QList<QDBusObjectPath> tracks() const;
+    bool canEditTracks() const { return false; }
+
+    static constexpr int kPlayedShown   = 5;
+    static constexpr int kUpcomingShown = 20;
+
+public slots:
+    QList<QVariantMap> GetTracksMetadata(const QList<QDBusObjectPath> &trackIds) const;
+    void AddTrack(const QString &, const QDBusObjectPath &, bool) {}
+    void RemoveTrack(const QDBusObjectPath &) {}
+    void GoTo(const QDBusObjectPath &trackId);
+
+signals:
+    void TrackListReplaced(const QList<QDBusObjectPath> &tracks, const QDBusObjectPath &currentTrack);
+    void TrackAdded(const QVariantMap &metadata, const QDBusObjectPath &afterTrack);
+    void TrackRemoved(const QDBusObjectPath &trackId);
+    void TrackMetadataChanged(const QDBusObjectPath &trackId, const QVariantMap &metadata);
+
+private:
+    struct Row { QDBusObjectPath path; int index; };
+    // A track queued twice is two rows, so each gets its own id; the
+    // current row keeps the one Metadata gives it.
+    QList<Row> rows() const;
+    void scheduleReplace();
+    void replace();
+
+    Player                 *m_player;
+    QList<QDBusObjectPath>  m_sent;
+    QDBusObjectPath         m_sentCurrent;
+    bool                    m_queued = false;
+};
+
 class MprisManager : public QObject {
     Q_OBJECT
 public:
@@ -139,6 +180,7 @@ signals:
     // A client handed over a link to open, already known to be tidal:.
     void openUriRequested(const QString &uri);
 private:
-    MprisRoot   *m_root;
-    MprisPlayer *m_mprisPlayer;
+    MprisRoot      *m_root;
+    MprisPlayer    *m_mprisPlayer;
+    MprisTrackList *m_trackList;
 };
