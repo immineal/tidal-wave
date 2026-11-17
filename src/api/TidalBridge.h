@@ -332,7 +332,7 @@ private:
     QVariantList artistsToList (const QList<Artist>   &v) const;
     QVariantList playlistsList (const QList<Playlist> &v) const;
     QVariantList mixesList     (const QList<Mix>      &v) const;
-    QVariantMap  homeFeedToMap (const HomeFeed &feed) const;
+    QVariantMap  homeFeedToMap (const HomeFeed &feed, qint64 fetchedAt = 0) const;
 
     TidalClient  *m_client;
     LyricsFinder *m_lyricsFinder = nullptr;

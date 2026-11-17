@@ -172,11 +172,20 @@ TestCase {
             || item.objectName === "collectionTabInkLabel"
     }
 
+    // A Flickable's margins belong to its viewport, so what fills them (a
+    // list's header out to the view's edges) does not overflow its content.
+    function marginsOf(item) {
+        var f = item.parent
+        return f && f.contentItem === item && f.leftMargin !== undefined
+               ? { left: f.leftMargin, right: f.rightMargin } : { left: 0, right: 0 }
+    }
+
     // Recursive: nothing visible leaves its parent's horizontal bounds, and no
     // Text without an elide mode is truncated.
     function audit(item, label) {
         if (scrollsHorizontally(item))
             return
+        var m = marginsOf(item)
         var kids = item.children
         for (var i = 0; i < kids.length; ++i) {
             var c = kids[i]
@@ -184,10 +193,10 @@ TestCase {
             if (c.width === undefined || c.width <= 0) continue
             if (drawnOutsideOnPurpose(c)) continue
 
-            verify(c.x + c.width <= item.width + overflowSlack,
+            verify(c.x + c.width <= item.width + m.right + overflowSlack,
                    label + ": " + describe(c) + " ends at " + (c.x + c.width).toFixed(1)
                    + " inside a parent " + item.width.toFixed(1) + " wide")
-            verify(c.x >= -overflowSlack,
+            verify(c.x >= -m.left - overflowSlack,
                    label + ": " + describe(c) + " starts at " + c.x.toFixed(1))
 
             if (isText(c) && c.elide === Text.ElideNone && ("" + c.text).length > 0)

@@ -31,23 +31,53 @@ Rectangle {
 
     // ── what the user was listening to ───────────────────────────────────
     // Under the greeting, the user's own music: the track in the player, and
-    // the albums, playlists, mixes and artists played here most recently.
-    // Tidal keeps no play history the app can read, so these are local.
+    // the albums, playlists, mixes and artists played most recently, on any
+    // device: Tidal's history from the feed, merged with the plays here.
     readonly property var nowTrack: player.currentTrack
     readonly property bool hasTrack: !!nowTrack && nowTrack.id > 0
 
-    readonly property var recentlyPlayed: {
+    // Played here, newest first. The app reports no plays to Tidal, so its
+    // history holds none of these unless they were played elsewhere too.
+    readonly property var localRecent: {
         var all = library.entries, out = []
         for (var i = 0; i < all.length; i++)
             if (all[i].lastPlayed > 0) out.push(all[i])
         out.sort(function (a, b) { return b.lastPlayed - a.lastPlayed })
-        return out.slice(0, root.rowLimit).map(function (e) {
-            return { id: e.id, title: e.title, coverUrl: e.imageUrl || "", kind: e.kind,
-                     subtitle: e.kind === "artist" ? qsTr("Artist") : (e.subtitle || ""),
-                     // An artist's subtitle is a translated label; see MediaCard.
-                     pinSubtitle: e.kind === "artist" ? "" : undefined,
-                     imageUrl: e.imageUrl || "", type: e.type || "", mixType: e.mixType || "" }
-        })
+        return out
+    }
+    readonly property var tidalRecent: {
+        var mods = forYouFeed.modules || []
+        for (var i = 0; i < mods.length; i++)
+            if (mods[i].ownRow === "recent") return mods[i].items || []
+        return []
+    }
+    readonly property var recentlyPlayed:
+        mergeRecent(localRecent, tidalRecent, forYouFeed.fetchedAt || 0)
+
+    function localCard(e) {
+        return { id: e.id, title: e.title, coverUrl: e.imageUrl || "", kind: e.kind,
+                 subtitle: e.kind === "artist" ? qsTr("Artist") : (e.subtitle || ""),
+                 // An artist's subtitle is a translated label; see MediaCard.
+                 pinSubtitle: e.kind === "artist" ? "" : undefined,
+                 imageUrl: e.imageUrl || "", type: e.type || "", mixType: e.mixType || "" }
+    }
+
+    // Plays here since the feed was fetched first, then Tidal's list in its
+    // order, then older plays here it does not hold. Each item once, where
+    // it is newest; with no feed this is the plays here alone.
+    function mergeRecent(local, tidal, fetchedAt) {
+        var out = [], seen = {}
+        function add(card) {
+            var key = card.kind + ":" + card.id
+            if (seen[key] || out.length >= root.rowLimit) return
+            seen[key] = true
+            out.push(card)
+        }
+        var i = 0
+        for (; i < local.length && local[i].lastPlayed > fetchedAt; i++) add(localCard(local[i]))
+        for (var j = 0; j < tidal.length; j++) add(feedCard(tidal[j]))
+        for (; i < local.length; i++) add(localCard(local[i]))
+        return out
     }
 
     // The row's items are library entries, so they open the way the
@@ -144,6 +174,16 @@ Rectangle {
             if (feed === "editorial") root.staffFeed = page
             else root.forYouFeed = page
         })
+    }
+
+    // Tidal names its tabs in title case ("Staff Picks"); the app writes
+    // sentence case. Names and acronyms keep their capitals, and German its
+    // nouns', so only an English feed is lowered.
+    function tabTitle(name, language) {
+        if (language === "de") return name
+        return name.split(" ").map(function (w, i) {
+            return i > 0 && /^[A-Z][a-z]+$/.test(w) && w !== "Tidal" ? w.toLowerCase() : w
+        }).join(" ")
     }
 
     function showFeedTab(index) {
@@ -314,7 +354,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.space6
                 Layout.rightMargin: Theme.space6
-                model: root.feedTabs.map(function (t) { return t.name })
+                model: root.feedTabs.map(function (t) { return root.tabTitle(t.name, root.feedLanguage) })
                 currentIndex: Math.max(0, root.feedTabs.findIndex(function (t) { return t.feed === root.feedTab }))
                 onActivated: (index) => root.showFeedTab(index)
             }

@@ -15,6 +15,7 @@
 #include <QJsonValue>
 #include <QDir>
 #include <QFile>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QGuiApplication>
@@ -311,7 +312,9 @@ bool isHomeFeed(const QString &feed) {
 }
 } // namespace
 
-QVariantMap TidalBridge::homeFeedToMap(const HomeFeed &feed) const {
+// fetchedAt: when Tidal gave the answer, in ms since the epoch. Home puts
+// this machine's plays since then before Tidal's history, which lacks them.
+QVariantMap TidalBridge::homeFeedToMap(const HomeFeed &feed, qint64 fetchedAt) const {
     QVariantList tabs;
     for (const auto &[name, key] : feed.tabs)
         tabs.append(QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("feed"), key}});
@@ -358,7 +361,8 @@ QVariantMap TidalBridge::homeFeedToMap(const HomeFeed &feed) const {
         mm[QStringLiteral("items")]   = items;
         modules.append(mm);
     }
-    return {{QStringLiteral("tabs"), tabs}, {QStringLiteral("modules"), modules}};
+    return {{QStringLiteral("tabs"), tabs}, {QStringLiteral("modules"), modules},
+            {QStringLiteral("fetchedAt"), fetchedAt}};
 }
 
 QVariantMap TidalBridge::cachedHomeFeed(const QString &feed) {
@@ -369,7 +373,9 @@ QVariantMap TidalBridge::cachedHomeFeed(const QString &feed) {
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     if (root["version"].toInt() != kHomeFeedCacheVersion
         || qint64(root["userId"].toDouble()) != uid) return homeFeedToMap({});
-    return homeFeedToMap(TidalClient::parseHomeFeed(root["feed"].toObject()));
+    // The file is written once per answer, so its time is the answer's.
+    const qint64 fetchedAt = QFileInfo(f.fileName()).lastModified().toMSecsSinceEpoch();
+    return homeFeedToMap(TidalClient::parseHomeFeed(root["feed"].toObject()), fetchedAt);
 }
 
 void TidalBridge::fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb) {
@@ -393,7 +399,8 @@ void TidalBridge::fetchHomeFeed(const QString &feed, const QString &language, QJ
                 }
             }
             const HomeFeed parsed = err.isEmpty() ? TidalClient::parseHomeFeed(root) : HomeFeed{};
-            call(cb, { qjsEngine(this)->toScriptValue(homeFeedToMap(parsed)),
+            const qint64 fetchedAt = err.isEmpty() ? QDateTime::currentMSecsSinceEpoch() : 0;
+            call(cb, { qjsEngine(this)->toScriptValue(homeFeedToMap(parsed, fetchedAt)),
                        qjsEngine(this)->toScriptValue(err) });
         });
 }

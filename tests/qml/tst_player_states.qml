@@ -150,9 +150,9 @@ TestCase {
         compare(title.text, qsTranslate("PlayerBar", "No track playing"),
                 "the empty page's title is not the bar's words for it")
 
+        // The title alone: no line under it.
         var hint = findByName(page, "nowPlayingEmptyHint")
-        verify(hint && hint.visible && hint.text.length > 0,
-               "the empty page does not say how to start")
+        verify(!hint || !hint.visible, "the empty page has a line under its title")
 
         // Nothing that acts on a track is offered.
         var lyrics = findByName(page, "nowPlayingLyricsToggle")
@@ -168,7 +168,6 @@ TestCase {
         // And a track coming in replaces all of it.
         player.setCurrentTrackForTest(makeTrack())
         tryCompare(title, "text", "Ein Titel")
-        verify(!hint.visible, "the hint stays once a track is playing")
         verify(sleep.visible, "the sleep timer does not come back with a track")
     }
 
