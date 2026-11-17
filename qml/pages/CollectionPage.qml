@@ -384,14 +384,14 @@ Rectangle {
 
         Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
 
-        // Over the rows as the list draws them: from its left edge, whatever
-        // x they ask for, and as wide as they are.
+        // Over the rows, inset as they are.
         TrackListHeader {
             id: tracksHeader
             objectName: "collectionTracksHeader"
             visible: root.activeTab === 0
             Layout.fillWidth: true
-            Layout.rightMargin: Theme.space8
+            Layout.leftMargin: tracksList.leftMargin
+            Layout.rightMargin: tracksList.rightMargin
             sort: trackSort
             showAdded: true
             opacity: root.contentIn
@@ -410,11 +410,15 @@ Rectangle {
             // Bound on every tab, so a tab switch keeps the rows and the scroll.
             model: sortedTracks
             boundsBehavior: Flickable.StopAtBounds
+            // The rows' inset: a vertical ListView puts its delegates at x 0
+            // whatever x they ask for, so the view's margins inset them.
+            leftMargin: Theme.space4
+            rightMargin: Theme.space4
 
             // The fields are passed as they came off the API. TrackRow takes
             // them as `var` and decides what a missing or mistyped one shows.
             delegate: TrackRow {
-                width: tracksList.width - 32
+                width: tracksList.width - tracksList.leftMargin - tracksList.rightMargin
                 showAdded:   true
                 trackNum:    index + 1
                 title:       modelData.title

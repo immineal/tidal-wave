@@ -137,10 +137,17 @@ Rectangle {
         clip: true
         model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
+        // The rows' 16 px inset: a vertical ListView puts its delegates at
+        // x 0 whatever x they ask for, so the view's margins inset them. The
+        // header and footer step back out to the view's edges.
+        leftMargin: Theme.space4
+        rightMargin: Theme.space4
+        readonly property real rowWidth: width - leftMargin - rightMargin
 
         // The hero, then the column headings, which stay under the bar once
         // the hero has scrolled away. Over the rows, which pass beneath them.
         header: Item {
+            x: -tracksList.leftMargin
             width: tracksList.width
             z: 2
             // A height from the start: a Column reports one only after its
@@ -228,16 +235,16 @@ Rectangle {
                 y: hero.height
                 pinIn: tracksList
                 pinBelow: detailBar.height
-                // At x 0 with the rows' width: a vertical ListView puts its
-                // rows at its left edge, whatever x they ask for.
-                width: tracksList.width - 32
+                // Over the rows, inset as they are.
+                x: tracksList.leftMargin
+                width: tracksList.rowWidth
                 sort: trackSort
                 showAlbum: width - root.sidebarReclaim >= albumBreakpoint
             }
         }
 
         delegate: TrackRow {
-            width: tracksList.width - 32
+            width: tracksList.rowWidth
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
@@ -255,6 +262,7 @@ Rectangle {
         // The footer, so on a mix with no tracks the message sits directly
         // beneath the header and scrolls with it.
         footer: Item {
+            x: -tracksList.leftMargin
             width: tracksList.width
             height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
 
