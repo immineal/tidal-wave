@@ -47,6 +47,10 @@ public:
     // The same GET against the v2 host. Its endpoints are cursor-paged, so
     // they are no drop-in replacements for their v1 siblings.
     void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // getV2() with the web player's client version, which v2/home/feed
+    // answers 400 without. Virtual as a test seam only.
+    virtual void getV2Web(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    static constexpr auto kWebClientVersion = "2025.7.16";
     // A v2 PUT with its arguments in the query string and an empty body, which
     // is what v2/favorites/mixes/add and .../remove require. A 200 is no proof
     // of success: see TidalClient::mixFavoriteAccepted().

@@ -185,6 +185,35 @@ public:
     }
     Q_INVOKABLE int homeMixesFetchesForTest() const { return m_homeMixesFetches; }
 
+    // Tidal's own Home. A feed answers {tabs, modules} as set here, or an
+    // empty one beside `err`; the cached copy is what setHomeFeedCacheForTest
+    // left, empty by default. No feed is held for a test unless set.
+    Q_INVOKABLE QVariantMap cachedHomeFeed(const QString &feed) {
+        return m_homeFeedCache.value(feed, emptyHomeFeed()).toMap();
+    }
+    Q_INVOKABLE void fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb) {
+        m_homeFeedFetches.append(feed + QLatin1Char('/') + language);
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        if (!e) return;
+        const QString err = m_homeFeedErrors.value(feed);
+        const QVariant page = err.isEmpty() ? m_homeFeeds.value(feed, emptyHomeFeed())
+                                            : QVariant(emptyHomeFeed());
+        cb.call({ e->toScriptValue(page), QJSValue(err) });
+    }
+    Q_INVOKABLE void setHomeFeedForTest(const QString &feed, const QVariantMap &page,
+                                        const QString &err = {}) {
+        m_homeFeeds.insert(feed, page);
+        m_homeFeedErrors.insert(feed, err);
+    }
+    Q_INVOKABLE void setHomeFeedCacheForTest(const QString &feed, const QVariantMap &page) {
+        m_homeFeedCache.insert(feed, page);
+    }
+    Q_INVOKABLE QStringList homeFeedFetchesForTest() const { return m_homeFeedFetches; }
+    static QVariantMap emptyHomeFeed() {
+        return {{QStringLiteral("tabs"), QVariantList()}, {QStringLiteral("modules"), QVariantList()}};
+    }
+
     // ── reaching Tidal ──────────────────────────────────────────────────
     // Mirrors TidalBridge::offline, unloadedKinds and retryConnection().
     Q_PROPERTY(bool offline MEMBER m_offline NOTIFY offlineChanged)
@@ -1275,6 +1304,10 @@ public:
         m_pendingHomeMixes.clear();
         m_homeMixes.clear();
         m_homeMixesError.clear();
+        m_homeFeeds.clear();
+        m_homeFeedErrors.clear();
+        m_homeFeedCache.clear();
+        m_homeFeedFetches.clear();
         setOfflineForTest(false);
         setUnloadedKindsForTest({});
         setLibraryFromCacheForTest(false);
@@ -1342,6 +1375,10 @@ private:
 
     QVariantList m_homeMixes;
     QString      m_homeMixesError;
+    QVariantMap  m_homeFeeds;
+    QHash<QString, QString> m_homeFeedErrors;
+    QVariantMap  m_homeFeedCache;
+    QStringList  m_homeFeedFetches;
     int          m_homeMixesFetches = 0;
     bool         m_offline = false;
     QStringList  m_unloadedKinds;
