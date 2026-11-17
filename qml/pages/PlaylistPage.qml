@@ -331,7 +331,9 @@ Rectangle {
         // The hero, then the column headings, which stay under the bar once
         // the hero has scrolled away. Over the rows, which pass beneath them.
         header: Item {
-            x: -tracksList.leftMargin
+            // Out to the view's edges by a transform: Qt 6.6's ListView
+            // resets a header's or footer's x to 0.
+            transform: Translate { x: -tracksList.leftMargin }
             width: tracksList.width
             z: 2
             // A height from the start: a Column reports one only after its
@@ -534,7 +536,7 @@ Rectangle {
         // The footer, so the message sits directly beneath the header and
         // scrolls with it, as on MixPage.
         footer: Item {
-            x: -tracksList.leftMargin
+            transform: Translate { x: -tracksList.leftMargin }
             width: tracksList.width
             height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12
                   : noMatches.visible ? noMatches.implicitHeight + 2 * Theme.space12 : 32
