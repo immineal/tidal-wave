@@ -38,7 +38,10 @@ TestCase {
         Window {
             width: 1280; height: 800
             property int backs: 0
-            function navigate(page, params) {}
+            property var navCalls: []
+            function navigate(page, params) {
+                navCalls = navCalls.concat([{ page: page, params: params }])
+            }
             function goBack() { backs++ }
         }
     }
@@ -136,5 +139,49 @@ TestCase {
         list.contentY = list.originY + 2000
         tryVerify(function () { return bar.reveal === 1 }, 2000,
                   "the bar did not bring the title in, reveal " + bar.reveal)
+    }
+
+    function findByName(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        for (var i = 0; i < item.children.length; ++i) {
+            var hit = findByName(item.children[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+
+    // ── an artist's radio ────────────────────────────────────────────────
+
+    function test_an_artist_with_a_radio_offers_it() {
+        bridge.setArtistForTest({ id: 61, name: "Erika Mustermann", bio: "",
+                                  artistMixId: "00aa11bb22cc33dd44ee55ff6677" },
+                                tracks(3), [])
+        var s = page(artistC)
+        s.page.artistId = 61
+        frame(s.host.contentItem)
+        var pill = findByName(s.page, "artistRadioPill")
+        verify(pill && pill.visible, "an artist Tidal names a radio for offers none")
+        mouseClick(pill)
+        compare(s.host.navCalls.length, 1, "the radio pill opened nothing")
+        compare(s.host.navCalls[0].page, "mix")
+        compare(s.host.navCalls[0].params.mixId, "00aa11bb22cc33dd44ee55ff6677")
+        compare(s.host.navCalls[0].params.mixType, "ARTIST_MIX")
+    }
+
+    function test_an_artist_without_a_radio_offers_none() {
+        bridge.setArtistForTest({ id: 62, name: "Erika Mustermann", bio: "" }, tracks(3), [])
+        var s = page(artistC)
+        s.page.artistId = 62
+        frame(s.host.contentItem)
+        var pill = findByName(s.page, "artistRadioPill")
+        verify(!pill || !pill.visible, "a radio pill for an artist with no radio")
+    }
+
+    function test_an_artist_radio_is_headed_radio() {
+        var s = page(mixC, { mixId: "00aa11bb22cc33dd44ee55ff6677", mixType: "ARTIST_MIX",
+                             title: "Erika Mustermann" })
+        compare(findByType(s.page, "DetailHero").kind, "Radio",
+                "an artist's station is headed as a mix")
     }
 }

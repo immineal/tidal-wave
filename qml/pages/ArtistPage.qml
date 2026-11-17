@@ -55,6 +55,15 @@ Rectangle {
         loadArtist()
     }
 
+    // The artist's radio as a mix id; "" where Tidal names none.
+    readonly property string artistMixId: artistData.artistMixId || ""
+
+    function startRadio() {
+        if (root.artistMixId.length === 0) return
+        navigateTo("mix", { mixId: root.artistMixId, title: root.artistData.name || "",
+                            mixType: "ARTIST_MIX" })
+    }
+
     // Records this artist as the "playing from" source, then plays.
     function playFrom(list, i) {
         player.setPlaybackSource("artist", "" + root.artistId, root.artistData.name || "")
@@ -222,6 +231,16 @@ Rectangle {
                         // On the action row, which has clear space above.
                         onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
                                                                   hero.actionRow)
+                    },
+                    // The artist's station, where Tidal names one. Opens on
+                    // MixPage, as a track's radio does, so it can be saved.
+                    PillButton {
+                        objectName: "artistRadioPill"
+                        visible: root.artistMixId.length > 0
+                        text: qsTr("Artist radio")
+                        icon: "waves"
+                        accent: false
+                        onClicked: root.startRadio()
                     }
                 ]
             }

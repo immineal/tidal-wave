@@ -184,6 +184,10 @@
         <source>Artist</source>
         <translation>Künstler</translation>
     </message>
+    <message>
+        <source>Artist radio</source>
+        <translation>Künstler-Radio</translation>
+    </message>
 </context>
 <context>
     <name>BackButton</name>

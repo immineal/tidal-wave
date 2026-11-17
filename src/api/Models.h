@@ -32,7 +32,8 @@ inline constexpr auto VideoDailyMix  = "VIDEO_DAILY_MIX";
 // A track's radio station. `tracks/<id>` carries its id under
 // `mixes.TRACK_MIX`, so a radio can open on MixPage and be saved.
 inline constexpr auto TrackMix       = "TRACK_MIX";
-// The other key `mixes` can carry. Nothing reads an artist radio yet.
+// An artist's radio station. `artists/<id>` carries its id under
+// `mixes.ARTIST_MIX`, and ArtistPage opens it on MixPage.
 inline constexpr auto ArtistMix      = "ARTIST_MIX";
 } // namespace MixTypes
 
@@ -368,6 +369,8 @@ struct ArtistDetail {
     QString picture;
     QString bio;
     int popularity = 0;
+    // The artist's radio as a mix id, from `mixes.ARTIST_MIX`; may be "".
+    QString artistMixId;
     QList<Album> albums;
     QList<Track> topTracks;
 
