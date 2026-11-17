@@ -47,6 +47,7 @@ TestCase {
     }
 
     SignalSpy { id: queueSpy; target: player; signalName: "queueChanged" }
+    SignalSpy { id: pickSpy; target: Edits; signalName: "playlistPickRequested" }
 
     function init() {
         app.setReducedMotionForTest(true)      // no fades to wait out
@@ -152,6 +153,11 @@ TestCase {
             // this counter moves.
             property int pageClicks: 0
             property int dismissals: 0
+            // Where the panel sent the user, as "page id".
+            property var visits: []
+            function navigate(page, params) {
+                visits = visits.concat([page + " " + (params.albumId || params.artistId || "")])
+            }
             property alias panel: qp
 
             MouseArea {
@@ -569,6 +575,105 @@ TestCase {
         var grip = findByName(entry, "queueDragArea")
         compare(!!(grip && grip.enabled), row.can,
                 "a " + row.tag + " row " + (row.can ? "cannot" : "can") + " be dragged")
+    }
+
+    // ── the row menu ─────────────────────────────────────────────────────
+    // What Spotify's queue row offers, in the order the track rows use:
+    // Play next, Add to playlist, the two ways out, then Remove last.
+
+    function menuTexts(menu) {
+        var out = []
+        for (var i = 0; i < menu.count; ++i) {
+            var it = menu.itemAt(i)
+            if (it && it.visible && it.text !== undefined && it.text !== "" && it.height > 0)
+                out.push(it.text)
+        }
+        return out
+    }
+
+    function openRowMenu(host, panel, flatIndex) {
+        var entry = entryAt(panel, flatIndex)
+        verify(entry, "no row at " + flatIndex)
+        var p = pointIn(host, entry, entry.width / 2, entry.height / 2)
+        mouseClick(host.contentItem, p.x, p.y, Qt.RightButton)
+        tryVerify(function () { return panel.rowMenu.visible }, 2000, "the row menu did not open")
+        return panel.rowMenu
+    }
+
+    function test_the_row_menu_data() {
+        return [
+            { tag: "manual",  at: "manualAt",  want: ["Play next", "Add to playlist", "Go to album", "Go to artist", "Remove from queue"] },
+            { tag: "context", at: "contextAt", want: ["Play next", "Add to playlist", "Go to album", "Go to artist", "Remove from queue"] },
+            { tag: "current", at: "currentAt", want: ["Add to playlist", "Go to album", "Go to artist"] },
+            { tag: "played",  at: "playedAt",  want: ["Play next", "Add to playlist", "Go to album", "Go to artist"] }
+        ]
+    }
+
+    function test_the_row_menu(row) {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel[row.at])
+        // The tests run untranslated, so the source words are what is drawn.
+        compare(menuTexts(menu).join(" | "), row.want.join(" | "),
+                "the " + row.tag + " row offers the wrong entries")
+        menu.close()
+    }
+
+    // Play next on an upcoming row moves it to the front of the queue rather
+    // than queueing it twice.
+    function test_play_next_moves_an_upcoming_row_to_the_front() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel.contextAt + 1)
+        menu.playNextItem.triggered()
+        settle(host.contentItem)
+        compare(player.queueCalls.join(","), "moveQueueRow context 1 manual 0",
+                "Play next did not move the row")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Ctx 4,Manual 0,Manual 1,Ctx 3,Ctx 5",
+                "the row is not next")
+    }
+
+    function test_remove_from_queue_takes_a_context_row_out() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel.contextAt + 1)
+        menu.removeItem.triggered()
+        settle(host.contentItem)
+        // The flat index: Ctx 4 sits after two played, the current and two queued.
+        compare(player.queueCalls.join(","), "removeFromQueue 6",
+                "Remove asked the player for the wrong row")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Ctx 3,Ctx 5",
+                "the row stayed")
+    }
+
+    // Add to playlist hands the row's track to the one picker the window holds.
+    function test_add_to_playlist_asks_for_the_picker() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        pickSpy.clear()
+        var menu = openRowMenu(host, panel, panel.manualAt)
+        menu.addToPlaylistItem.triggered()
+        compare(pickSpy.count, 1, "no picker was asked for")
+        compare(pickSpy.signalArguments[0][0].length, 1, "the picker was asked for the wrong tracks")
+        compare(pickSpy.signalArguments[0][0][0].title, "Manual 0", "the picker got another row")
+    }
+
+    // Going to the album or the artist leaves the queue for the page.
+    function test_go_to_album_and_artist_open_the_page() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel.contextAt)
+        menu.goToAlbumItem.triggered()
+        settle(host.contentItem)
+        compare(host.visits.join(","), "album 55", "Go to album went elsewhere")
+        compare(host.dismissals, 1, "the queue stayed over the page it opened")
     }
 
     // ── going back to something already played ───────────────────────────

@@ -1858,8 +1858,13 @@ public:
         emit currentIndexChanged(m_index);
     }
     Q_INVOKABLE void removeFromQueue(int index) {
+        note(QStringLiteral("removeFromQueue %1").arg(index));
         if (index < 0 || index >= m_queue.size()) return;
         m_queue.removeAt(index);
+        // The sections stay where they were around the row that went.
+        if (index < m_index) --m_index;
+        else if (index > m_index && index <= m_index + m_manualCount)
+            setManualCount(m_manualCount - 1);
         if (m_index >= m_queue.size()) m_index = int(m_queue.size()) - 1;
         emit queueChanged();
         emit currentIndexChanged(m_index);

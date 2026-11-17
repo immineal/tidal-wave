@@ -204,6 +204,14 @@ QtObject {
 
     // ── playlists ────────────────────────────────────────────────────────
 
+    // Asks the window's playlist picker to add these tracks (track maps)
+    // wherever the user picks. Main.qml holds the one picker that answers.
+    signal playlistPickRequested(var tracks)
+    function pickPlaylist(tracks) {
+        var list = (tracks || []).filter(function (t) { return t && Number(t.id) > 0 })
+        if (list.length > 0) edits.playlistPickRequested(list)
+    }
+
     function _count(ids, trackId) {
         var n = 0
         for (var i = 0; i < ids.length; i++) if (Number(ids[i]) === Number(trackId)) n++

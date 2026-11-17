@@ -426,6 +426,151 @@ Item {
         }
     }
 
+    // ── the row menu ─────────────────────────────────────────────────────
+    // One for the panel, aimed at a row as it opens. What Spotify's queue row
+    // offers, in the order the track rows' menu uses.
+    readonly property alias rowMenu: rowMenu
+
+    function openRowMenu(entry, fromKeyboard) {
+        if (!entry || entry.isHeader || !entry.track) return
+        rowMenu.kind  = entry.kind
+        rowMenu.slot  = entry.slot
+        rowMenu.flat  = entry.rowIndex
+        rowMenu.track = entry.track
+        if (fromKeyboard) rowMenu.popup(entry, 16, entry.height)
+        else rowMenu.popup()
+    }
+
+    // A page the menu opens is shown, so the queue gets out of its way.
+    function leaveFor(page, params) {
+        var w = Window.window
+        if (!w || typeof w.navigate !== "function") return
+        w.navigate(page, params)
+        root.dismissed()
+    }
+
+    MenuBase {
+        id: rowMenu
+        objectName: "queueRowMenu"
+
+        property string kind: ""
+        property int  slot: -1
+        property int  flat: -1
+        property var  track: null
+        readonly property bool upcoming: kind === "manual" || kind === "context"
+
+        readonly property real albumId: track && Number(track.albumId) > 0 ? Number(track.albumId) : 0
+        // Every credit with a usable id, as TrackRow lists them.
+        readonly property var credits: {
+            var out = [], list = track && track.artistList ? track.artistList : []
+            for (var i = 0; i < list.length; i++) {
+                var id = Number(list[i].id)
+                if (id > 0) out.push({ id: id, name: String(list[i].name) })
+            }
+            var lead = track ? Number(track.artistId) : 0
+            if (out.length === 0 && lead > 0)
+                out.push({ id: lead, name: typeof track.artists === "string" ? track.artists : "" })
+            return out
+        }
+
+        readonly property alias playNextItem:      menuPlayNext
+        readonly property alias addToPlaylistItem: menuAddToPlaylist
+        readonly property alias goToAlbumItem:     menuGoToAlbum
+        readonly property alias removeItem:        menuRemove
+
+        onClosed: flat = -1
+
+        // A row already coming up moves to the front; one already played is
+        // queued again, as a track row's Play next does.
+        function playNext() {
+            if (kind === "manual") { if (slot > 0) player.moveManual(slot, 0) }
+            else if (kind === "context") player.moveQueueRow("context", slot, "manual", 0)
+            else if (track) {
+                player.playNext([track])
+                Toasts.show(qsTranslate("ContextMenu", "%Ln track(s) added to play next",
+                                        "queue confirmation", 1))
+            }
+        }
+
+        function remove() {
+            if (kind === "manual") player.removeManual(slot)
+            else if (kind === "context") player.removeFromQueue(root.queueIndexOf("context", slot))
+        }
+
+        // The row that opens the artists submenu, built from this delegate.
+        delegate: ContextMenu.Entry {
+            id: artistSubRow
+            iconName: "artist"
+            visible: rowMenu.credits.length > 1
+            height: visible ? implicitHeight : 0
+            rightPadding: Theme.space3 + Theme.space5
+            arrow: VectorIcon {
+                visible: artistSubRow.subMenu
+                x: artistSubRow.width - width - 12
+                y: (artistSubRow.height - height) / 2
+                width: 14; height: 14
+                name: "chevron-right"
+                color: artistSubRow.ink
+            }
+        }
+
+        ContextMenu.Entry {
+            id: menuPlayNext
+            visible: rowMenu.kind !== "current"
+            height: visible ? implicitHeight : 0
+            text: qsTranslate("TrackRow", "Play next", "verb, play this right after the current track")
+            iconName: "next"
+            onTriggered: rowMenu.playNext()
+        }
+        ContextMenu.Entry {
+            id: menuAddToPlaylist
+            text: qsTranslate("TrackRow", "Add to playlist")
+            iconName: "plus"
+            enabled: rowMenu.track !== null && Number(rowMenu.track.id) > 0
+            onTriggered: Edits.pickPlaylist([rowMenu.track])
+        }
+        ContextMenu.Separator { }
+        ContextMenu.Entry {
+            id: menuGoToAlbum
+            text: qsTranslate("TrackRow", "Go to album")
+            iconName: "album"
+            enabled: rowMenu.albumId > 0
+            onTriggered: root.leaveFor("album", { albumId: rowMenu.albumId })
+        }
+        ContextMenu.Entry {
+            text: qsTranslate("TrackRow", "Go to artist")
+            iconName: "artist"
+            visible: rowMenu.credits.length <= 1
+            height: visible ? implicitHeight : 0
+            enabled: rowMenu.credits.length === 1
+            onTriggered: if (rowMenu.credits.length === 1)
+                             root.leaveFor("artist", { artistId: rowMenu.credits[0].id })
+        }
+        MenuBase {
+            id: artistSubMenu
+            title: qsTranslate("TrackRow", "Go to artist")
+            Instantiator {
+                model: rowMenu.credits
+                delegate: ContextMenu.Entry {
+                    text: modelData.name
+                    onTriggered: root.leaveFor("artist", { artistId: modelData.id })
+                }
+                onObjectAdded: (index, object) => artistSubMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
+            }
+        }
+        ContextMenu.Separator { shown: rowMenu.upcoming }
+        ContextMenu.Entry {
+            id: menuRemove
+            visible: rowMenu.upcoming
+            height: visible ? implicitHeight : 0
+            text: qsTr("Remove from queue")
+            danger: true
+            iconName: "trash"
+            onTriggered: rowMenu.remove()
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: Theme.scrim
@@ -704,6 +849,7 @@ Item {
         readonly property bool isManual:  kind === "manual"
         readonly property bool actionable: !isHeader
         readonly property bool upcoming:   isManual || kind === "context"
+        readonly property bool menuOpen:   rowMenu.visible && rowMenu.flat === rowIndex
         readonly property bool draggable:  upcoming && root.upcomingCount > 1
         readonly property bool dragging:   root.dragging && root.dragFlat === rowIndex
 
@@ -762,7 +908,7 @@ Item {
             else if (event.key === Qt.Key_End) root.focusRow(root.rowCount, -1)
             else if (event.key === Qt.Key_Menu
                      || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
-                if (entry.isManual) rowMenu.popup(entry, 16, entry.height)
+                root.openRowMenu(entry, true)
             } else return
             event.accepted = true
         }
@@ -833,7 +979,7 @@ Item {
             // A dragged row is lifted: opaque, so the rows it passes stay under it.
             color: entry.dragging ? Theme.surfaceHigh
                  : entry.isCurrent ? Theme.accentSoft
-                 : (qHov.hovered || rowMenu.visible) ? Theme.hoverFill
+                 : (qHov.hovered || entry.menuOpen) ? Theme.hoverFill
                  : "transparent"
             border.width: (entry.activeFocus || entry.dragging) ? 2 : 0
             border.color: Theme.accent
@@ -875,7 +1021,7 @@ Item {
                 onClicked: function (mouse) {
                     if (travelled) return
                     if (mouse.button === Qt.RightButton) {
-                        if (entry.isManual) rowMenu.popup()
+                        root.openRowMenu(entry, false)
                         return
                     }
                     if (entry.actionable) root.activate(entry.kind, entry.slot)
@@ -1006,34 +1152,6 @@ Item {
             }
 
             HoverHandler { id: qHov }
-
-            Menu {
-                id: rowMenu
-                // So a test can reach a per-delegate menu, which is not in
-                // any item's children: a Popup is a QObject, not an Item.
-                objectName: "queueRowMenu"
-                // The same arrival as every other menu in the app; see
-                // ContextMenu.qml for why it is opacity and nothing else.
-                enter: ContextMenu.OpenFade { }
-                exit:  ContextMenu.CloseFade { }
-                // Insets reset, not inherited; see ContextMenu.qml.
-                leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-
-                // Assigned where it exists (Qt 6.8); see ContextMenu.qml.
-                Component.onCompleted: {
-                    if (this.popupType !== undefined) this.popupType = Popup.Item
-                }
-                implicitWidth: Theme.menuWidth(this)
-                overlap: 0
-                padding: Theme.menuPadding
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
-                ContextMenu.Entry {
-                    text: qsTr("Remove from queue")
-                    danger: true
-                    iconName: "trash"
-                    onTriggered: player.removeManual(entry.slot)
-                }
-            }
         }
     }
 }

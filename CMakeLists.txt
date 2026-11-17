@@ -225,6 +225,8 @@ qt_add_qml_module(tidalwave_qml
         qml/components/NewPlaylistDialog.qml
         qml/components/ConfirmDialog.qml
         qml/components/DuplicateAddDialog.qml
+        qml/components/PlaylistPicker.qml
+        qml/components/PlaylistPickerHost.qml
         qml/components/DeletePlaylistDialog.qml
         qml/components/SettingsPanel.qml
         qml/components/LibraryFinder.qml
