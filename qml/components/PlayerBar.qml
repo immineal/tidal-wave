@@ -166,7 +166,9 @@ Rectangle {
                     IconButton {
                         id: likeBtn
                         objectName: "playerLikeButton"
-                        anchors.left: titleText.right
+                        // After the title's ink: an elided title ends short of
+                        // its box, by up to a glyph.
+                        x: titleText.x + Math.min(titleText.width, titleText.contentWidth)
                         anchors.verticalCenter: titleText.verticalCenter
                         visible: root.hasTrack
                         icon: root.isLiked ? "heart-filled" : "heart"
