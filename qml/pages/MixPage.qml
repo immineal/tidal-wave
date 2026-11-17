@@ -60,6 +60,11 @@ Rectangle {
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
+    // The order the column headings ask for: only what is shown and what
+    // plays from here. root.tracks keeps the order it came in.
+    TrackListHeader.Sort { id: trackSort }
+    readonly property var shownTracks: trackSort.sorted(root.tracks)
+
     // Records this mix as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("mix", root.mixId, root.title)
@@ -111,66 +116,79 @@ Rectangle {
         id: tracksList
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: DetailHero {
-            id: hero
+        // The hero, then the column headings, which scroll away with it.
+        header: Column {
             width: tracksList.width
-            kind: root.isTrackRadio ? qsTr("Radio", "noun, a track's radio station")
-                                    : qsTr("Mix", "noun, a Tidal mix")
-            title: root.title
-            artSource: root.coverUrl
-            artIcon: "mix"
-            onPinRequested: (x, y) => {
-                var p = hero.mapToItem(root, x, y)
-                root.showHeroPinMenu(p.x, p.y)
-            }
 
-            Text {
-                visible: root.subtitle.length > 0
-                Layout.fillWidth: true
-                text: root.subtitle
-                color: Theme.textSec
-                font.pixelSize: Theme.fontBody
-                wrapMode: Text.WordWrap
-            }
-
-            actions: [
-                PillButton {
-                    text: qsTr("Play", "verb, button label")
-                    icon: "play"
-                    accent: true
-                    onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
-                },
-                PillButton {
-                    text: qsTr("Shuffle")
-                    icon: "shuffle"
-                    accent: false
-                    onClicked: {
-                        if (root.tracks.length > 0) {
-                            player.setShuffle(true)
-                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                        }
-                    }
-                },
-                // The account-wide favourite, a heart and the words as on
-                // AlbumPage. The local pin is on the right-click menu and
-                // writes nothing to Tidal.
-                PillButton {
-                    objectName: "mixSavePill"
-                    // Dead until the page knows which mix it is: a MixPage can
-                    // be constructed with no id at all.
-                    enabled: root.mixId.length > 0
-                    text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
-                                       : qsTr("Save", "verb, add mix to the library")
-                    icon: root.isSaved ? "heart-filled" : "heart"
-                    accent: root.isSaved
-                    // On the action row, which has clear space above.
-                    onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
-                                                            hero.actionRow)
+            DetailHero {
+                id: hero
+                width: tracksList.width
+                kind: root.isTrackRadio ? qsTr("Radio", "noun, a track's radio station")
+                                        : qsTr("Mix", "noun, a Tidal mix")
+                title: root.title
+                artSource: root.coverUrl
+                artIcon: "mix"
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
                 }
-            ]
+
+                Text {
+                    visible: root.subtitle.length > 0
+                    Layout.fillWidth: true
+                    text: root.subtitle
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                    wrapMode: Text.WordWrap
+                }
+
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: if (root.tracks.length > 0) root.playFrom(root.shownTracks, 0)
+                    },
+                    PillButton {
+                        text: qsTr("Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                player.setShuffle(true)
+                                root.playFrom(root.shownTracks, Math.floor(Math.random() * root.tracks.length))
+                            }
+                        }
+                    },
+                    // The account-wide favourite, a heart and the words as on
+                    // AlbumPage. The local pin is on the right-click menu and
+                    // writes nothing to Tidal.
+                    PillButton {
+                        objectName: "mixSavePill"
+                        // Dead until the page knows which mix it is: a MixPage can
+                        // be constructed with no id at all.
+                        enabled: root.mixId.length > 0
+                        text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
+                                           : qsTr("Save", "verb, add mix to the library")
+                        icon: root.isSaved ? "heart-filled" : "heart"
+                        accent: root.isSaved
+                        // On the action row, which has clear space above.
+                        onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
+                                                                hero.actionRow)
+                    }
+                ]
+            }
+
+            TrackListHeader {
+                objectName: "mixTracksHeader"
+                x: 16
+                width: tracksList.width - 32
+                sort: trackSort
+                showAlbum: width - root.sidebarReclaim >= albumBreakpoint
+            }
         }
 
         delegate: TrackRow {
@@ -187,7 +205,7 @@ Rectangle {
             durationStr: modelData.durationStr
             coverUrl:    modelData.coverUrl80
             trackData:   modelData
-            onPlayRequested: root.playFrom(root.tracks, index)
+            onPlayRequested: root.playFrom(root.shownTracks, index)
         }
 
         // The footer, so on a mix with no tracks the message sits directly

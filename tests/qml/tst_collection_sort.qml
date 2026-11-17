@@ -1,6 +1,7 @@
-// The sort pills over the collection's first four tabs. A to Z and Z to A
-// re-sort the tab's grid by title; Default is the order the bridge hands over,
-// and its tooltip says what that order is on each tab.
+// The sort pills over the collection's three card tabs. A to Z and Z to A
+// re-sort the tab's grid by title; Default is the order the bridge hands
+// over, and its tooltip says what that order is on each tab. Liked tracks
+// sort in their column headings instead.
 
 import QtQuick
 import QtQuick.Controls
@@ -86,7 +87,6 @@ TestCase {
 
     function test_default_says_what_order_it_is_data() {
         return [
-            { tag: "tracks",    tab: 0 },
             { tag: "albums",    tab: 1 },
             { tag: "artists",   tab: 2 },
             { tag: "playlists", tab: 3 }
@@ -99,7 +99,7 @@ TestCase {
         verify(pill, "there is no Default pill")
         verify(pill.hint.length > 0, "Default on the " + data.tag + " tab explains nothing")
         var others = []
-        for (var t = 0; t < 4; t++) {
+        for (var t = 1; t < 4; t++) {
             if (t === data.tab) continue
             page.activeTab = t
             others.push(pill.hint)
@@ -126,7 +126,7 @@ TestCase {
     }
 
     function test_the_sort_options_are_plain_text_with_an_underline() {
-        var page = makeCollection(1)
+        var page = makeCollection(2)
         var opts = sortOptions(page)
         compare(opts.length, 3, "there are not three sort options")
         var widths = opts.map(function (o) { return o.width })

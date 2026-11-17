@@ -27,7 +27,51 @@ Item {
     property bool   isPlaying: false
     property bool   showAlbum: true
     property bool   showCover: true
+    // The date the track was liked or put on the list, where the list has it.
+    property bool   showAdded: false
     property var    trackData: null   // full track map (has albumId, id, etc.)
+
+    // ── the columns' widths, shared with TrackListHeader ────────────────
+    // The header builds its headings from the same numbers, so a heading
+    // stays over its column at every width.
+    component Columns : QtObject {
+        property real rowWidth: 0
+        property bool showAlbum: true
+        property bool showAdded: false
+        property bool showCover: true
+
+        // Measured against the row's own width, not the window's. The
+        // date goes first, then the album.
+        readonly property int albumBreakpoint: 640
+        readonly property int addedBreakpoint: 860
+
+        property TextMetrics numberRoom: TextMetrics { font.pixelSize: Theme.fontMeta; text: "0000" }
+        property TextMetrics lengthRoom: TextMetrics { font.pixelSize: Theme.fontMeta; text: "0:00:00" }
+        property TextMetrics dateRoom: TextMetrics {
+            font.pixelSize: Theme.fontMeta
+            text: new Date(2000, 11, 28).toLocaleDateString(Qt.locale(), Locale.ShortFormat)
+        }
+
+        // Four digits, so a long collection's numbers stay in their gutter.
+        readonly property real numberWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
+        readonly property bool albumShown: showAlbum && rowWidth >= albumBreakpoint
+        // A share of a wide row, so a long album name is not cut short
+        // beside an empty title column.
+        readonly property real albumWidth: Math.round(Math.max(160, Math.min(320, rowWidth * 0.28)))
+        readonly property bool addedShown: showAdded && rowWidth >= addedBreakpoint
+        readonly property real addedWidth: Math.max(96, Math.ceil(dateRoom.advanceWidth))
+        readonly property real heartWidth: 24
+        // Fixed, so the lengths line up and the heading can end where they do.
+        readonly property real durationWidth: Math.max(40, Math.ceil(lengthRoom.advanceWidth))
+        readonly property real buttonWidth: 24
+    }
+    Columns {
+        id: cols
+        rowWidth: root.width
+        showAlbum: root.showAlbum
+        showAdded: root.showAdded
+        showCover: root.showCover
+    }
 
     // ── what a partial payload degrades to ──────────────────────────────
     // Only a non-empty string counts; anything else is "we were not told".
@@ -154,9 +198,12 @@ Item {
     // The failure is up over the button until the error state ends.
     property bool dlErrorShown: false
 
-    // The column breakpoint, measured against the row's own width, not the
-    // window's. The album column is the first to go.
-    readonly property int albumBreakpoint: 640
+    // For pages that gate a column against the sidebar; see Columns.
+    readonly property int albumBreakpoint: cols.albumBreakpoint
+    readonly property int addedBreakpoint: cols.addedBreakpoint
+    readonly property real addedAt: root.trackData ? (Number(root.trackData.addedAt) || 0) : 0
+    readonly property string addedText: root.addedAt > 0
+        ? new Date(root.addedAt).toLocaleDateString(Qt.locale(), Locale.ShortFormat) : ""
 
     // Reads the row's hover state from outside, e.g. so a layout test can
     // check the title does not move when the pointer enters.
@@ -367,11 +414,9 @@ Item {
             anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
             spacing: Theme.space3
 
-            // Track number / now playing indicator. Wide enough for four
-            // digits, so a long collection's numbers stay in their gutter.
-            TextMetrics { id: numberRoom; font.pixelSize: Theme.fontMeta; text: "0000" }
+            // Track number / now playing indicator.
             Item {
-                Layout.preferredWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
+                Layout.preferredWidth: cols.numberWidth
                 Layout.alignment: Qt.AlignVCenter
                 Text {
                     objectName: "trackRowNumber"
@@ -482,10 +527,8 @@ Item {
                 id: albumColumn
                 objectName: "trackAlbumColumn"
                 readonly property bool linkable: root.albumIdOf > 0
-                visible: showAlbum && root.width >= root.albumBreakpoint
-                // A share of a wide row, so a long album name is not cut
-                // short beside an empty title column.
-                Layout.preferredWidth: Math.round(Math.max(160, Math.min(320, root.width * 0.28)))
+                visible: cols.albumShown
+                Layout.preferredWidth: cols.albumWidth
                 text: root.albumText
                 color: albumHit.containsMouse ? Theme.textPrimary : Theme.textSec
                 font.pixelSize: Theme.fontMeta
@@ -509,6 +552,16 @@ Item {
                 }
             }
 
+            Text {
+                objectName: "trackAddedColumn"
+                visible: cols.addedShown
+                Layout.preferredWidth: cols.addedWidth
+                text: root.addedText
+                color: Theme.textSec
+                font.pixelSize: Theme.fontMeta
+                elide: Text.ElideRight
+            }
+
             // The heart: filled in the accent on a liked track at rest, the
             // outline on hover to like one. A click is the like, not a play.
             Item {
@@ -517,7 +570,7 @@ Item {
                 readonly property bool liked: root.isLiked
                 readonly property bool shown: liked || hov.hovered
                 opacity: shown ? 1 : 0
-                Layout.preferredWidth: 24
+                Layout.preferredWidth: cols.heartWidth
                 Layout.fillHeight: true
                 Layout.alignment: Qt.AlignVCenter
                 Accessible.role: Accessible.Button
@@ -551,7 +604,7 @@ Item {
                 text: root.durationText
                 color: Theme.textDim
                 font.pixelSize: Theme.fontMeta
-                Layout.preferredWidth: Math.max(40, implicitWidth)
+                Layout.preferredWidth: cols.durationWidth
                 horizontalAlignment: Text.AlignRight
             }
 

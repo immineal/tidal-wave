@@ -212,6 +212,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/SettingsPanel.qml
         qml/components/LibraryFinder.qml
         qml/components/TrackRow.qml
+        qml/components/TrackListHeader.qml
         qml/components/ExplicitBadge.qml
         qml/components/MediaCard.qml
         qml/components/BackButton.qml

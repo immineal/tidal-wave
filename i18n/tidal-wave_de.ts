@@ -293,10 +293,6 @@
         <translation>Standard</translation>
     </message>
     <message>
-        <source>Default: most recently liked first</source>
-        <translation>Standard: zuletzt mit „Gefällt mir“ markierte zuerst</translation>
-    </message>
-    <message>
         <source>Default: most recently saved first</source>
         <translation>Standard: zuletzt gespeicherte zuerst</translation>
     </message>
@@ -2651,6 +2647,44 @@
         <source>Explicit</source>
         <comment>mark on a track whose lyrics are as recorded</comment>
         <translation>Explizit</translation>
+    </message>
+</context>
+<context>
+    <name>TrackListHeader</name>
+    <message>
+        <source>#</source>
+        <comment>column heading over the track numbers</comment>
+        <translation>#</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <comment>column heading</comment>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>column heading</comment>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Date added</source>
+        <comment>column heading</comment>
+        <translation>Hinzugefügt am</translation>
+    </message>
+    <message>
+        <source>Length</source>
+        <comment>column heading over the track lengths</comment>
+        <translation>Länge</translation>
+    </message>
+    <message>
+        <source>sorted ascending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>aufsteigend sortiert</translation>
+    </message>
+    <message>
+        <source>sorted descending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>absteigend sortiert</translation>
     </message>
 </context>
 </TS>
