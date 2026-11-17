@@ -2266,8 +2266,8 @@
         <translation>Hell</translation>
     </message>
     <message>
-        <source>Tinted greys</source>
-        <translation>Getönte Grautöne</translation>
+        <source>Let the colour in</source>
+        <translation>Mehr Farbe wagen</translation>
     </message>
     <message>
         <source>Bars follow the music</source>
