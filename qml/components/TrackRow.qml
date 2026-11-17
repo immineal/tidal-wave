@@ -408,6 +408,7 @@ Item {
     readonly property bool menuOpen: menuLoader.item ? menuLoader.item.visible : false
 
     Rectangle {
+        objectName: "trackRowGround"
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusMedium

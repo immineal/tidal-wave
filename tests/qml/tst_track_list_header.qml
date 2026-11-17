@@ -304,6 +304,13 @@ TestCase {
         var lh = findByName(p.head, "trackListHeadingLength"), len = findByName(row, "trackDuration")
         fuzzyCompare(xOn(lh) + lh.width, xOn(len) + len.width, 1,
                      what + ": the length heading does not end where the lengths do")
+        // The line under the headings spans the row's ground, end to end.
+        var rule = findByName(p.head, "trackListHeaderRule"), ground = findByName(row, "trackRowGround")
+        fuzzyCompare(xOn(rule), xOn(ground), 0.5,
+                     what + ": the heading line starts at " + xOn(rule) + ", the row at " + xOn(ground))
+        fuzzyCompare(xOn(rule) + rule.width, xOn(ground) + ground.width, 0.5,
+                     what + ": the heading line ends at " + (xOn(rule) + rule.width)
+                     + ", the row at " + (xOn(ground) + ground.width))
     }
 
     // ── the rows' inset ──────────────────────────────────────────────────
