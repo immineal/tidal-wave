@@ -242,7 +242,9 @@ struct Heard {
                 QMetaEnum::fromType<QMediaPlayer::MediaStatus>().valueToKey(s)));
             if (s == QMediaPlayer::EndOfMedia) ended = true;
             if (s == QMediaPlayer::BufferingMedia && !p->loading()) ++bufferingNotShown;
-            if (s == QMediaPlayer::LoadedMedia && countFromLoaded) {
+            // Qt 6.5 goes from LoadingMedia straight to BufferedMedia when
+            // play() came first; either says the backend has the track.
+            if (countFromLoaded && (s == QMediaPlayer::LoadedMedia || s == QMediaPlayer::BufferedMedia)) {
                 countFromLoaded = false;
                 rises = 0;
             }
@@ -533,6 +535,7 @@ private slots:
         QFETCH(int, rows);
         QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle(streamFirst)) QSKIP(why);
         Launch l;
         QVERIFY(sounding(l, rows, streamFirst));
 
@@ -572,6 +575,7 @@ private slots:
     {
         QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle(streamFirst)) QSKIP(why);
         Launch l;
         QVERIFY(sounding(l, 1, streamFirst));
 
@@ -607,6 +611,7 @@ private slots:
     {
         QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle(streamFirst)) QSKIP(why);
         Launch l;
         QVERIFY(sounding(l, 1, streamFirst));
         QVERIFY2(l.heard.blanks == 0,
@@ -662,6 +667,14 @@ private:
         if (QMediaDevices::audioOutputs().isEmpty())
             return "Qt 6.4 needs an audio device to play a track at its own pace";
 #endif
+        return nullptr;
+    }
+
+    // Rows that stream the track before its file lands need the join streamed.
+    static const char *streamObstacle(bool streamFirst)
+    {
+        if (streamFirst && !Player::kStreamsJoins)
+            return "below Qt 6.6 the Player does not stream a join (Player::kStreamsJoins)";
         return nullptr;
     }
 

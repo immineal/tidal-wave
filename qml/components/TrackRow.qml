@@ -871,6 +871,18 @@ Item {
         sourceComponent: MenuBase {
             parent: root
 
+            // Qt 6.4 leaves the keyboard on the window when a menu closes;
+            // later Qt gives it back to the item that had it, as this does.
+            property Item focusBefore: null
+            onAboutToShow: focusBefore = root.Window.window ? root.Window.window.activeFocusItem : null
+            onClosed: {
+                var w = root.Window.window
+                if (focusBefore && focusBefore.visible && w
+                        && (!w.activeFocusItem || w.activeFocusItem === w.contentItem))
+                    focusBefore.forceActiveFocus()
+                focusBefore = null
+            }
+
             // So a test can read the two queue labels without walking a
             // popup's contents, the way ContextMenu exposes its pin item.
             readonly property alias playNextItem:   playNextEntry
