@@ -1307,6 +1307,7 @@ Popup {
                         { ids: ["mute"],                            d: qsTr("Mute") },
                         { ids: ["shuffle"],                         d: qsTr("Toggle shuffle") },
                         { ids: ["repeat"],                          d: qsTr("Cycle repeat mode") },
+                        { ids: ["like"],                            d: qsTr("Like or unlike the playing track") },
                         { ids: ["home", "search", "collection"],    d: qsTr("Home / Search / Collection") },
                         { ids: ["nowPlaying"],                      d: qsTr("Now Playing") },
                         { ids: ["find", "findAlt"],                 d: qsTr("Find", "shortcut, puts the keyboard in the search field") },

@@ -176,4 +176,75 @@ TestCase {
         verify(sw, "the fade switch is not the shared Toggle")
         compare(typeName(sw), "Toggle")
     }
+
+    function sleepPopupOf(host) {
+        var stack = [host.page]
+        while (stack.length) {
+            var it = stack.pop()
+            for (var k = 0; it.data && k < it.data.length; ++k) {
+                var d = it.data[k]
+                if (!d) continue
+                if (d.objectName === "nowPlayingSleepTimerPopup") return d
+                stack.push(d)
+            }
+        }
+        return null
+    }
+
+    function findAllNamed(item, name, out) {
+        if (!item) return out
+        if (item.objectName === name) out.push(item)
+        for (var i = 0; i < item.children.length; ++i) findAllNamed(item.children[i], name, out)
+        return out
+    }
+
+    // The presets are the shared pill, and the custom length is the shared
+    // slider, as the volume is.
+    function test_the_sleep_presets_and_slider_are_shared_controls() {
+        var host = createTemporaryObject(npHost, testCase)
+        host.visible = true
+        frame(host.contentItem)
+        var popup = sleepPopupOf(host)
+        verify(popup, "Now Playing has no sleep timer popup")
+        var options = findAllNamed(popup.contentItem, "nowPlayingSleepOption", [])
+        compare(options.length, 6, "the six presets are not all there")
+        for (var i = 0; i < options.length; ++i)
+            compare(typeName(options[i]), "PillButton",
+                    "preset " + i + " is a button of its own")
+        var slider = findNamed(popup.contentItem, "nowPlayingSleepSlider")
+        verify(slider, "no custom length slider")
+        compare(typeName(slider), "VolumeSlider", "the custom length is a third slider")
+    }
+
+    // Cancelling a timer is the way back, not a danger: no red.
+    function test_sleep_cancel_is_a_plain_button() {
+        var host = createTemporaryObject(npHost, testCase)
+        host.sleepTimerActive = true
+        host.sleepTimeLeft = 600
+        host.visible = true
+        frame(host.contentItem)
+        var popup = sleepPopupOf(host)
+        var cancel = findNamed(popup.contentItem, "nowPlayingSleepCancel")
+        verify(cancel, "no Cancel")
+        compare(typeName(cancel), "PillButton", "Cancel is a button of its own")
+        verify(!cancel.danger, "Cancel is drawn as a danger")
+        verify(!cancel.accent, "Cancel is drawn as the primary action")
+    }
+
+    Component { id: loginHost; Window { width: 900; height: 700
+                                        property alias page: lp
+                                        LoginPage { id: lp; anchors.fill: parent } } }
+
+    function test_the_login_button_is_the_shared_pill() {
+        auth.setStateForTest(0)
+        auth.setHasSavedCredentialsForTest(false)
+        var host = createTemporaryObject(loginHost, testCase)
+        host.visible = true
+        frame(host.contentItem)
+        var btn = findNamed(host.page, "loginButton")
+        verify(btn, "no login button")
+        compare(typeName(btn), "PillButton", "the login button is a button of its own")
+        verify(btn.accent, "the login button is not the primary action")
+        auth.setStateForTest(2)
+    }
 }

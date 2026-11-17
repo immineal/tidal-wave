@@ -93,6 +93,24 @@ TestCase {
         compare(win.currentPage, "home", "Ctrl+N still goes to Now Playing")
     }
 
+    // Spotify's key for liking the playing track, with the same write,
+    // read-back and notice as the heart.
+    function test_alt_shift_b_likes_and_unlikes_the_playing_track() {
+        bridge.setTrackFavoriteForTest(4242, false)
+        bridge.resetFavoriteCallsForTest()
+        var win = showApp()
+        keyClick(Qt.Key_B, Qt.AltModifier | Qt.ShiftModifier)
+        tryVerify(function () { return bridge.isTrackFavorite(4242) }, 1000,
+                  "Alt+Shift+B does not like the playing track")
+        compare(bridge.lastFavoriteCallForTest(), "addTrack:4242")
+        tryVerify(function () { return Toasts.shown }, 1000, "the like said nothing")
+        keyClick(Qt.Key_B, Qt.AltModifier | Qt.ShiftModifier)
+        tryVerify(function () { return !bridge.isTrackFavorite(4242) }, 1000,
+                  "a second Alt+Shift+B does not unlike it")
+        tryVerify(function () { return Toasts.actionLabel.length > 0 }, 1000,
+                  "the unlike offered no Undo")
+    }
+
     function test_seek_and_volume_keys() {
         var win = showApp()
         keyClick(Qt.Key_Right, Qt.ShiftModifier)

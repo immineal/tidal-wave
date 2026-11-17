@@ -28,6 +28,9 @@ constexpr auto kNormalizeLoudness = "playback/normalizeLoudness";
 constexpr auto kAutoplay = "playback/autoplay";
 constexpr auto kCrossfade = "playback/crossfade";
 constexpr auto kCrossfadeSeconds = "playback/crossfadeSeconds";
+constexpr auto kWindowGeometry = "window/geometry";
+constexpr auto kWindowMaximized = "window/maximized";
+constexpr auto kLastPage = "window/lastPage";
 
 // A choice made with the old switch holds for both new ones; written back
 // at once so it is not applied again over a later change.
@@ -72,6 +75,7 @@ Prefs::Prefs(QObject *parent)
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
     m_crossfadeSeconds = std::clamp(m_crossfadeSeconds, minCrossfadeSeconds, maxCrossfadeSeconds);
+    m_lastPage = m_settings.value(kLastPage).toString();
 
     // A theme name from an older build is migrated and written back at once.
     // Left in the file, the migration would run on every launch and undo a
@@ -83,6 +87,25 @@ Prefs::Prefs(QObject *parent)
         // default cannot move a migrated palette.
         m_settings.setValue(kTinted, m_tintedGreys);
     }
+}
+
+QRect Prefs::windowGeometry() const { return m_settings.value(kWindowGeometry).toRect(); }
+
+void Prefs::setWindowGeometry(const QRect &r) {
+    if (r.isValid() && r != windowGeometry()) m_settings.setValue(kWindowGeometry, r);
+}
+
+bool Prefs::windowMaximized() const { return m_settings.value(kWindowMaximized, false).toBool(); }
+
+void Prefs::setWindowMaximized(bool v) {
+    if (v != windowMaximized()) m_settings.setValue(kWindowMaximized, v);
+}
+
+void Prefs::setLastPage(const QString &v) {
+    if (v == m_lastPage) return;
+    m_lastPage = v;
+    m_settings.setValue(kLastPage, v);
+    emit lastPageChanged();
 }
 
 void Prefs::setTheme(const QString &v) {

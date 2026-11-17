@@ -8,6 +8,8 @@
 #include "ui/ReducedMotion.h"
 #include "ui/ThemePalette.h"
 #include "ui/RemoteControl.h"
+#include "mediasession/MediaSession.h"
+#include "ui/TidalLink.h"
 #include "ui/TrackNotifier.h"
 #include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
@@ -618,6 +620,7 @@ int Application::run(int argc, char **argv) {
     // Prefs first: QSettings needs the names above, and the scene graph backend
     // below is chosen once, before any window exists.
     m_prefs = new Prefs(this);
+    m_startPage = m_prefs->lastPage();
     // Before the engine, so the tray menu and any startup error are translated.
     m_i18n = new I18n(m_prefs, this);
     m_update = new UpdateCheck(this);
@@ -783,6 +786,12 @@ int Application::run(int argc, char **argv) {
     m_mpris  = new MprisManager(m_player, this);
     // Raise takes the way back that the tray's Show item takes.
     connect(m_mpris, &MprisManager::raiseRequested, this, &Application::showWindow);
+    // A link from a desktop widget goes the way a link on the command line goes.
+    connect(m_mpris, &MprisManager::openUriRequested, this, [this](const QString &uri) {
+        LaunchRequest request;
+        request.urls = { uri };
+        m_remote->submit(request);
+    });
 #endif
     // The same calls as the tray and the player bar.
     connect(m_remote, &RemoteControl::playPauseRequested, m_player, [this] { m_player->playPause(); });
@@ -909,6 +918,22 @@ int Application::run(int argc, char **argv) {
     ctx->setContextProperty(QStringLiteral("listenBrainz"), m_listenBrainz);
     ctx->setContextProperty(QStringLiteral("lastFm"), m_lastFm);
 
+    // The window comes up where it was left, before it is first shown.
+    QList<QRect> screens;
+    for (const QScreen *screen : QGuiApplication::screens())
+        screens.append(screen->availableGeometry());
+    const QRect restored = placeWindow(m_prefs->windowGeometry(), screens, QSize(1280, 800));
+    QVariantMap initial;
+    if (restored.isValid()) {
+        initial.insert(QStringLiteral("x"), restored.x());
+        initial.insert(QStringLiteral("y"), restored.y());
+        initial.insert(QStringLiteral("width"), restored.width());
+        initial.insert(QStringLiteral("height"), restored.height());
+    }
+    if (m_prefs->windowMaximized())
+        initial.insert(QStringLiteral("visibility"), int(QWindow::Maximized));
+    m_engine->setInitialProperties(initial);
+
     // loadFromModule() arrived in Qt 6.5. The URL is the same component; its
     // prefix has to match RESOURCE_PREFIX in CMakeLists.txt, and a wrong one
     // fails with no message.
@@ -923,6 +948,14 @@ int Application::run(int argc, char **argv) {
     if (auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
         connect(window, &QWindow::visibleChanged, this, &Application::refreshTray);
         connect(window, &QWindow::windowStateChanged, this, &Application::refreshTray);
+        trackWindowState(window, restored);
+#ifndef Q_OS_LINUX
+        // The media keys and the system's now-playing panel. Windows needs
+        // the window's handle, so after the window exists.
+        m_mediaSession = new MediaSession(this);
+        m_mediaSession->setBackend(MediaSession::createPlatformBackend(m_mediaSession, window));
+        m_mediaSession->attach(m_player);
+#endif
     }
     refreshTray();
 
@@ -951,6 +984,72 @@ bool Application::installSignalHandlers() {
     connect(m_signals, &SignalWatcher::quitRequested,
             this, &Application::quit, Qt::UniqueConnection);
     return m_signals->install();
+}
+
+QRect Application::placeWindow(const QRect &saved, const QList<QRect> &screens,
+                               const QSize &fallback) {
+    if (!saved.isValid() || screens.isEmpty()) return QRect();
+    // A size too small to be one a person chose is a damaged file.
+    QSize size = saved.size();
+    if (size.width() < 200 || size.height() < 200) size = fallback;
+
+    QRect screen = screens.first();
+    qint64 most = 0;
+    for (const QRect &s : screens) {
+        const QRect overlap = s.intersected(QRect(saved.topLeft(), size));
+        const qint64 area = overlap.isValid() ? qint64(overlap.width()) * overlap.height() : 0;
+        if (area > most) { most = area; screen = s; }
+    }
+    size = size.boundedTo(screen.size());
+    const QRect wanted(saved.topLeft(), size);
+    if (screen.contains(wanted)) return wanted;
+    const int x = std::clamp(wanted.x(), screen.left(), screen.right() - size.width() + 1);
+    const int y = std::clamp(wanted.y(), screen.top(), screen.bottom() - size.height() + 1);
+    return QRect(QPoint(x, y), size);
+}
+
+void Application::trackWindowState(QWindow *window, const QRect &restored) {
+    // The unmaximised geometry is what a restart needs; a maximised or
+    // fullscreen window's own is the screen's.
+    auto normal = std::make_shared<QRect>(restored.isValid() ? restored : window->geometry());
+    auto maximized = std::make_shared<bool>(m_prefs->windowMaximized());
+    auto *save = new QTimer(this);
+    save->setSingleShot(true);
+    save->setInterval(500);
+    connect(save, &QTimer::timeout, this, [this, normal, maximized] {
+        m_prefs->setWindowGeometry(*normal);
+        m_prefs->setWindowMaximized(*maximized);
+    });
+    const auto moved = [window, normal, save] {
+        if (window->windowStates() != Qt::WindowNoState || !window->isVisible()) return;
+        *normal = window->geometry();
+        save->start();
+    };
+    connect(window, &QWindow::xChanged, this, moved);
+    connect(window, &QWindow::yChanged, this, moved);
+    connect(window, &QWindow::widthChanged, this, moved);
+    connect(window, &QWindow::heightChanged, this, moved);
+    connect(window, &QWindow::windowStateChanged, this, [maximized, save](Qt::WindowState state) {
+        // Fullscreen is left on the way out, so it says nothing about the next start.
+        if (state == Qt::WindowFullScreen || state == Qt::WindowMinimized) return;
+        *maximized = state == Qt::WindowMaximized;
+        save->start();
+    });
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this, normal, maximized] {
+        m_prefs->setWindowGeometry(*normal);
+        m_prefs->setWindowMaximized(*maximized);
+    });
+}
+
+bool Application::isTidalLink(const QString &text) const {
+    return TidalLink::parse(text.trimmed()).isValid();
+}
+
+void Application::openLink(const QString &text) {
+    LaunchRequest request;
+    request.show = false;
+    request.urls = { text.trimmed() };
+    m_remote->submit(request);
 }
 
 void Application::quit() {
