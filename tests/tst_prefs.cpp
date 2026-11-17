@@ -71,12 +71,12 @@ private slots:
 
     // The narrowest sidebar still has to hold the five filter chips at their
     // fixed size. The numbers below mirror SideBar's margin and the strip's
-    // inset and spacing, so five 32px chips want 166px of finder.
+    // inset and spacing, so five 30px chips want 166px of finder.
     void theNarrowestSidebarStillFitsTheFilterChips() {
         constexpr int finderMargin = 12;
-        constexpr int chipInset    = 3;
-        constexpr int chipSpacing  = 0;
-        constexpr int chipWidth    = 32;
+        constexpr int chipInset    = 4;
+        constexpr int chipSpacing  = 2;
+        constexpr int chipWidth    = 30;
         constexpr int chips        = 5;
 
         const int needed = 2 * chipInset + chips * chipWidth + (chips - 1) * chipSpacing;
