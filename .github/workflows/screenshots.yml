@@ -1,7 +1,7 @@
 name: Store screenshots
 
-# Started by hand. Draws the five store screenshots from the invented library
-# and hands them back as an artifact. Nothing is committed.
+# Started by hand. Draws the five store screenshots, in a dark and a light
+# theme, and hands them back as an artifact. Nothing is committed.
 on:
   workflow_dispatch:
 
@@ -43,7 +43,7 @@ jobs:
       - name: Draw the store set
         run: tests/visual/run.sh store
 
-      - name: Upload the five screenshots
+      - name: Upload the screenshots
         uses: actions/upload-artifact@v7
         with:
           name: store-screenshots
@@ -51,8 +51,13 @@ jobs:
           # picture fails here.
           if-no-files-found: error
           path: |
-            tests/visual/out/store_home.png
-            tests/visual/out/store_collection.png
-            tests/visual/out/store_album.png
-            tests/visual/out/store_nowplaying.png
-            tests/visual/out/store_search.png
+            tests/visual/out/store_home_sea.png
+            tests/visual/out/store_collection_sea.png
+            tests/visual/out/store_album_sea.png
+            tests/visual/out/store_nowplaying_sea.png
+            tests/visual/out/store_search_sea.png
+            tests/visual/out/store_home_sky.png
+            tests/visual/out/store_collection_sky.png
+            tests/visual/out/store_album_sky.png
+            tests/visual/out/store_nowplaying_sky.png
+            tests/visual/out/store_search_sky.png
