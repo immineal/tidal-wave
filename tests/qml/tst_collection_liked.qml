@@ -1,6 +1,6 @@
 // Collection's tab labels and Liked tracks' buttons. A tab whose list is
-// still on its way says no count rather than "(0)", and Liked tracks has a
-// Play beside Shuffle, as a playlist has. Every title is invented.
+// still on its way says no count rather than "(0)", and Liked tracks has
+// Shuffle and no Play. Every title is invented.
 
 import QtQuick
 import QtQuick.Controls
@@ -77,26 +77,18 @@ TestCase {
         compare(tabLabels(page)[0], "Tracks (3)")
     }
 
-    function test_liked_tracks_has_play_beside_shuffle() {
+    // Shuffle alone, with no Play beside it.
+    function test_liked_tracks_offers_shuffle_and_no_play() {
         bridge.setFavoriteTracksListForTest(tracks())
         var page = makeCollection()
         var play = findChild(page, "collectionPlayButton")
+        verify(!play || !play.visible, "Liked tracks offers a Play beside Shuffle")
         var shuffle = findChild(page, "collectionSurpriseButton")
-        verify(play && play.visible, "Liked tracks has no Play")
-        verify(play.accent, "Play is not the page's filled pill")
-        verify(play.x < shuffle.x, "Play is not before Shuffle")
-        mouseClick(play)
-        compare(player.queueTracks.map(function (t) { return t.title }).join(","),
-                "Erstes,Zweites,Drittes")
-        compare(player.queueIndex, 0, "Play did not start at the top")
-        compare(player.shuffle, false, "Play turned shuffle on")
+        verify(shuffle && shuffle.visible, "Liked tracks has no Shuffle")
+        compare(shuffle.text, qsTranslate("AlbumPage", "Shuffle"))
+        mouseClick(shuffle)
+        compare(player.queueTracks.length, 3, "Shuffle did not play the liked tracks")
+        compare(player.shuffle, true, "Shuffle did not turn shuffle on")
         compare(player.sourceType, "collection")
-    }
-
-    function test_the_other_tabs_have_no_play() {
-        var page = makeCollection()
-        page.activeTab = 1
-        var play = findChild(page, "collectionPlayButton")
-        verify(!play || !play.visible, "an album grid offers to play the tab")
     }
 }

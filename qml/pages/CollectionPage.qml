@@ -352,20 +352,6 @@ Rectangle {
                 }
             }
 
-            // Liked tracks as shown, from the top, as a playlist's Play.
-            PillButton {
-                objectName: "collectionPlayButton"
-                visible: root.activeTab === 0
-                text: qsTranslate("AlbumPage", "Play", "verb, button label")
-                icon: "play"
-                accent: true
-                enabled: root.tabCount > 0
-                opacity: enabled ? 1 : 0.45
-                Layout.preferredWidth:  implicitWidth
-                Layout.preferredHeight: 36
-                onClicked: root.playShown()
-            }
-
             // A pick from what the tab shows now, field filter included.
             PillButton {
                 objectName: "collectionSurpriseButton"
@@ -903,16 +889,6 @@ Rectangle {
         case 4: return root.filteredMixes
         }
         return []
-    }
-
-    // Liked tracks in the order shown, from the first. Shuffle stays as set.
-    function playShown() {
-        var items = tracksList.sortedTracks
-        if (!items || items.length === 0) return
-        player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
-        if (Number(items[0].albumId) > 0)
-            library.markPlayed("album", "" + items[0].albumId)
-        player.playTracks(items, 0)
     }
 
     // Tracks: all of them, shuffled, from a random one, as a detail page's
