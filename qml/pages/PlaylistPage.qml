@@ -38,9 +38,28 @@ Rectangle {
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (root.playlistUuid.length === 0) return
+        if (bridge.offline) bridge.retryConnection()
+        loadPlaylist()
+    }
+
+    Connections {
+        target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
+    }
+
     // The first reason is kept; see ArtistPage.noteLoadError().
     function noteLoadError(err) {
-        if (root.loadError.length === 0) root.loadError = err
+        if (root.loadError.length > 0) return
+        root.loadError = err
+        root.loadOffline = bridge.offline === true
     }
 
     // Records this playlist as the "playing from" source, then starts playback.
@@ -128,6 +147,7 @@ Rectangle {
     function loadPlaylist() {
         loading = true
         loadError = ""
+        loadOffline = false
         playlistEditable = false
         // Which playlist these replies are about; see MixPage.loadMix().
         var requested = playlistUuid
@@ -306,47 +326,21 @@ Rectangle {
         // scrolls with it, as on MixPage.
         footer: Item {
             width: tracksList.width
-            height: root.loadFailed ? 200 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
 
-            ColumnLayout {
+            ErrorState {
+                id: loadErrorState
                 objectName: "playlistLoadError"
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: Theme.space3
-
-                VectorIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    // A Layout owns the size of its direct children, so a plain
-                    // width would be overwritten.
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    name: "playlist"
-                    color: Theme.textDim
-                }
-
-                Text {
-                    objectName: "playlistLoadErrorText"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("This playlist could not be loaded")
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSection
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Not the server's own string; see AlbumPage's panel for why.
+                namePrefix: "playlistLoadError"
+                icon: "playlist"
+                offline: root.loadOffline
+                title: qsTr("This playlist could not be loaded")
                 // One long literal, since lupdate cannot read a concatenation.
-                Text {
-                    objectName: "playlistLoadErrorDetail"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
-                    color: Theme.textSec
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.WordWrap
-                }
+                detail: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
+                onRetry: root.retryLoad()
             }
         }
 

@@ -748,6 +748,21 @@
     </message>
 </context>
 <context>
+    <name>ErrorState</name>
+    <message>
+        <source>Tidal cannot be reached</source>
+        <translation>Tidal ist nicht erreichbar</translation>
+    </message>
+    <message>
+        <source>Check the connection. The page loads by itself once Tidal answers again.</source>
+        <translation>Prüfe die Verbindung. Die Seite lädt von selbst, sobald Tidal wieder antwortet.</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
+    </message>
+</context>
+<context>
     <name>Feedback</name>
     <message>
         <source>Problem with Tidal Wave %1</source>
