@@ -197,6 +197,10 @@ public:
     Q_INVOKABLE void addToQueue  (const QVariantList &tracks);  // back
     Q_INVOKABLE void removeManual(int index);
     Q_INVOKABLE void moveManual  (int from, int to);
+    // Moves an upcoming row, "manual" or "context", to `toSlot` of either
+    // section; a row dropped in the other section joins it.
+    Q_INVOKABLE void moveQueueRow(const QString &fromSection, int fromSlot,
+                                  const QString &toSection, int toSlot);
     Q_INVOKABLE void clearManual ();
     // Play a row now. jumpToManual drops the rows it skipped past;
     // jumpToContext and jumpToPlayed only move the cursor.

@@ -172,6 +172,101 @@ Rectangle {
         })
     }
 
+    // ── reordering by drag ───────────────────────────────────────────────
+    // Only in the list's own order with every row shown, so a drop between
+    // two rows means the same place on Tidal; and one move at a time.
+    property bool moving: false
+    readonly property bool canReorder: root.playlistEditable && trackSort.key === ""
+        && root.trackFilter.trim().length === 0 && !root.moving && !root.loading
+        && root.tracks.length > 1
+    readonly property int rowHeight: 52
+    property int  dragFrom: -1
+    property real dragRowY: 0
+    property real dragPressY: 0
+    property real dragOffset: 0
+    property int  _currentBefore: -1
+    readonly property bool dragging: root.dragFrom >= 0
+    // The gap the drop aims at, 0 above the first row to n below the last,
+    // nearest the dragged row's middle; and the row's place after the drop.
+    readonly property int dropGap: !root.dragging ? -1
+        : Math.max(0, Math.min(root.tracks.length,
+              Math.round((root.dragRowY + root.dragOffset + root.rowHeight / 2
+                          - (root.dragRowY - root.dragFrom * root.rowHeight)) / root.rowHeight)))
+    readonly property int dropTo: root.dropGap > root.dragFrom ? root.dropGap - 1 : root.dropGap
+
+    function beginMove(row, index, pressY) {
+        root._currentBefore = tracksList.currentIndex
+        // Keeps the dragged row alive while the list scrolls under it.
+        tracksList.currentIndex = index
+        root.dragFrom = index
+        root.dragRowY = row.y
+        root.dragPressY = pressY
+        root.dragOffset = 0
+    }
+    // y is the pointer in the dragged row, which already carries the offset.
+    function followMove(y) {
+        if (root.dragging) root.dragOffset += y - root.dragPressY
+    }
+    function cancelMove() {
+        edgeScroll.stop()
+        if (!root.dragging) return
+        root.dragFrom = -1
+        root.dragOffset = 0
+        tracksList.currentIndex = root._currentBefore
+    }
+    function endMove() {
+        if (!root.dragging) return
+        var from = root.dragFrom, to = root.dropTo
+        root.cancelMove()
+        if (to < 0 || to === from || from >= root.tracks.length) return
+        var requested = root.playlistUuid
+        var trackId = Number(root.tracks[from].id)
+        root.moving = true
+        // The row moves on Tidal's word, as a removal leaves on it.
+        Edits.movePlaylistItem(requested, root.playlistTitle, trackId, from, to,
+                               function (ok, stale) {
+            if (requested !== root.playlistUuid) return
+            root.moving = false
+            if (stale === true) { Qt.callLater(root.reloadAfterStaleMove); return }
+            if (ok !== true || Number((root.tracks[from] || {}).id) !== trackId) return
+            var arr = root.tracks.slice()
+            arr.splice(to, 0, arr.splice(from, 1)[0])
+            root.tracks = arr
+        })
+    }
+    onTracksChanged: if (root.dragging) root.cancelMove()
+    onCanReorderChanged: if (!root.canReorder && root.dragging) root.cancelMove()
+
+    // Scrolls while the dragged row is held near the top or the bottom; the
+    // row stays under the pointer, so it travels with the list.
+    Timer {
+        id: edgeScroll
+        interval: 16
+        repeat: true
+        running: root.dragging
+        readonly property real band: 48
+        onTriggered: {
+            var y = root.dragRowY + root.dragOffset + root.dragPressY - tracksList.contentY
+            var top = detailBar.height + 40, bottom = tracksList.height
+            var step = y < top + band ? -Math.min(16, top + band - y)
+                     : y > bottom - band ? Math.min(16, y - (bottom - band)) : 0
+            if (step === 0) return
+            var lo = tracksList.originY
+            var hi = tracksList.originY + Math.max(0, tracksList.contentHeight - tracksList.height)
+            var next = Math.max(lo, Math.min(hi, tracksList.contentY + step))
+            root.dragOffset += next - tracksList.contentY
+            tracksList.contentY = next
+        }
+    }
+
+    readonly property string staleMoveText:
+        qsTr("This playlist was changed somewhere else, so nothing was moved. It has been reloaded.")
+    function reloadAfterStaleMove() {
+        Toasts.show(root.staleMoveText)
+        loadPlaylistHeader(root.playlistUuid)
+        reloadTracks()
+    }
+
     // A removal was refused because the playlist changed somewhere else since
     // this page read it. Nothing was removed; the page reads it again.
     readonly property string staleRemovalText:
@@ -384,6 +479,13 @@ Rectangle {
             // Its place on Tidal's list, which a sort does not move. A new
             // list can make its rows before its order is worked out.
             trackItemIndex: root.placeOf(index)
+            reorderable: root.canReorder
+            z: reordering ? 2 : 0
+            transform: Translate { y: playlistTrackRow.reordering ? root.dragOffset : 0 }
+            onReorderStarted: (x, y) => root.beginMove(playlistTrackRow, index, y)
+            onReorderMoved: (x, y) => root.followMove(y)
+            onReorderEnded: root.endMove()
+            onReorderCanceled: root.cancelMove()
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
                 root.playFrom(root.shownTracks, index)
@@ -475,6 +577,18 @@ Rectangle {
             minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
         }
         WheelStep { view: tracksList }
+
+        // Where the dragged row would land: a line in the gap.
+        Rectangle {
+            objectName: "playlistDropIndicator"
+            visible: root.dragging && root.dropTo !== root.dragFrom
+            x: Theme.space2
+            width: tracksList.width - 32 - 2 * Theme.space2
+            height: 2
+            color: Theme.accent
+            y: root.dragRowY + (root.dropGap - root.dragFrom) * root.rowHeight - tracksList.contentY - 1
+            z: 3
+        }
     }
 
     DetailBar {

@@ -686,6 +686,27 @@ public:
         // After the callback and only on a success, in the real bridge's order.
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
     }
+    // Several in one write, as TidalBridge::addTrackListToPlaylist: SKIP
+    // leaves out what the playlist holds, ADD adds it again. Counted as one
+    // add call per write; each write's size goes into addWritesForTest().
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb) {
+        m_lastAddedPlaylist = uuid;
+        m_lastAddedTrackId  = trackIds.isEmpty() ? 0 : trackIds.last().toLongLong();
+        m_addToPlaylistCalls++;
+        m_addWrites << QStringLiteral("%1%2").arg(trackIds.size()).arg(allowDupes ? "+" : "");
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            for (const QVariant &v : trackIds) {
+                const QVariant id(double(v.toLongLong()));
+                if (allowDupes || !rows.contains(id)) rows.append(id);
+            }
+        }
+        resolveOk(cb, m_addToPlaylistOk);
+        if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QStringList addWritesForTest() const { return m_addWrites; }
     // Records the row a removal's undo puts back; answers as an add does.
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb) {
@@ -763,6 +784,25 @@ public:
             cb.call({ QJSValue(m_removeFromPlaylistOk), QJSValue(false),
                       QJSValue(m_removeFromPlaylistOk ? itemIndex : -1) });
         if (m_removeFromPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+
+    // ── moveTrackInPlaylist: toIndex is where the row ends ───────────────
+    // Answers (ok, stale) as the real bridge; setMoveAnswerForTest() picks
+    // "ok", "stale" or "fail", and deferMovesForTest() holds the answer
+    // until answerMoveForTest(). Each call is noted as "from>to".
+    Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                         QJSValue cb) {
+        m_moves << QStringLiteral("%1>%2").arg(fromIndex).arg(toIndex);
+        if (m_deferMoves) { m_pendingMoves.append({cb, uuid, fromIndex, toIndex}); return; }
+        deliverMove(cb, uuid, fromIndex, toIndex);
+    }
+    Q_INVOKABLE QStringList movesForTest() const { return m_moves; }
+    Q_INVOKABLE void setMoveAnswerForTest(const QString &a) { m_moveAnswer = a; }
+    Q_INVOKABLE void deferMovesForTest(bool on) { m_deferMoves = on; }
+    Q_INVOKABLE void answerMoveForTest() {
+        if (m_pendingMoves.isEmpty()) return;
+        PendingMove m = m_pendingMoves.takeFirst();
+        deliverMove(m.cb, m.uuid, m.from, m.to);
     }
 
     // ── editPlaylist, as TidalBridge::editPlaylist behaves ───────────────
@@ -1057,6 +1097,11 @@ public:
         m_lastAddedPlaylist.clear();
         m_lastAddedTrackId   = 0;
         m_addToPlaylistCalls = 0;
+        m_addWrites.clear();
+        m_moves.clear();
+        m_moveAnswer = QStringLiteral("ok");
+        m_deferMoves = false;
+        m_pendingMoves.clear();
         m_lastRestored.clear();
         m_addToPlaylistOk    = true;
     }
@@ -1612,6 +1657,27 @@ private:
         emit playlistStatsRefreshed(uuid);
     }
 
+    // A move's answer, inline or when a held one is released.
+    struct PendingMove { QJSValue cb; QString uuid; int from; int to; };
+    void deliverMove(QJSValue cb, const QString &uuid, int from, int to) {
+        const bool ok = m_moveAnswer == QLatin1String("ok");
+        if (ok) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            if (from >= 0 && from < rows.size()) {
+                const QVariant v = rows.takeAt(from);
+                rows.insert(qBound(0, to, int(rows.size())), v);
+            }
+        }
+        if (cb.isCallable())
+            cb.call({ QJSValue(ok), QJSValue(m_moveAnswer == QLatin1String("stale")) });
+        if (ok) refreshPlaylistMeta(uuid);
+    }
+    QStringList        m_moves;
+    QString            m_moveAnswer = QStringLiteral("ok");
+    bool               m_deferMoves = false;
+    QList<PendingMove> m_pendingMoves;
+
     // The body of a createPlaylist reply, inline or when a held one is released.
     void deliverCreate(QJSValue &cb, const QString &title) {
         QVariantMap p;
@@ -1716,6 +1782,7 @@ private:
     QString   m_lastAddedPlaylist;
     qlonglong m_lastAddedTrackId   = 0;
     int       m_addToPlaylistCalls = 0;
+    QStringList m_addWrites;
     QString   m_lastRestored;
     int       m_readLag = 0;
     int       m_lagLeft = 0;
@@ -1895,8 +1962,13 @@ public:
         emit currentIndexChanged(m_index);
     }
     Q_INVOKABLE void removeFromQueue(int index) {
+        note(QStringLiteral("removeFromQueue %1").arg(index));
         if (index < 0 || index >= m_queue.size()) return;
         m_queue.removeAt(index);
+        // The sections stay where they were around the row that went.
+        if (index < m_index) --m_index;
+        else if (index > m_index && index <= m_index + m_manualCount)
+            setManualCount(m_manualCount - 1);
         if (m_index >= m_queue.size()) m_index = int(m_queue.size()) - 1;
         emit queueChanged();
         emit currentIndexChanged(m_index);
@@ -1997,6 +2069,28 @@ public:
         if (from < 0 || from >= m_manualCount ||
             to   < 0 || to   >= m_manualCount || from == to) return;
         m_queue.move(m_index + 1 + from, m_index + 1 + to);
+        emit queueChanged();
+    }
+    // The real Player's rule, so the panel's rows follow a drop.
+    Q_INVOKABLE void moveQueueRow(const QString &fromSection, int fromSlot,
+                                  const QString &toSection, int toSlot) {
+        note(QStringLiteral("moveQueueRow %1 %2 %3 %4")
+                 .arg(fromSection).arg(fromSlot).arg(toSection).arg(toSlot));
+        const auto known = [](const QString &s) {
+            return s == QLatin1String("manual") || s == QLatin1String("context");
+        };
+        if (!known(fromSection) || !known(toSection)) return;
+        const bool fromManual = fromSection == QLatin1String("manual");
+        const bool toManual   = toSection   == QLatin1String("manual");
+        const int start   = m_index + 1;
+        const int context = int(m_queue.size()) - start - m_manualCount;
+        if (fromSlot < 0 || fromSlot >= (fromManual ? m_manualCount : context)) return;
+        const int manualLeft = m_manualCount - (fromManual ? 1 : 0);
+        const int slot = qBound(0, toSlot, toManual ? manualLeft : context - (fromManual ? 0 : 1));
+        if (fromManual == toManual && slot == fromSlot) return;
+        const QVariant row = m_queue.takeAt(start + (fromManual ? 0 : m_manualCount) + fromSlot);
+        m_queue.insert(start + (toManual ? 0 : manualLeft) + slot, row);
+        setManualCount(manualLeft + (toManual ? 1 : 0));
         emit queueChanged();
     }
     Q_INVOKABLE void clearManual() {

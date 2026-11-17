@@ -854,6 +854,9 @@ ApplicationWindow {
     // Asks before a track goes into a playlist that holds it already.
     DuplicateAddDialog { }
 
+    // Answers Edits.pickPlaylist(): the queue's rows, an album, the queue.
+    PlaylistPickerHost { }
+
     // A Tidal link from the command line or the desktop. Track links arrive
     // as their album; each page loads its header from the id.
     Connections {

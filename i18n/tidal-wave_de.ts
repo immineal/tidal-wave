@@ -768,6 +768,16 @@
         <comment>after undoing a removal from a playlist</comment>
         <translation>Wieder in „%1“</translation>
     </message>
+    <message>
+        <source>Could not move the track</source>
+        <comment>shown when reordering a playlist failed</comment>
+        <translation>Der Titel konnte nicht verschoben werden</translation>
+    </message>
+    <message>
+        <source>Moved back in “%1”</source>
+        <comment>after undoing a move in a playlist</comment>
+        <translation>Zurückverschoben in „%1“</translation>
+    </message>
 </context>
 <context>
     <name>ErrorState</name>
@@ -1585,6 +1595,28 @@
         <source>Clear the field above to see every track again.</source>
         <translation>Leere das Feld oben, um wieder alle Titel zu sehen.</translation>
     </message>
+    <message>
+        <source>This playlist was changed somewhere else, so nothing was moved. It has been reloaded.</source>
+        <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts verschoben. Sie wurde neu geladen.</translation>
+    </message>
+</context>
+<context>
+    <name>PlaylistPicker</name>
+    <message>
+        <source>Find a playlist</source>
+        <comment>search field in the Add to playlist picker</comment>
+        <translation>Playlist suchen</translation>
+    </message>
+    <message>
+        <source>Has all of these already</source>
+        <comment>picker row: the playlist holds every track being added</comment>
+        <translation>Alle schon darin</translation>
+    </message>
+    <message>
+        <source>Has this track already</source>
+        <comment>picker row: the playlist holds the track being added</comment>
+        <translation>Schon darin</translation>
+    </message>
 </context>
 <context>
     <name>QueuePanel</name>
@@ -1666,6 +1698,11 @@
         <source>Next from: search “%1”</source>
         <comment>the queue was started from the search results</comment>
         <translation>Als Nächstes von: Suche „%1“</translation>
+    </message>
+    <message>
+        <source>Add the queue to a playlist</source>
+        <comment>button in the queue&apos;s header</comment>
+        <translation>Warteschlange zu einer Playlist hinzufügen</translation>
     </message>
 </context>
 <context>

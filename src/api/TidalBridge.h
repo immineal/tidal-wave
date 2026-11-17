@@ -174,6 +174,9 @@ public:
     // function(ok). On success both re-read the playlist's header and merge it
     // into both caches: see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist   (const QString &uuid, qlonglong trackId, QJSValue cb);
+    // Several in one write, in order; allowDupes adds those it holds again.
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb);
     // function(ok). Undoes a removal: the track goes back in at `index`.
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb);
@@ -190,6 +193,9 @@ public:
     // `index` is the row to take out once earlier removals have landed, -1
     // when there is none. `stale` means the playlist changed elsewhere.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
+    // cb(ok, stale): stale when the playlist changed since it was read.
+    Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                         QJSValue cb);
     // function(ok). On success the playlist leaves the caches, and
     // playlistDeleted tells the pages and the sidebar.
     Q_INVOKABLE void deletePlaylist         (const QString &uuid, QJSValue cb);

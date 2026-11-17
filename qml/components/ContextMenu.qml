@@ -100,6 +100,13 @@ MenuBase {
     // So a test can read the labels without walking a popup's contents.
     readonly property alias playNextItem:   playNextEntry
     readonly property alias addToQueueItem: addToQueueEntry
+    readonly property alias addToPlaylistItem: addToPlaylistEntry
+
+    // Every track of it, into a playlist the window's picker asks for.
+    function addToPlaylist() {
+        if (!root.trackSource) return
+        root.trackSource(function (tracks) { Edits.pickPlaylist(tracks) })
+    }
 
     function playNext()   { _queue(true) }
     function addToQueue() { _queue(false) }
@@ -259,6 +266,16 @@ MenuBase {
         text: qsTr("Add to queue", "verb, put this at the end of the queue")
         iconName: "queue"
         onTriggered: root.addToQueue()
+    }
+    // As the track rows' menu has it: the plus, after the queue entries.
+    Entry {
+        id: addToPlaylistEntry
+        objectName: "addToPlaylistMenuItem"
+        visible: root.trackSource !== null
+        height: visible ? implicitHeight : 0
+        text: qsTranslate("TrackRow", "Add to playlist")
+        iconName: "plus"
+        onTriggered: root.addToPlaylist()
     }
     Separator {
         shown: root.trackSource !== null && root.canPin

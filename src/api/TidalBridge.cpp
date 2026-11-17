@@ -882,6 +882,17 @@ void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJ
     });
 }
 
+void TidalBridge::addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                         bool allowDupes, QJSValue cb) {
+    QList<qint64> ids;
+    for (const QVariant &v : trackIds)
+        if (v.toLongLong() > 0) ids << v.toLongLong();
+    m_client->addTracksToPlaylist(uuid, ids, allowDupes, [this, uuid, cb](bool success) mutable {
+        call(cb, { success });
+        if (success) refreshPlaylistMeta(uuid);
+    });
+}
+
 void TidalBridge::restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                          QJSValue cb) {
     m_client->restoreTrackToPlaylist(uuid, trackId, index, [this, uuid, cb](bool success) mutable {
@@ -993,6 +1004,19 @@ void TidalBridge::nextRemoval(const QString &uuid) {
         call(r.cb, { result == W::Done, false, result == W::Done ? index : -1 });
         if (result == W::Done) refreshPlaylistMeta(uuid, [this, uuid] { nextRemoval(uuid); });
         else nextRemoval(uuid);
+    });
+}
+
+void TidalBridge::moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                      QJSValue cb) {
+    const qint64 uid = m_client->userId();
+    m_client->moveTrackInPlaylist(uuid, fromIndex, toIndex,
+        [this, uuid, uid, cb](TidalClient::PlaylistWrite result) mutable {
+        if (uid != m_client->userId()) return;
+        using W = TidalClient::PlaylistWrite;
+        call(cb, { result == W::Done, result == W::Stale });
+        // Brings the new version's ETag for the next write.
+        if (result == W::Done) refreshPlaylistMeta(uuid);
     });
 }
 
