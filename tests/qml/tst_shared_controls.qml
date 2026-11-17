@@ -176,4 +176,33 @@ TestCase {
         verify(sw, "the fade switch is not the shared Toggle")
         compare(typeName(sw), "Toggle")
     }
+
+    function sleepPopupOf(host) {
+        var stack = [host.page]
+        while (stack.length) {
+            var it = stack.pop()
+            for (var k = 0; it.data && k < it.data.length; ++k) {
+                var d = it.data[k]
+                if (!d) continue
+                if (d.objectName === "nowPlayingSleepTimerPopup") return d
+                stack.push(d)
+            }
+        }
+        return null
+    }
+
+    // Cancelling a timer is the way back, not a danger: no red.
+    function test_sleep_cancel_is_a_plain_button() {
+        var host = createTemporaryObject(npHost, testCase)
+        host.sleepTimerActive = true
+        host.sleepTimeLeft = 600
+        host.visible = true
+        frame(host.contentItem)
+        var popup = sleepPopupOf(host)
+        var cancel = findNamed(popup.contentItem, "nowPlayingSleepCancel")
+        verify(cancel, "no Cancel")
+        compare(typeName(cancel), "PillButton", "Cancel is a button of its own")
+        verify(!cancel.danger, "Cancel is drawn as a danger")
+        verify(!cancel.accent, "Cancel is drawn as the primary action")
+    }
 }
