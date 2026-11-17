@@ -594,6 +594,35 @@ void Player::moveManual(int from, int to) {
     schedulePersist();
 }
 
+void Player::moveQueueRow(const QString &fromSection, int fromSlot,
+                          const QString &toSection, int toSlot) {
+    const auto known = [](const QString &s) {
+        return s == QLatin1String("manual") || s == QLatin1String("context");
+    };
+    if (!known(fromSection) || !known(toSection)) return;
+    const bool fromManual = fromSection == QLatin1String("manual");
+    const bool toManual   = toSection   == QLatin1String("manual");
+    const int start   = m_index + 1;
+    const int context = int(m_queue.count()) - start - m_manualCount;
+    if (fromSlot < 0 || fromSlot >= (fromManual ? m_manualCount : context)) return;
+
+    const int manualLeft = m_manualCount - (fromManual ? 1 : 0);
+    const int slot = qBound(0, toSlot, toManual ? manualLeft : context - (fromManual ? 0 : 1));
+    if (fromManual == toManual && slot == fromSlot) return;
+
+    Entry e = m_queue.takeAt(start + (fromManual ? 0 : m_manualCount) + fromSlot);
+    const int at = start + (toManual ? 0 : manualLeft) + slot;
+    e.manual = toManual;
+    // A context row needs a place in the context's order for unshuffling;
+    // it takes its new neighbour's, as normalizeManualSpan() does.
+    if (toManual)       e.natural = -1;
+    else if (fromManual) e.natural = at > 0 ? m_queue.at(at - 1).natural : -1;
+    m_queue.insert(at, e);
+    setManualCount(manualLeft + (toManual ? 1 : 0));
+    emit queueChanged();
+    schedulePersist();
+}
+
 void Player::clearManual() {
     if (m_manualCount <= 0) return;
     m_queue.remove(m_index + 1, m_manualCount);

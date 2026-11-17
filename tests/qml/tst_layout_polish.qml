@@ -791,12 +791,15 @@ TestCase {
             return top > list.height / 2 && top < list.height - 2 * e.height
         })[0]
         verify(entry, "no manual row sits in the lower half of the list")
-        var x = entry.width * 0.6, y = entry.height / 2
-        mousePress(entry, x, y)
-        for (var d = 10; d <= 150; d += 10) mouseMove(entry, x, y - d)
-        mouseRelease(entry, x, y - 150)
-        settle(host)
+        // The body now drags the row, so the pointer stays clear of the
+        // edges, where a held row scrolls the list on purpose. Window
+        // coordinates, because the dragged row moves under the pointer.
+        var at = entry.mapToItem(host.contentItem, entry.width * 0.6, entry.height / 2)
+        mousePress(host.contentItem, at.x, at.y)
+        for (var d = 10; d <= 60; d += 10) mouseMove(host.contentItem, at.x, at.y - d)
         compare(list.contentY, y0, "dragging a row's body scrolled the queue")
+        mouseRelease(host.contentItem, at.x, at.y - 60)
+        settle(host)
         player.setManualForTest([])
     }
 
