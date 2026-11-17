@@ -190,6 +190,10 @@ public:
     void editPlaylist            (const QString &uuid,  const QString &title,
                                   const QString &description, std::function<void(bool)> cb);
     virtual void addTrackToPlaylist     (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
+    // Several at the end in one POST, in order. With allowDupes a track the
+    // playlist holds already is added again (ADD), else it is left out (SKIP).
+    virtual void addTracksToPlaylist    (const QString &uuid,  const QList<qint64> &trackIds,
+                                         bool allowDupes, std::function<void(bool)> cb);
     // Puts a removed row back at `toIndex`, a duplicate or not: the undo of
     // removeTrackFromPlaylist.
     virtual void restoreTrackToPlaylist (const QString &uuid,  qint64 trackId, int toIndex,

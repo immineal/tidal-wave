@@ -284,25 +284,33 @@ QtObject {
         if (cb) cb(false, refused)
     }
 
-    // One write per track, a new one with SKIP and one it holds with ADD, so
-    // each lands as one more row. `before` is the playlist as it was read.
+    // Tracks per write. Tidal takes a comma list; a whole album or queue in
+    // one request would be one long form, so it goes in runs of this many.
+    readonly property int addRun: 100
+
+    // In runs of addRun, in order. A run holding a track the playlist has,
+    // or one listed twice, asks for ADD so each lands as one more row; the
+    // rest SKIP. `before` is the playlist as it was read.
     function _addTracks(uuid, title, ids, before, cb) {
         var had = ids.map(function (id) { return edits._count(before, id) })
-        var i = 0
+        var runs = []
+        for (var k = 0; k < ids.length; k += edits.addRun) runs.push(k)
+        var r = 0
         function next() {
-            if (i === ids.length) { edits._added(uuid, title, ids, had, cb); return }
-            var id = ids[i], dupe = had[i] > 0
-            i++
-            var written = function (ok) {
+            if (r === runs.length) { edits._added(uuid, title, ids, had, cb); return }
+            var from = runs[r], to = Math.min(ids.length, from + edits.addRun)
+            r++
+            var run = ids.slice(from, to), again = false
+            for (var j = from; j < to; j++)
+                if (had[j] > 0 || ids.indexOf(ids[j]) < j) again = true
+            bridge.addTrackListToPlaylist(uuid, run, again, function (ok) {
                 if (ok !== true) {
                     edits._addRefused(title, ids.length, cb)
-                    if (i > 1) edits.playlistChanged(uuid)
+                    if (r > 1) edits.playlistChanged(uuid)
                     return
                 }
                 next()
-            }
-            if (dupe) bridge.restoreTrackToPlaylist(uuid, id, -1, written)
-            else      bridge.addTracksToPlaylist(uuid, id, written)
+            })
         }
         next()
     }

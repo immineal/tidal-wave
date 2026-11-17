@@ -657,6 +657,27 @@ public:
         // After the callback and only on a success, in the real bridge's order.
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
     }
+    // Several in one write, as TidalBridge::addTrackListToPlaylist: SKIP
+    // leaves out what the playlist holds, ADD adds it again. Counted as one
+    // add call per write; each write's size goes into addWritesForTest().
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb) {
+        m_lastAddedPlaylist = uuid;
+        m_lastAddedTrackId  = trackIds.isEmpty() ? 0 : trackIds.last().toLongLong();
+        m_addToPlaylistCalls++;
+        m_addWrites << QStringLiteral("%1%2").arg(trackIds.size()).arg(allowDupes ? "+" : "");
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            for (const QVariant &v : trackIds) {
+                const QVariant id(double(v.toLongLong()));
+                if (allowDupes || !rows.contains(id)) rows.append(id);
+            }
+        }
+        resolveOk(cb, m_addToPlaylistOk);
+        if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QStringList addWritesForTest() const { return m_addWrites; }
     // Records the row a removal's undo puts back; answers as an add does.
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb) {
@@ -1028,6 +1049,7 @@ public:
         m_lastAddedPlaylist.clear();
         m_lastAddedTrackId   = 0;
         m_addToPlaylistCalls = 0;
+        m_addWrites.clear();
         m_lastRestored.clear();
         m_addToPlaylistOk    = true;
     }
@@ -1679,6 +1701,7 @@ private:
     QString   m_lastAddedPlaylist;
     qlonglong m_lastAddedTrackId   = 0;
     int       m_addToPlaylistCalls = 0;
+    QStringList m_addWrites;
     QString   m_lastRestored;
     int       m_readLag = 0;
     int       m_lagLeft = 0;

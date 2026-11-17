@@ -631,6 +631,17 @@ Item {
                         color: Theme.accentText; font.pixelSize: Theme.fontMeta
                     }
                     Item { width: Theme.space2 }
+                    // The whole queue, as listed, into a playlist; the picker's
+                    // first row makes a new one.
+                    IconButton {
+                        objectName: "queueAddToPlaylist"
+                        visible: root.totalCount > 0
+                        icon: "plus"
+                        size: 16
+                        pad: Theme.space4
+                        label: qsTr("Add the queue to a playlist", "button in the queue's header")
+                        onClicked: Edits.pickPlaylist(root.rows)
+                    }
                     // Clears the manual queue and only that: the history and
                     // the album are not the user's list. The hit area is 32
                     // tall around the 12px word.
