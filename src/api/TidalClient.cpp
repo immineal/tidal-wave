@@ -1400,13 +1400,26 @@ void TidalClient::restoreTrackToPlaylist(const QString &uuid, qint64 trackId, in
 void TidalClient::removeTrackFromPlaylist(const QString &uuid, int itemIndex,
     std::function<void(PlaylistWrite)> cb)
 {
-    if (uuid.isEmpty() || itemIndex < 0) { cb(PlaylistWrite::Failed); return; }
-    const auto remove = [this, uuid, itemIndex, cb](const QString &etag) {
+    removeTracksFromPlaylist(uuid, {itemIndex}, std::move(cb));
+}
+
+// python-tidal's remove_by_indices(): the rows comma-separated in the path,
+// each counted as the playlist was before the write.
+void TidalClient::removeTracksFromPlaylist(const QString &uuid, const QList<int> &itemIndices,
+    std::function<void(PlaylistWrite)> cb)
+{
+    QStringList rows;
+    for (int i : itemIndices) {
+        if (i < 0) { cb(PlaylistWrite::Failed); return; }
+        rows << QString::number(i);
+    }
+    if (uuid.isEmpty() || rows.isEmpty()) { cb(PlaylistWrite::Failed); return; }
+    const QString path = QStringLiteral("playlists/%1/items/%2").arg(uuid, rows.join(QLatin1Char(',')));
+    const auto remove = [this, uuid, path, cb](const QString &etag) {
         QUrlQuery params;
         params.addQueryItem("order",          "INDEX");
         params.addQueryItem("orderDirection", "ASC");
-        m_api->deleteApiEtagWithStatus(
-            QStringLiteral("playlists/%1/items/%2").arg(uuid).arg(itemIndex), params, etag,
+        m_api->deleteApiEtagWithStatus(path, params, etag,
             [this, uuid, cb](QJsonObject, QString e, int status) {
                 // After either the version on hand is no longer the server's.
                 const PlaylistWrite r = e.isEmpty() ? PlaylistWrite::Done

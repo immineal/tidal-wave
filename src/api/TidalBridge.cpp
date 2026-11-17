@@ -959,11 +959,38 @@ void TidalBridge::reloadFavoriteKind(const QString &kind) {
 }
 
 void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
-    m_removals[uuid].append({itemIndex, false, cb});
+    m_removals[uuid].append({{itemIndex}, false, cb, false});
     if (!m_removing.contains(uuid)) nextRemoval(uuid);
 }
 
-// One at a time, because each DELETE addresses a row by its index and sends
+void TidalBridge::removeTracksFromPlaylist(const QString &uuid, const QVariantList &itemIndices,
+                                           QJSValue cb) {
+    QList<int> rows;
+    for (const QVariant &v : itemIndices) rows << v.toInt();
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    if (uuid.isEmpty() || rows.isEmpty() || rows.first() < 0) { call(cb, { false, false }); return; }
+    m_removals[uuid].append({rows, false, cb, true});
+    if (!m_removing.contains(uuid)) nextRemoval(uuid);
+}
+
+namespace {
+// What a removal of `taken` (rows as they were) leaves of `rows`: those
+// above a taken row move up, a taken one is dropped. True if one was.
+bool followRemoval(QList<int> &rows, const QList<int> &taken) {
+    bool hit = false;
+    QList<int> out;
+    for (int row : rows) {
+        if (taken.contains(row)) { hit = true; continue; }
+        out << row - int(std::count_if(taken.cbegin(), taken.cend(),
+                                       [row](int t) { return t < row; }));
+    }
+    rows = out;
+    return hit;
+}
+} // namespace
+
+// One at a time, because each DELETE addresses rows by index and sends
 // the ETag the one before it produced. The next goes out once the header has
 // been read again, which also brings that ETag.
 void TidalBridge::nextRemoval(const QString &uuid) {
@@ -974,44 +1001,59 @@ void TidalBridge::nextRemoval(const QString &uuid) {
         return;
     }
     m_removing.insert(uuid);
-    if (it->first().gone) {
-        // Asked twice for one row: the first request took it.
+    if (it->first().gone || it->first().rows.isEmpty()) {
+        // Asked twice for one row, or every row of a batch went before it.
         Removal r = it->takeFirst();
-        call(r.cb, { true, false, -1 });
+        if (r.batch) call(r.cb, { true, false });
+        else         call(r.cb, { true, false, -1 });
         nextRemoval(uuid);
         return;
     }
-    const int index = it->first().index;
+    const Removal &head = it->first();
+    // The highest rows first: taking them out moves none of the rest.
+    const QList<int> run = head.rows.mid(std::max<qsizetype>(0, head.rows.size() - removeRun));
+    const bool batch = head.batch;
     const qint64 uid = m_client->userId();
-    m_client->removeTrackFromPlaylist(uuid, index,
-        [this, uuid, index, uid](TidalClient::PlaylistWrite result) {
+    const auto answered = [this, uuid, run, uid](TidalClient::PlaylistWrite result) {
         // Signed out meanwhile: the queue went with the account.
         if (uid != m_client->userId()) return;
         auto it = m_removals.find(uuid);
         if (it == m_removals.end() || it->isEmpty()) { m_removing.remove(uuid); return; }
-        Removal r = it->takeFirst();
         using W = TidalClient::PlaylistWrite;
         if (result == W::Stale) {
             // Every one still queued was aimed at the same stale rows.
-            const QList<Removal> rest = std::exchange(*it, {});
+            const QList<Removal> all = std::exchange(*it, {});
             m_removals.remove(uuid);
             m_removing.remove(uuid);
-            call(r.cb, { false, true, -1 });
-            for (Removal later : rest) call(later.cb, { false, true, -1 });
+            for (Removal r : all) {
+                if (r.batch) call(r.cb, { false, true });
+                else         call(r.cb, { false, true, -1 });
+            }
             return;
         }
         if (result == W::Done) {
+            QList<int> &head = it->first().rows;
+            head.resize(head.size() - run.size());
             // Those asked for before this answer counted rows as they were.
-            for (Removal &later : *it) {
+            for (qsizetype k = 1; k < it->size(); ++k) {
+                Removal &later = (*it)[k];
                 if (later.gone) continue;
-                if (index < later.index) --later.index;
-                else if (index == later.index) later.gone = true;
+                if (followRemoval(later.rows, run) && !later.batch) later.gone = true;
+            }
+            if (it->first().batch && !it->first().rows.isEmpty()) {
+                refreshPlaylistMeta(uuid, [this, uuid] { nextRemoval(uuid); });
+                return;
             }
         }
-        call(r.cb, { result == W::Done, false, result == W::Done ? index : -1 });
-        if (result == W::Done) refreshPlaylistMeta(uuid, [this, uuid] { nextRemoval(uuid); });
+        Removal r = it->takeFirst();
+        const bool done = result == W::Done;
+        if (r.batch) call(r.cb, { done, false });
+        else         call(r.cb, { done, false, done ? run.first() : -1 });
+        if (done) refreshPlaylistMeta(uuid, [this, uuid] { nextRemoval(uuid); });
         else nextRemoval(uuid);
-    });
+    };
+    if (batch) m_client->removeTracksFromPlaylist(uuid, run, answered);
+    else       m_client->removeTrackFromPlaylist(uuid, run.first(), answered);
 }
 
 void TidalBridge::moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,

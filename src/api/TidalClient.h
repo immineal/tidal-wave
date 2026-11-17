@@ -248,6 +248,9 @@ public:
     // fetchPlaylist() last read, so a view that has gone stale is refused.
     virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,
                                           std::function<void(PlaylistWrite)> cb);
+    // Several rows in one DELETE, each counted as the playlist is before it.
+    virtual void removeTracksFromPlaylist(const QString &uuid,  const QList<int> &itemIndices,
+                                          std::function<void(PlaylistWrite)> cb);
     // Moves the row at `fromIndex` so it ends at `toIndex`, with the ETag as
     // removeTrackFromPlaylist sends it. python-tidal's move_by_index().
     virtual void moveTrackInPlaylist     (const QString &uuid,  int fromIndex, int toIndex,

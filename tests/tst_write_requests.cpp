@@ -267,6 +267,92 @@ private slots:
         QCOMPARE(before.answers(), QStringList{QStringLiteral("true,false,0")});
     }
 
+    // ── several rows at once: an add undone ─────────────────────────────
+    // python-tidal's remove_by_indices: the rows comma-separated in one
+    // DELETE, with the ETag of the version they were counted in.
+    void severalRowsGoInOneDelete()
+    {
+        Rig rig;
+        rig.openPage();
+        const Rig::Told told = rig.slot();
+        rig.bridge.removeTracksFromPlaylist(kUuid, {6, 1, 4}, told.fn);
+        QTRY_VERIFY_WITH_TIMEOUT(told.answers().size() == 1 && rig.settled(), 5000);
+
+        QCOMPARE(rig.tidal.writes(), QStringList{
+            QStringLiteral("DELETE /api/playlists/pl-tape-1/items/1,4,6?order=INDEX&orderDirection=ASC"
+                           " [If-None-Match: \"v1\"]")});
+        QCOMPARE(told.answers(), QStringList{QStringLiteral("true,false")});
+    }
+
+    // More than one DELETE holds: the highest rows first, so the rest keep
+    // their places, each with the ETag the write before it produced.
+    void manyRowsGoInRunsHighestFirst()
+    {
+        Rig rig;
+        rig.openPage();
+        QVariantList rows;
+        for (int i = 0; i < 120; ++i) rows << i;
+        const Rig::Told told = rig.slot();
+        rig.tidal.etag = "\"v2\"";
+        rig.bridge.removeTracksFromPlaylist(kUuid, rows, told.fn);
+        QTRY_VERIFY_WITH_TIMEOUT(told.answers().size() == 1 && rig.settled(), 5000);
+
+        const auto run = [](int from, int to) {
+            QStringList n;
+            for (int i = from; i < to; ++i) n << QString::number(i);
+            return n.join(QLatin1Char(','));
+        };
+        QCOMPARE(rig.tidal.writes(), (QStringList{
+            QStringLiteral("DELETE /api/playlists/pl-tape-1/items/%1?order=INDEX&orderDirection=ASC"
+                           " [If-None-Match: \"v1\"]").arg(run(70, 120)),
+            QStringLiteral("DELETE /api/playlists/pl-tape-1/items/%1?order=INDEX&orderDirection=ASC"
+                           " [If-None-Match: \"v2\"]").arg(run(20, 70)),
+            QStringLiteral("DELETE /api/playlists/pl-tape-1/items/%1?order=INDEX&orderDirection=ASC"
+                           " [If-None-Match: \"v2\"]").arg(run(0, 20))}));
+        QCOMPARE(told.answers(), QStringList{QStringLiteral("true,false")});
+    }
+
+    // A 412 on the first run: nothing more is sent, and the answer says stale.
+    void aStaleRunStopsTheRest()
+    {
+        Rig rig;
+        rig.openPage();
+        rig.tidal.write = {412, R"({"status":412,"subStatus":4000,"userMessage":"stale"})"};
+        QVariantList rows;
+        for (int i = 0; i < 60; ++i) rows << i;
+        const Rig::Told told = rig.slot();
+        const Rig::Told behind = rig.slot();
+        rig.bridge.removeTracksFromPlaylist(kUuid, rows, told.fn);
+        rig.bridge.removeTrackFromPlaylist(kUuid, 3, behind.fn);
+        QTRY_VERIFY_WITH_TIMEOUT(behind.answers().size() == 1 && rig.settled(), 5000);
+
+        QCOMPARE(rig.tidal.writes().size(), 1);
+        QCOMPARE(told.answers(), QStringList{QStringLiteral("false,true")});
+        QCOMPARE(behind.answers(), QStringList{QStringLiteral("false,true,-1")});
+    }
+
+    // A lone removal asked for during a batch counts rows as they were.
+    void aRemovalBehindABatchFollowsItsRows()
+    {
+        Rig rig;
+        rig.openPage();
+        const Rig::Told batch = rig.slot();
+        const Rig::Told lone = rig.slot();
+        const Rig::Told taken = rig.slot();
+        rig.bridge.removeTracksFromPlaylist(kUuid, {1, 3}, batch.fn);
+        rig.bridge.removeTrackFromPlaylist(kUuid, 5, lone.fn);
+        rig.bridge.removeTrackFromPlaylist(kUuid, 3, taken.fn);
+        QTRY_VERIFY_WITH_TIMEOUT(taken.answers().size() == 1 && rig.settled(), 5000);
+
+        QCOMPARE(rig.tidal.writes(), (QStringList{
+            QStringLiteral("DELETE /api/playlists/pl-tape-1/items/1,3?order=INDEX&orderDirection=ASC"
+                           " [If-None-Match: \"v1\"]"),
+            QStringLiteral("DELETE /api/playlists/pl-tape-1/items/3?order=INDEX&orderDirection=ASC"
+                           " [If-None-Match: \"v1\"]")}));
+        QCOMPARE(lone.answers(),  QStringList{QStringLiteral("true,false,3")});
+        QCOMPARE(taken.answers(), QStringList{QStringLiteral("true,false,-1")});
+    }
+
     // ── every other write ───────────────────────────────────────────────
     // One row per write the app makes, as it must reach Tidal. The shapes
     // follow python-tidal, the client that is known to work.

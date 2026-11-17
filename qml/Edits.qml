@@ -381,47 +381,45 @@ QtObject {
     }
 
     // Undoes an add: for each track the last row holding it, as Tidal has
-    // it now, newest first.
+    // it now, as many as were added. One read, one removal of them all (the
+    // bridge sends it in few DELETEs) and one read-back.
     function _takeLastOut(uuid, title, ids, done) {
         var gone = qsTr("Taken out of “%1” again", "after undoing an add to a playlist").arg(title)
-        var left = ids.slice()
-        function next(changed) {
-            if (left.length === 0) {
-                if (changed) edits.playlistChanged(uuid)
-                Toasts.show(gone)
-                done(true)
-                return
+        bridge.readPlaylistTrackIds(uuid, function (readOk, rows) {
+            if (readOk !== true) { Toasts.show(edits.undoFailedText); done(false); return }
+            var wanted = {}
+            for (var k = 0; k < ids.length; k++) wanted[Number(ids[k])] = (wanted[Number(ids[k])] || 0) + 1
+            var at = [], had = {}
+            for (var i = rows.length - 1; i >= 0; i--) {
+                var id = Number(rows[i])
+                had[id] = (had[id] || 0) + 1
+                if (wanted[id] > 0) { at.push(i); wanted[id]-- }
             }
-            var trackId = left.pop()
-            bridge.readPlaylistTrackIds(uuid, function (readOk, rows) {
-                if (readOk !== true) { Toasts.show(edits.undoFailedText); done(false); return }
-                var at = -1
-                for (var i = rows.length - 1; i >= 0; i--)
-                    if (Number(rows[i]) === Number(trackId)) { at = i; break }
-                if (at < 0) { next(changed); return }
-                var had = edits._count(rows, trackId)
-                bridge.removeTrackFromPlaylist(uuid, at, function (ok, stale) {
-                    if (ok !== true || stale === true) {
-                        Toasts.show(edits.undoFailedText)
-                        edits.playlistChanged(uuid)
-                        done(false)
-                        return
-                    }
-                    edits._confirm(edits._playlistCheck(uuid, function (now) {
-                        return edits._count(now, trackId) < had
-                    }), function (shown) {
-                        if (!shown) {
-                            edits.playlistChanged(uuid)
-                            Toasts.show(edits.unconfirmedText)
-                            done(false)
-                            return
-                        }
-                        next(true)
-                    })
+            // Gone already, taken out elsewhere: nothing left to undo.
+            if (at.length === 0) { Toasts.show(gone); done(true); return }
+            var left = {}
+            for (var j = 0; j < at.length; j++) {
+                var t = Number(rows[at[j]])
+                left[t] = (left[t] === undefined ? had[t] : left[t]) - 1
+            }
+            at.sort(function (a, b) { return a - b })
+            bridge.removeTracksFromPlaylist(uuid, at, function (ok, stale) {
+                if (ok !== true || stale === true) {
+                    Toasts.show(edits.undoFailedText)
+                    edits.playlistChanged(uuid)
+                    done(false)
+                    return
+                }
+                edits._confirm(edits._playlistCheck(uuid, function (now) {
+                    for (var t in left) if (edits._count(now, t) > left[t]) return false
+                    return true
+                }), function (shown) {
+                    edits.playlistChanged(uuid)
+                    Toasts.show(shown ? gone : edits.unconfirmedText)
+                    done(shown)
                 })
             })
-        }
-        next(false)
+        })
     }
 
     // Takes the row at itemIndex out. written(ok, stale, index) is the

@@ -193,6 +193,11 @@ public:
     // `index` is the row to take out once earlier removals have landed, -1
     // when there is none. `stale` means the playlist changed elsewhere.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
+    // function(ok, stale). Takes out several rows, each counted as the
+    // playlist is now, in DELETEs of removeRun rows, queued as removals are.
+    Q_INVOKABLE void removeTracksFromPlaylist(const QString &uuid, const QVariantList &itemIndices,
+                                              QJSValue cb);
+    static constexpr int removeRun = 50;
     // cb(ok, stale): stale when the playlist changed since it was read.
     Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
                                          QJSValue cb);
@@ -372,9 +377,10 @@ private:
     FavoriteSync    m_favSync[4];
     int             m_favMixesSyncGen = 0;
 
-    // Removals not yet answered, per playlist, first one in flight. `index`
-    // follows the rows earlier ones take out; `gone` is a row already taken.
-    struct Removal { int index = -1; bool gone = false; QJSValue cb; };
+    // Removals not yet answered, per playlist, first one in flight. `rows`
+    // follow what earlier ones take out; `gone` is a lone row already taken.
+    // A batch holds several rows, ascending, and goes out highest first.
+    struct Removal { QList<int> rows; bool gone = false; QJSValue cb; bool batch = false; };
     QHash<QString, QList<Removal>> m_removals;
     QSet<QString>   m_removing;   // a removal of it is out, or its header read
 
