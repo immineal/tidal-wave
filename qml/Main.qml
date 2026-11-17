@@ -555,6 +555,17 @@ ApplicationWindow {
         Shortcut { sequence: Shortcuts.sequence("mute");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setMuted(!player.muted) }
         Shortcut { sequence: Shortcuts.sequence("shuffle");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setShuffle(!player.shuffle) }
         Shortcut { sequence: Shortcuts.sequence("repeat");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setRepeatMode((player.repeatMode + 1) % 3) }
+        // The heart's own call, so the write is read back and the notice and Undo follow.
+        Shortcut {
+            sequence: Shortcuts.sequence("like")
+            context: Qt.ApplicationShortcut
+            enabled: auth.state === 2
+            onActivated: {
+                var t = player.currentTrack
+                if (t && t.id > 0) likeShortcutAction.toggleTrack(t.id, bridge.isTrackFavorite(t.id), null)
+            }
+        }
+        ContextMenu.FavoriteAction { id: likeShortcutAction }
 
         // Navigation Shortcuts
         Shortcut { sequence: Shortcuts.sequence("home"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("home") }

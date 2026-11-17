@@ -2372,6 +2372,10 @@
         <comment>settings section with the app&apos;s name and version</comment>
         <translation>Über</translation>
     </message>
+    <message>
+        <source>Like or unlike the playing track</source>
+        <translation>„Gefällt mir“ für den laufenden Titel setzen oder entfernen</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
