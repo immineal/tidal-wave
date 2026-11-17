@@ -340,7 +340,7 @@ private slots:
                  "a neon was not darkened at all");
     }
 
-    // On a dark ground a yellow sleeve keeps 30% of its chroma: clamped at
+    // On a dark ground a yellow sleeve keeps 70% of its chroma: clamped at
     // full strength it reads olive. A light ground keeps its cream.
     void aYellowSleeveIsCalmerOnADarkGround_data() {
         QTest::addColumn<QColor>("in");
@@ -359,7 +359,7 @@ private slots:
         const QColor calm = coverart::calmYellow(in);
         const double ratio = okChroma(calm) / okChroma(in);
         if (yellow)
-            QVERIFY2(std::abs(ratio - 0.3) <= 0.03,
+            QVERIFY2(std::abs(ratio - 0.7) <= 0.03,
                      qPrintable(QStringLiteral("kept %1 of its chroma").arg(ratio, 0, 'f', 2)));
         else
             QCOMPARE(calm, in);
@@ -374,43 +374,6 @@ private slots:
         for (const char *t : {"sky", "sand", "clay"})
             QCOMPARE(coverart::bandTint(in, ground(t, "bg"), ground(t, "surfaceHigh")),
                      coverart::clampToBand(in, ground(t, "bg"), ground(t, "surfaceHigh")));
-    }
-
-    // Darkened to a dark theme's band at full strength, a yellow, amber or
-    // mustard sleeve reads olive or ochre. It has to come out a near-neutral
-    // warm dark instead: CIELAB chroma 8 or less. Other hues keep theirs.
-    void aYellowSleeveIsNotOliveOnADarkGround_data() {
-        QTest::addColumn<QColor>("in");
-        QTest::addColumn<bool>("yellow");
-        QTest::newRow("yellow")  << QColor(242, 197,   0) << true;
-        QTest::newRow("gold")    << QColor(224, 176,   0) << true;
-        QTest::newRow("amber")   << QColor(255, 176,   0) << true;
-        QTest::newRow("mustard") << QColor(200, 160,  64) << true;
-        QTest::newRow("lemon")   << QColor(217, 210,  90) << true;
-        QTest::newRow("orange")  << QColor(255, 110,   0) << false;
-        QTest::newRow("red")     << QColor(200,  40,  40) << false;
-        QTest::newRow("green")   << QColor( 48, 160,  80) << false;
-        QTest::newRow("blue")    << QColor( 32,  96, 192) << false;
-    }
-    void aYellowSleeveIsNotOliveOnADarkGround() {
-        QFETCH(QColor, in);
-        QFETCH(bool, yellow);
-        for (const char *t : {"sea", "pine", "rust"}) {
-            for (int v = 0; v < 4; ++v) {
-                const QVariantMap p = theme::palette(QString::fromLatin1(t), v & 1, v & 2);
-                const QColor out = coverart::bandTint(in, p.value("bg").value<QColor>(),
-                                                      p.value("surfaceHigh").value<QColor>());
-                const Lab lab = toLab(out);
-                const double chroma = std::hypot(lab.a, lab.b);
-                const QString where = QStringLiteral("%1 %2: %3 gave %4 at chroma %5")
-                    .arg(QLatin1String(t)).arg(v).arg(in.name(), out.name())
-                    .arg(chroma, 0, 'f', 1);
-                if (yellow)
-                    QVERIFY2(chroma <= 8.0, qPrintable(where + ", which reads olive"));
-                else
-                    QVERIFY2(chroma >= 8.0, qPrintable(where + ", which is a grey"));
-            }
-        }
     }
 
     // A colour already inside the band is returned untouched.

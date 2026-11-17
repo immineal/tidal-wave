@@ -42,8 +42,8 @@ double luminanceForLightness(double l);
 // everything opaque. Invalid for a null or fully transparent image.
 QColor dominant(const QImage &image);
 
-// A yellow, amber or ochre (OKLCH hue 70 to 118) with 30% of its chroma,
-// eased out to none taken at 55 and 135. Darkened whole, yellow reads olive.
+// A yellow (OKLCH hue 70 to 125 degrees) with 70% of its chroma; any other
+// colour unchanged. Clamped darker at full strength, yellow reads olive.
 QColor calmYellow(const QColor &c);
 
 // Clamps `c` into the CIE L* band spanned by two palette grounds. A tint
