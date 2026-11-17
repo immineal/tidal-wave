@@ -236,6 +236,10 @@ Rectangle {
                 model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
                 labelFor: function (index, name) {
                     var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
+                    var waiting = [root.loading, bridge.albumsLoading, bridge.artistsLoading,
+                                   bridge.playlistsLoading, root.mixesLoading || !root.mixesLoaded && !root.mixesFailed]
+                    // A list on its way has no count yet; "(0)" would read as empty.
+                    if (waiting[index] && counts[index] === 0) return name
                     // Tab name followed by how many items it holds
                     return qsTr("%1 (%2)").arg(name)
                                           .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
