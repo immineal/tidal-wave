@@ -13,6 +13,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QScopeGuard>
@@ -286,6 +290,112 @@ void TidalBridge::fetchMixPage(const QString &mixId, QJSValue cb) {
                    qjsEngine(this)->toScriptValue(tracksToList(tracks)),
                    qjsEngine(this)->toScriptValue(err) });
     });
+}
+
+// ─── Tidal's own Home ──────────────────────────────
+
+QString TidalBridge::homeFeedLocale(const QString &language) {
+    return language == QLatin1String("de") ? QStringLiteral("de_DE") : QStringLiteral("en_US");
+}
+
+QString TidalBridge::homeFeedCachePath(const QString &feed) const {
+    return FavoritesCache::path(QStringLiteral("home-") + feed, m_client->userId());
+}
+
+namespace {
+constexpr int kHomeFeedCacheVersion = 1;
+
+bool isHomeFeed(const QString &feed) {
+    return feed == QLatin1String(TidalClient::kHomeFeedForYou)
+        || feed == QLatin1String(TidalClient::kHomeFeedEditorial);
+}
+} // namespace
+
+QVariantMap TidalBridge::homeFeedToMap(const HomeFeed &feed) const {
+    QVariantList tabs;
+    for (const auto &[name, key] : feed.tabs)
+        tabs.append(QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("feed"), key}});
+
+    QVariantList modules;
+    for (const HomeModule &m : feed.modules) {
+        // A release in both versions shows as the one preferred, as in search.
+        QList<Album> albums;
+        for (const HomeItem &it : m.items)
+            if (it.kind == HomeItem::Kind::Album) albums.append(it.album);
+        const QList<Album> shown = shownVersions(albums);
+        QSet<qint64> shownIds;
+        for (const Album &a : shown) shownIds.insert(a.id);
+
+        QVariantList items;
+        QSet<QString> kinds;
+        for (const HomeItem &it : m.items) {
+            QVariantMap map;
+            QString kind;
+            switch (it.kind) {
+            case HomeItem::Kind::Album:
+                if (!shownIds.contains(it.album.id)) continue;
+                map = albumToMap(it.album);       kind = QStringLiteral("album");    break;
+            case HomeItem::Kind::Playlist:
+                map = playlistToMap(it.playlist); kind = QStringLiteral("playlist"); break;
+            case HomeItem::Kind::Mix:
+                map = mixToMap(it.mix);           kind = QStringLiteral("mix");      break;
+            case HomeItem::Kind::Artist:
+                map = artistToMap(it.artist);     kind = QStringLiteral("artist");   break;
+            }
+            map[QStringLiteral("kind")] = kind;
+            kinds.insert(kind);
+            items.append(map);
+        }
+        if (m.ownRow.isEmpty() && items.isEmpty()) continue;
+        QVariantMap mm;
+        mm[QStringLiteral("id")]      = m.id;
+        mm[QStringLiteral("title")]   = m.title;
+        mm[QStringLiteral("context")] = m.context;
+        mm[QStringLiteral("ownRow")]  = m.ownRow;
+        // One kind names the row; a row of several is "recent", whose cards
+        // each take their own.
+        mm[QStringLiteral("mediaType")] = kinds.size() == 1 ? *kinds.cbegin() : QStringLiteral("recent");
+        mm[QStringLiteral("items")]   = items;
+        modules.append(mm);
+    }
+    return {{QStringLiteral("tabs"), tabs}, {QStringLiteral("modules"), modules}};
+}
+
+QVariantMap TidalBridge::cachedHomeFeed(const QString &feed) {
+    const qint64 uid = m_client->userId();
+    if (uid <= 0 || !isHomeFeed(feed)) return homeFeedToMap({});
+    QFile f(homeFeedCachePath(feed));
+    if (!f.open(QIODevice::ReadOnly)) return homeFeedToMap({});
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    if (root["version"].toInt() != kHomeFeedCacheVersion
+        || qint64(root["userId"].toDouble()) != uid) return homeFeedToMap({});
+    return homeFeedToMap(TidalClient::parseHomeFeed(root["feed"].toObject()));
+}
+
+void TidalBridge::fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb) {
+    if (!isHomeFeed(feed)) {
+        call(cb, { qjsEngine(this)->toScriptValue(homeFeedToMap({})),
+                   qjsEngine(this)->toScriptValue(QStringLiteral("no such feed")) });
+        return;
+    }
+    const qint64 uid = m_client->userId();
+    m_client->fetchHomeFeed(feed, homeFeedLocale(language),
+        [this, cb, feed, uid](QJsonObject root, QString err) mutable {
+            if (err.isEmpty() && uid > 0 && uid == m_client->userId()) {
+                const QJsonObject file{{"version", kHomeFeedCacheVersion},
+                                       {"userId", double(uid)}, {"feed", root}};
+                const QString path = homeFeedCachePath(feed);
+                QDir().mkpath(QFileInfo(path).absolutePath());
+                QSaveFile out(path);
+                if (out.open(QIODevice::WriteOnly)) {
+                    out.write(QJsonDocument(file).toJson(QJsonDocument::Compact));
+                    out.commit();
+                }
+            }
+            const HomeFeed parsed = err.isEmpty() ? TidalClient::parseHomeFeed(root) : HomeFeed{};
+            call(cb, { qjsEngine(this)->toScriptValue(homeFeedToMap(parsed)),
+                       qjsEngine(this)->toScriptValue(err) });
+        });
 }
 
 void TidalBridge::fetchFavoriteTracks(QJSValue cb, int limit, int offset) {

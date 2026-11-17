@@ -1,0 +1,32 @@
+{
+  "uuid": "00000000-0000-4000-8000-000000000003",
+  "page": { "cursor": null },
+  "header": { "vibes": { "items": [
+    { "name": "For you", "type": "STATIC" },
+    { "name": "Staff Picks", "type": "EDITORIAL" },
+    { "name": "Uploads", "type": "UPLOADS" }
+  ] } },
+  "items": [
+    { "type": "HORIZONTAL_LIST", "moduleId": "STAFF_PICKS_PAGE_RECENTLY_UPDATED_PLAYLISTS", "title": "Playlists we just updated",
+      "icons": [],
+      "items": [
+        { "type": "PLAYLIST", "following": false,
+          "data": { "uuid": "cccc0006-0000-4000-8000-000000000006", "type": "EDITORIAL", "title": "Fresh This Week",
+                    "squareImage": "cccc0006-0000-4000-8000-0000000000bb", "numberOfTracks": 60, "duration": 12000 } }
+      ] },
+    { "type": "TRACK_LIST", "moduleId": "STAFF_PICKS_PAGE_FAVORITE_SONGS", "title": "Songs on repeat", "icons": [],
+      "items": [
+        { "type": "TRACK", "following": false,
+          "data": { "id": 9300002, "title": "Staff Song", "duration": 210,
+                    "album": { "id": 9200007, "title": "Staff Album", "cover": "bbbb0007-0000-4000-8000-000000000007" },
+                    "artists": [ { "id": 8200007, "name": "Staff Favourite", "main": true } ] } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "STAFF_PICKS_PAGE_ALBUMS_WE_LOVE", "title": "Albums with no skips", "icons": [],
+      "items": [
+        { "type": "ALBUM", "following": false,
+          "data": { "id": 9200007, "title": "Staff Album", "cover": "bbbb0007-0000-4000-8000-000000000007",
+                    "numberOfTracks": 9, "duration": 2300, "type": "ALBUM", "explicit": false,
+                    "artists": [ { "id": 8200007, "name": "Staff Favourite", "main": true } ] } }
+      ] }
+  ]
+}

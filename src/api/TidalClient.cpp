@@ -276,6 +276,136 @@ void TidalClient::fetchMixTracks(const QString &mixId, TracksCallback cb) {
     fetchMixPage(mixId, [cb](Mix, QList<Track> tracks, QString err) { cb(tracks, err); });
 }
 
+// ─── Tidal's own Home ──────────────────────────────
+
+namespace {
+
+// The feed's rows that Home's own rows stand in for, so the app's list of
+// the user's music sits where Tidal puts it.
+QString ownRowFor(const QString &moduleId) {
+    if (moduleId == QLatin1String("CONTINUE_LISTEN_TO"))    return QStringLiteral("recent");
+    if (moduleId == QLatin1String("DAILY_MIXES"))           return QStringLiteral("mixes");
+    if (moduleId == QLatin1String("YOUR_FAVORITE_ARTISTS")) return QStringLiteral("artists");
+    if (moduleId == QLatin1String("MY_PLAYLISTS"))          return QStringLiteral("playlists");
+    return {};
+}
+
+// The app writes the name as a word everywhere else; no capitals in the UI.
+QString tidalAsWord(QString text) {
+    static const QRegularExpression caps(QStringLiteral("\\bTIDAL\\b"));
+    return text.replace(caps, QStringLiteral("Tidal"));
+}
+
+// The feed's mix shape: `type`, texts in *TextInfo and an image array.
+Mix feedMix(const QJsonObject &d) {
+    Mix m;
+    m.id       = d["id"].toString();
+    m.mixType  = d["type"].toString();
+    m.title    = d["titleTextInfo"].toObject()["text"].toString();
+    m.subTitle = d["subtitleTextInfo"].toObject()["text"].toString();
+    const QJsonArray images = d["mixImages"].toArray();
+    for (const char *size : {"MEDIUM", "LARGE", "SMALL"}) {
+        for (const auto &v : images) {
+            const QJsonObject img = v.toObject();
+            if (img["size"].toString() == QLatin1String(size)) { m.cover = img["url"].toString(); break; }
+        }
+        if (!m.cover.isEmpty()) break;
+    }
+    return m;
+}
+
+bool feedItem(const QJsonObject &row, HomeItem *out) {
+    const QString type = row["type"].toString();
+    const QJsonObject d = row["data"].toObject();
+    if (type == QLatin1String("ALBUM") && d.contains("id")) {
+        out->kind = HomeItem::Kind::Album;    out->album = Album::fromJson(d);       return true;
+    }
+    if (type == QLatin1String("PLAYLIST") && d.contains("uuid")) {
+        out->kind = HomeItem::Kind::Playlist; out->playlist = Playlist::fromJson(d); return true;
+    }
+    if (type == QLatin1String("ARTIST") && d.contains("id")) {
+        out->kind = HomeItem::Kind::Artist;   out->artist = Artist::fromJson(d);     return true;
+    }
+    if (type == QLatin1String("MIX")) {
+        const Mix m = feedMix(d);
+        // A video mix opens empty here; see parseMixPage().
+        if (m.id.isEmpty() || m.mixType.startsWith(QLatin1String("VIDEO"))) return false;
+        out->kind = HomeItem::Kind::Mix;      out->mix = m;                          return true;
+    }
+    return false;
+}
+
+} // namespace
+
+HomeFeed TidalClient::parseHomeFeed(const QJsonObject &root) {
+    HomeFeed feed;
+    for (const auto &v : root["header"].toObject()["vibes"].toObject()["items"].toArray()) {
+        const QJsonObject vibe = v.toObject();
+        const QString type = vibe["type"].toString();
+        const QString name = tidalAsWord(vibe["name"].toString());
+        // Uploads are left out: its tracks are artists' own uploads, which
+        // the app has not been tried on.
+        if (type == QLatin1String("STATIC"))
+            feed.tabs.append({name, QString::fromLatin1(kHomeFeedForYou)});
+        else if (type == QLatin1String("EDITORIAL"))
+            feed.tabs.append({name, QString::fromLatin1(kHomeFeedEditorial)});
+    }
+    for (const auto &v : root["items"].toArray()) {
+        const QJsonObject mod = v.toObject();
+        HomeModule m;
+        m.id     = mod["moduleId"].toString();
+        m.title  = tidalAsWord(mod["title"].toString());
+        m.ownRow = ownRowFor(m.id);
+        if (!m.ownRow.isEmpty()) { feed.modules.append(m); continue; }
+        const QString type = mod["type"].toString();
+        if (type != QLatin1String("HORIZONTAL_LIST")
+            && type != QLatin1String("HORIZONTAL_LIST_WITH_CONTEXT")) continue;
+        for (const auto &it : mod["items"].toArray()) {
+            HomeItem item;
+            if (feedItem(it.toObject(), &item)) m.items.append(item);
+        }
+        if (m.items.isEmpty() || m.title.isEmpty()) continue;
+        const QJsonObject header = mod["header"].toObject();
+        const QJsonObject hd = header["data"].toObject();
+        m.context = hd["title"].toString(hd["name"].toString());
+        feed.modules.append(m);
+    }
+    return feed;
+}
+
+void TidalClient::fetchHomeFeed(const QString &feed, const QString &locale, FeedCallback cb) {
+    fetchHomeFeedPage(feed, locale, std::move(cb), {}, {}, 0);
+}
+
+void TidalClient::fetchHomeFeedPage(const QString &feed, const QString &locale, FeedCallback cb,
+                                    const QString &cursor, QJsonObject acc, int page) {
+    QUrlQuery q;
+    q.addQueryItem("deviceType", "BROWSER");
+    q.addQueryItem("platform", "WEB");
+    q.addQueryItem("locale", locale);
+    if (!cursor.isEmpty()) q.addQueryItem("cursor", cursor);
+    m_api->getV2Web(QStringLiteral("home/feed/") + feed, q,
+        [this, feed, locale, cb, cursor, acc, page](QJsonObject root, QString err) mutable {
+            if (!err.isEmpty()) {
+                cb(acc, acc.isEmpty() ? err : QString());
+                return;
+            }
+            const QJsonArray items = root["items"].toArray();
+            if (acc.isEmpty()) {
+                acc["header"] = root["header"];
+                acc["items"]  = items;
+            } else {
+                QJsonArray all = acc["items"].toArray();
+                for (const auto &v : items) all.append(v);
+                acc["items"] = all;
+            }
+            const QString next = root["page"].toObject()["cursor"].toString();
+            if (next.isEmpty() || next == cursor || items.isEmpty()
+                || page + 1 >= kMaxHomeFeedPages) { cb(acc, {}); return; }
+            fetchHomeFeedPage(feed, locale, cb, next, acc, page + 1);
+        });
+}
+
 // ─── Favorites ─────────────────────────────────────
 
 template <typename T>

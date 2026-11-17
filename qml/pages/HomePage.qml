@@ -80,6 +80,89 @@ Rectangle {
 
     function appWindow() { return Window.window }
 
+    // ── Tidal's own Home ─────────────────────────────────────────────────
+    // The rows Tidal's apps show on Home, in their order and under the
+    // titles Tidal gives them. Home's own rows stand where the feed has its
+    // counterparts. A feed that fails keeps the copy on hand, or shows none.
+    property var forYouFeed: ({ tabs: [], modules: [] })
+    property var staffFeed:  ({ tabs: [], modules: [] })
+    property string feedTab: "static"
+    property bool staffFeedAsked: false
+    property bool forYouFailed: false
+    property bool staffFailed: false
+    readonly property string feedLanguage:
+        (typeof i18n !== "undefined" && i18n) ? i18n.effectiveLanguage : "en"
+    readonly property var feedTabs: forYouFeed.tabs || []
+    readonly property bool onStaffPicks: feedTab === "editorial" && feedTabs.length > 1
+
+    // The For you rows in three runs: before the favourite artists, between
+    // them and the playlists, and after.
+    readonly property var feedRuns: splitFeed(forYouFeed.modules || [])
+    readonly property var staffRows: splitFeed(staffFeed.modules || []).reduce(
+        function (all, run) { return all.concat(run) }, [])
+
+    function splitFeed(modules) {
+        var runs = [[], [], []], run = 0
+        for (var i = 0; i < modules.length; i++) {
+            var m = modules[i]
+            if (m.ownRow === "artists")   { run = Math.max(run, 1); continue }
+            if (m.ownRow === "playlists") { run = 2; continue }
+            if (m.ownRow) continue
+            var cards = firstOf(m.items || [], feedCard)
+            if (cards.length > 0)
+                runs[run].push({ id: m.id, title: m.title, subtitle: m.context || "",
+                                 mediaType: m.mediaType, items: cards })
+        }
+        return runs
+    }
+
+    // A feed item as a card, in the shape openEntry() and playEntry() take.
+    function feedCard(it) {
+        switch (it.kind) {
+        case "playlist":
+            return { id: it.uuid, uuid: it.uuid, title: it.title, kind: "playlist",
+                     subtitle: qsTr("%Ln track(s)", "", it.numTracks),
+                     coverUrl: it.coverUrl, type: it.type || "" }
+        case "mix":
+            return { id: it.id, title: it.title, subtitle: it.subtitle || "", kind: "mix",
+                     coverUrl: it.coverUrl, mixType: it.mixType || "" }
+        case "artist":
+            return { id: it.id, title: it.name, subtitle: qsTr("Artist"), pinSubtitle: "",
+                     kind: "artist", coverUrl: it.coverUrl || "" }
+        default:
+            return { id: it.id, title: it.title, subtitle: it.artists, kind: "album",
+                     coverUrl: it.coverUrl }
+        }
+    }
+
+    function loadFeed(feed) {
+        if (feed === "editorial") root.staffFeedAsked = true
+        bridge.fetchHomeFeed(feed, root.feedLanguage, function (page, err) {
+            if (feed === "editorial") root.staffFailed = err.length > 0
+            else root.forYouFailed = err.length > 0
+            if (err.length > 0) return
+            if (feed === "editorial") root.staffFeed = page
+            else root.forYouFeed = page
+        })
+    }
+
+    function showFeedTab(index) {
+        var tab = root.feedTabs[index]
+        if (!tab) return
+        root.feedTab = tab.feed
+        if (tab.feed === "editorial" && !root.staffFeedAsked) loadFeed("editorial")
+    }
+
+    // The titles are Tidal's, worded in the language asked for.
+    Connections {
+        target: (typeof i18n !== "undefined" && i18n) ? i18n : null
+        ignoreUnknownSignals: true
+        function onLanguageApplied() {
+            root.loadFeed("static")
+            if (root.staffFeedAsked) root.loadFeed("editorial")
+        }
+    }
+
 
     Component.onCompleted: loadContent()
 
@@ -96,6 +179,11 @@ Rectangle {
         function onFavoriteAlbumsChanged()    { refreshDebounce.restart() }
         function onFavoriteArtistsChanged()   { refreshDebounce.restart() }
         function onFavoritePlaylistsChanged() { refreshDebounce.restart() }
+        // The bridge cuts the feed's releases to the preferred version.
+        function onPreferExplicitChanged() {
+            root.forYouFeed = bridge.cachedHomeFeed("static")
+            if (root.staffFeedAsked) root.staffFeed = bridge.cachedHomeFeed("editorial")
+        }
     }
 
     // Each kind emits several times for one change, so the three handlers
@@ -142,6 +230,8 @@ Rectangle {
 
     function reloadFailed() {
         if (root.mixesFailed) root.loadMixes()
+        if (root.forYouFailed) root.loadFeed("static")
+        if (root.staffFailed) root.loadFeed("editorial")
         root.refreshRows()
     }
 
@@ -169,6 +259,9 @@ Rectangle {
     // failed fetch leaves its row hidden until the bridge's lists arrive.
     function loadContent() {
         loadMixes()
+        forYouFeed = bridge.cachedHomeFeed("static")
+        staffFeed  = bridge.cachedHomeFeed("editorial")
+        loadFeed("static")
 
         bridge.fetchFavoriteAlbums(function(albums, err) {
             if (err.length > 0) return
@@ -208,6 +301,22 @@ Rectangle {
                 color: Theme.textPrimary
                 font.pixelSize: Theme.fontDisplay
                 font.bold: true
+            }
+
+            // Tidal's feeds, as its apps offer them over Home.
+            Item { Layout.preferredHeight: Theme.space4; visible: homeTabs.visible }
+
+            TabStrip {
+                id: homeTabs
+                namePrefix: "home"
+                visible: root.feedTabs.length > 1
+                animate: visible
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.space6
+                Layout.rightMargin: Theme.space6
+                model: root.feedTabs.map(function (t) { return t.name })
+                currentIndex: Math.max(0, root.feedTabs.findIndex(function (t) { return t.feed === root.feedTab }))
+                onActivated: (index) => root.showFeedTab(index)
             }
 
             // Under it, the track in the player, to pick up where it was left.
@@ -326,7 +435,7 @@ Rectangle {
                 HorizontalSection {
                     objectName: "homeRecentlyPlayed"
                     Layout.fillWidth: true
-                    visible: root.recentlyPlayed.length > 0
+                    visible: root.recentlyPlayed.length > 0 && !root.onStaffPicks
                     title: qsTr("Recently played", "Home, the row of things played here lately")
                     items: root.recentlyPlayed
                     // Each card takes its own kind; this names the row alone.
@@ -339,7 +448,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     // Over nothing it reads as an account without mixes.
-                    visible: mixes.length > 0
+                    visible: mixes.length > 0 && !root.onStaffPicks
                     title: qsTr("My mixes")
                     items: root.mixes
                     mediaType: "mix"
@@ -365,7 +474,7 @@ Rectangle {
                 // a retry, in place of cards that are not there.
                 ColumnLayout {
                     objectName: "homeMixesFailed"
-                    visible: root.mixesFailed && mixes.length === 0
+                    visible: root.mixesFailed && mixes.length === 0 && !root.onStaffPicks
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.space6
                     Layout.rightMargin: Theme.space6
@@ -398,9 +507,29 @@ Rectangle {
                     }
                 }
 
+                Repeater {
+                    model: root.onStaffPicks ? [] : root.feedRuns[0]
+                    delegate: feedRowC
+                }
+
                 HorizontalSection {
                     Layout.fillWidth: true
-                    visible: recentAlbums.length > 0
+                    visible: artists.length > 0 && !root.onStaffPicks
+                    title: qsTr("Favourite artists")
+                    items: root.artists
+                    mediaType: "artist"
+                    onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })
+                    onViewAllClicked: navigateTo("collection", { activeTab: 2 })
+                }
+
+                Repeater {
+                    model: root.onStaffPicks ? [] : root.feedRuns[1]
+                    delegate: feedRowC
+                }
+
+                HorizontalSection {
+                    Layout.fillWidth: true
+                    visible: recentAlbums.length > 0 && !root.onStaffPicks
                     title: qsTr("Saved albums")
                     items: root.recentAlbums
                     mediaType: "album"
@@ -417,7 +546,7 @@ Rectangle {
 
                 HorizontalSection {
                     Layout.fillWidth: true
-                    visible: playlists.length > 0
+                    visible: playlists.length > 0 && !root.onStaffPicks
                     title: qsTr("My playlists")
                     items: root.playlists
                     mediaType: "playlist"
@@ -433,18 +562,36 @@ Rectangle {
                     onViewAllClicked: navigateTo("collection", { activeTab: 3 })
                 }
 
-                HorizontalSection {
-                    Layout.fillWidth: true
-                    visible: artists.length > 0
-                    title: qsTr("Favourite artists")
-                    items: root.artists
-                    mediaType: "artist"
-                    onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })
-                    onViewAllClicked: navigateTo("collection", { activeTab: 2 })
+                Repeater {
+                    model: root.onStaffPicks ? [] : root.feedRuns[2]
+                    delegate: feedRowC
+                }
+
+                Repeater {
+                    model: root.onStaffPicks ? root.staffRows : []
+                    delegate: feedRowC
                 }
             }
 
             Item { Layout.preferredHeight: Theme.space8 }
+        }
+    }
+
+    // One of Tidal's rows. Its cards are of one kind or, in a "recent" row,
+    // each of its own; Tidal's own pages behind "View all" are not built.
+    Component {
+        id: feedRowC
+        HorizontalSection {
+            required property var modelData
+            objectName: "homeFeedRow_" + modelData.id
+            Layout.fillWidth: true
+            title: modelData.title
+            subtitle: modelData.subtitle
+            items: modelData.items
+            mediaType: modelData.mediaType
+            showViewAll: false
+            onItemClicked: (idx, item) => root.openEntry(item)
+            onItemPlayClicked: (idx, item) => root.playEntry(item)
         }
     }
 

@@ -1,0 +1,107 @@
+{
+  "uuid": "00000000-0000-4000-8000-000000000001",
+  "page": { "cursor": "UEFHRV8y" },
+  "header": { "vibes": { "items": [
+    { "name": "For you", "type": "STATIC" },
+    { "name": "Staff Picks", "type": "EDITORIAL" },
+    { "name": "Uploads", "type": "UPLOADS" }
+  ] } },
+  "items": [
+    { "type": "SHORTCUT_LIST", "moduleId": "SHORTCUT_LIST", "title": "Shortcuts", "icons": [],
+      "items": [
+        { "type": "DEEP_LINK", "following": false,
+          "data": { "title": "My Tracks", "id": "tidal://my-collection/tracks",
+                    "url": "tidal://my-collection/tracks", "externalUrl": false } },
+        { "type": "ALBUM", "following": true, "latestRelease": false,
+          "data": { "id": 9100001, "title": "Shortcut Album", "cover": "aaaa0001-0000-4000-8000-000000000001",
+                    "numberOfTracks": 9, "duration": 2400, "releaseDate": "2026-01-01", "type": "ALBUM",
+                    "explicit": false, "artists": [ { "id": 8100001, "name": "Invented Band", "main": true } ] } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "DAILY_MIXES", "title": "Custom mixes", "icons": [],
+      "showQuickPlay": true, "subtitle": null, "viewAll": "home/pages/DAILY_MIXES/view-all",
+      "items": [
+        { "type": "MIX", "following": true,
+          "data": { "type": "DISCOVERY_MIX", "id": "mx0000000000000000000000000001",
+                    "mixImages": [ { "size": "SMALL", "url": "https://images.tidal.com/0/mx1/320", "width": 320, "height": 320 },
+                                   { "size": "MEDIUM", "url": "https://images.tidal.com/0/mx1/640", "width": 640, "height": 640 } ],
+                    "titleTextInfo": { "text": "My Daily Discovery", "color": "#FFFFFF" },
+                    "subtitleTextInfo": { "text": "Placeholder subtitle", "color": "#FFFFFF" },
+                    "shortSubtitleTextInfo": { "text": "Created by TIDAL", "color": "#FFFFFF" } } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "CONTINUE_LISTEN_TO", "title": "Recently played", "icons": [],
+      "viewAll": "home/pages/CONTINUE_LISTEN_TO/view-all",
+      "items": [
+        { "type": "ALBUM", "following": true,
+          "data": { "id": 9100002, "title": "Played Album", "cover": "aaaa0002-0000-4000-8000-000000000002",
+                    "numberOfTracks": 10, "duration": 2500, "type": "ALBUM", "explicit": false,
+                    "artists": [ { "id": 8100002, "name": "Someone Played", "main": true } ] } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "NEW_ALBUM_SUGGESTIONS", "title": "Suggested new albums for you", "icons": [],
+      "showQuickPlay": true, "viewAll": "home/pages/NEW_ALBUM_SUGGESTIONS/view-all",
+      "items": [
+        { "type": "ALBUM", "following": false, "latestRelease": false,
+          "data": { "id": 9200001, "title": "Fresh Record", "cover": "bbbb0001-0000-4000-8000-000000000001",
+                    "numberOfTracks": 11, "duration": 2900, "releaseDate": "2026-11-13", "type": "ALBUM",
+                    "explicit": true, "audioQuality": "LOSSLESS",
+                    "artists": [ { "id": 8200001, "name": "New Voice", "main": true } ] } },
+        { "type": "ALBUM", "following": false, "latestRelease": false,
+          "data": { "id": 9200002, "title": "Fresh Record", "cover": "bbbb0001-0000-4000-8000-000000000001",
+                    "numberOfTracks": 11, "duration": 2900, "releaseDate": "2026-11-13", "type": "ALBUM",
+                    "explicit": false, "audioQuality": "LOSSLESS",
+                    "artists": [ { "id": 8200001, "name": "New Voice", "main": true } ] } },
+        { "type": "ALBUM", "following": false, "latestRelease": false,
+          "data": { "id": 9200003, "title": "Second Wave", "cover": "bbbb0003-0000-4000-8000-000000000003",
+                    "numberOfTracks": 4, "duration": 900, "releaseDate": "2026-11-12", "type": "EP",
+                    "explicit": false,
+                    "artists": [ { "id": 8200002, "name": "Duo One", "main": true },
+                                 { "id": 8200003, "name": "Duo Two", "main": true } ] } }
+      ] },
+    { "type": "TRACK_LIST", "moduleId": "NEW_TRACK_SUGGESTIONS", "title": "Recommended new tracks", "icons": [],
+      "viewAll": "home/pages/NEW_TRACK_SUGGESTIONS/view-all",
+      "items": [
+        { "type": "TRACK", "following": false,
+          "data": { "id": 9300001, "title": "A New Song", "duration": 200, "explicit": false,
+                    "album": { "id": 9200003, "title": "Second Wave", "cover": "bbbb0003-0000-4000-8000-000000000003" },
+                    "artists": [ { "id": 8200002, "name": "Duo One", "main": true } ] } }
+      ] },
+    { "type": "HORIZONTAL_LIST_WITH_CONTEXT", "moduleId": "BECAUSE_YOU_LISTENED_TO_ALBUM", "title": "Because you listened to",
+      "icons": [], "showQuickPlay": true,
+      "viewAll": "home/pages/BECAUSE_YOU_LISTENED_TO_ALBUM/view-all?itemId=0",
+      "header": { "type": "ALBUM", "following": true, "latestRelease": false,
+                  "data": { "id": 9100003, "title": "Context Album", "cover": "aaaa0003-0000-4000-8000-000000000003",
+                            "numberOfTracks": 12, "duration": 2800, "type": "ALBUM", "explicit": false,
+                            "artists": [ { "id": 8100003, "name": "Context Artist", "main": true } ] } },
+      "items": [
+        { "type": "ALBUM", "following": false,
+          "data": { "id": 9200004, "title": "Kindred Album", "cover": "bbbb0004-0000-4000-8000-000000000004",
+                    "numberOfTracks": 8, "duration": 2000, "type": "ALBUM", "explicit": false,
+                    "artists": [ { "id": 8200004, "name": "Kindred Spirit", "main": true } ] } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "RECOMMENDED_USERS_PLAYLISTS", "title": "User playlists you’ll love", "icons": [],
+      "viewAll": "home/pages/RECOMMENDED_USERS_PLAYLISTS/view-all",
+      "items": [
+        { "type": "PLAYLIST", "following": false, "numberOfFollowers": 0,
+          "data": { "uuid": "cccc0001-0000-4000-8000-000000000001", "type": "USER", "title": "Somebody's Picks",
+                    "description": "", "image": "cccc0001-0000-4000-8000-0000000000aa",
+                    "squareImage": "cccc0001-0000-4000-8000-0000000000bb", "numberOfTracks": 19, "duration": 4500,
+                    "creator": { "id": 7000001, "name": "", "type": "USER" } } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "BASED_ON_YOUR_INTERESTS_1", "title": "Invented Genre & more", "icons": [],
+      "viewAll": "home/pages/BASED_ON_YOUR_INTERESTS_1/view-all?itemId=invented",
+      "items": [
+        { "type": "ARTIST", "following": true,
+          "data": { "id": 8300001, "name": "Genre Artist", "picture": "dddd0001-0000-4000-8000-000000000001" } },
+        { "type": "VIDEO", "following": false,
+          "data": { "id": 9400001, "title": "A Video", "duration": 180 } },
+        { "type": "PLAYLIST", "following": false,
+          "data": { "uuid": "cccc0002-0000-4000-8000-000000000002", "type": "EDITORIAL", "title": "Genre Essentials",
+                    "squareImage": "cccc0002-0000-4000-8000-0000000000bb", "numberOfTracks": 40, "duration": 9000 } },
+        { "type": "ALBUM", "following": false,
+          "data": { "id": 9200005, "title": "Genre Classic", "cover": "bbbb0005-0000-4000-8000-000000000005",
+                    "numberOfTracks": 10, "duration": 2600, "type": "ALBUM", "explicit": false,
+                    "artists": [ { "id": 8300001, "name": "Genre Artist", "main": true } ] } }
+      ] },
+    { "type": "SOME_FUTURE_MODULE", "moduleId": "SOMETHING_NEW", "title": "Not known yet",
+      "items": [ { "type": "ALBUM", "data": { "id": 9200099, "title": "Unknown Module Album" } } ] }
+  ]
+}
