@@ -440,6 +440,14 @@ TestCase {
         }
     }
     Component {
+        id: homeTallC
+        ShotWindow {
+            width: testCase.pageWidth; height: 2700; visible: true
+            property alias page: pg
+            HomePage { id: pg; anchors.fill: parent }
+        }
+    }
+    Component {
         id: loginC
         ShotWindow {
             width: testCase.pageWidth; height: 700; visible: true
@@ -1177,5 +1185,104 @@ TestCase {
         settle(rw.contentItem, 400)
         shot(rw.rows, "nocover_rows_" + row.theme)
         rw.destroy()
+    }
+
+    // ── Tidal's own Home ─────────────────────────────────────────────────
+    // Home with the rows of Tidal's feed. Its titles come from Tidal; the
+    // German ones here stand in for what de_DE sends.
+    function feedPage(de) {
+        function t(en, ger) { return de ? ger : en }
+        function al(i, title, artist) {
+            return { kind: "album", id: 900 + i, title: title, artists: artist, coverUrl: "cover/feed" + i }
+        }
+        function pl(i, title, n) {
+            return { kind: "playlist", uuid: "feed-pl-" + i, title: title, numTracks: n,
+                     coverUrl: "cover/feedpl" + i, type: "EDITORIAL" }
+        }
+        function ar(i, name) { return { kind: "artist", id: 950 + i, name: name, coverUrl: "cover/feedar" + i } }
+        function mx(i, title) {
+            return { kind: "mix", id: "feed-mix-" + i, title: title, subtitle: "Lumen Drift, Vellum Coast",
+                     coverUrl: "cover/feedmx" + i, mixType: "HISTORY_MONTHLY_MIX" }
+        }
+        function own(id, r) { return { id: id, title: id, ownRow: r, mediaType: "recent", items: [] } }
+        function row(id, title, type, items, context) {
+            return { id: id, title: title, context: context || "", ownRow: "", mediaType: type, items: items }
+        }
+        return {
+            tabs: [{ name: t("For you", "Für dich"), feed: "static" },
+                   { name: t("Staff Picks", "Wir empfehlen"), feed: "editorial" }],
+            modules: [
+                own("DAILY_MIXES", "mixes"), own("CONTINUE_LISTEN_TO", "recent"),
+                row("NEW_ALBUM_SUGGESTIONS", t("Suggested new albums for you", "Neue Alben-Vorschläge für dich"), "album",
+                    [al(0, "Glass Harbour", "Kestrel Arcade"), al(1, "Paper Moons", "Odd Lantern Club"),
+                     al(2, "Static Bloom", "Slate Meridian"), al(3, "Low Tide", "Vellum Coast"),
+                     al(4, "Copperline", "Lumen Drift")]),
+                row("BECAUSE_YOU_LISTENED_TO_ALBUM", t("Because you listened to", "Zuletzt angehört:"), "album",
+                    [al(5, "Driftwood", "Odd Lantern Club"), al(6, "Night Ferry", "Kestrel Arcade"),
+                     al(7, "Hollow Pines", "Brackwater")], "Salt Lines"),
+                row("BASED_ON_YOUR_INTERESTS_1", t("Dream Pop & more", "Dream Pop & mehr"), "recent",
+                    [ar(0, "Lumen Drift"), pl(0, "Dream Pop Essentials", 40), al(8, "Soft Focus", "Vellum Coast"),
+                     ar(1, "Slate Meridian")]),
+                own("YOUR_FAVORITE_ARTISTS", "artists"),
+                row("SUGGESTED_ESSENTIAL_PLAYLISTS", t("Essentials to explore", "Essentials zum Entdecken"), "playlist",
+                    [pl(1, "Brackwater: Essentials", 30), pl(2, "Kestrel Arcade: Essentials", 25),
+                     pl(3, "Shoegaze Essentials", 50)]),
+                own("MY_PLAYLISTS", "playlists"),
+                row("POPULAR_PLAYLISTS", t("Popular playlists on Tidal", "Beliebte Playlists auf Tidal"), "playlist",
+                    [pl(4, "Top Hits", 50), pl(5, "Rising", 40), pl(6, "Indie Now", 60), pl(7, "Chill", 80)]),
+                row("HISTORY_MIXES", t("Your listening history", "Dein Hörverlauf"), "mix",
+                    [mx(0, t("My October", "Mein Oktober")), mx(1, t("My September", "Mein September"))])
+            ]
+        }
+    }
+    function staffPage(de) {
+        var p = feedPage(de)
+        return { tabs: p.tabs, modules: [
+            { id: "STAFF_ALBUMS", title: de ? "Alben ohne Skips" : "Albums with no skips", context: "",
+              ownRow: "", mediaType: "album", items: p.modules[2].items },
+            { id: "STAFF_PLAYLISTS", title: de ? "Playlists, die wir lieben" : "Playlists we love", context: "",
+              ownRow: "", mediaType: "playlist", items: p.modules[6].items }] }
+    }
+
+    // small: a few saved things; empty: none; failed: the feed is down and
+    // nothing is cached; staff: the staff picks tab.
+    function test_28_home_feed_data() {
+        var rows = []
+        var themes = [{ n: "dark", t: "sea" }, { n: "light", t: "sky" }]
+        for (var i = 0; i < themes.length; ++i) {
+            rows.push({ tag: "small-en-" + themes[i].n, what: "small", de: false, theme: themes[i].t, name: themes[i].n })
+            rows.push({ tag: "small-de-" + themes[i].n, what: "small", de: true, theme: themes[i].t, name: themes[i].n })
+            rows.push({ tag: "empty-en-" + themes[i].n, what: "empty", de: false, theme: themes[i].t, name: themes[i].n })
+            rows.push({ tag: "failed-en-" + themes[i].n, what: "failed", de: false, theme: themes[i].t, name: themes[i].n })
+            rows.push({ tag: "staff-en-" + themes[i].n, what: "staff", de: false, theme: themes[i].t, name: themes[i].n })
+            rows.push({ tag: "staff-de-" + themes[i].n, what: "staff", de: true, theme: themes[i].t, name: themes[i].n })
+        }
+        return rows
+    }
+    function test_28_home_feed(row) {
+        prefs.theme = row.theme
+        if (row.de) bridge.useCatalogueForTest("de")
+        player.setPlayingForTest(false)
+        library.setEntriesForTest([])
+        bridge.setHomeFeedForTest("static", feedPage(row.de), row.what === "failed" ? "Host unreachable" : "")
+        bridge.setHomeFeedForTest("editorial", staffPage(row.de))
+        var win = homeTallC.createObject(testCase)
+        verify(win)
+        var p = win.page
+        if (row.what === "small" || row.what === "failed" || row.what === "staff") {
+            p.mixes = cardItems(S.mixes(2), "mix")
+            p.recentAlbums = cardItems(S.albums(2), "album")
+            p.playlists = cardItems(S.playlists(1), "playlist")
+            p.artists = cardItems(S.artists(2), "artist")
+        } else {
+            p.mixes = []; p.recentAlbums = []; p.playlists = []; p.artists = []
+        }
+        if (row.what === "staff") findByName(p, "homeTabsRow").activated(1)
+        settle(win.contentItem, 700)
+        shot(p, "tw-home-" + row.what + (row.de ? "-de-" : "-") + row.name)
+        win.destroy()
+        if (row.de) bridge.useCatalogueForTest("")
+        library.setEntriesForTest(S.libraryEntries())
+        player.setPlayingForTest(true)
     }
 }

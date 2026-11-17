@@ -269,6 +269,25 @@ void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
     getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, withoutStatus(std::move(cb)));
 }
 
+void TidalApi::getV2Web(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    QUrl url(baseUrl(QString::fromLatin1(kApiBaseV2)) + endpoint);
+    QUrlQuery q = params;
+    if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
+    url.setQuery(q);
+
+    send(url, [this, url] {
+        QNetworkRequest req = makeRequest(url);
+        req.setRawHeader("x-tidal-client-version", kWebClientVersion);
+        return m_nam->get(req);
+    }, [cb](const Answer &a) {
+        if (a.failed) { cb({}, a.error); return; }
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(a.body, &err);
+        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
+        cb(doc.object(), {});
+    });
+}
+
 void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
     QUrl url(baseUrl(QString::fromLatin1(kApiBaseV2)) + endpoint);
     QUrlQuery q = params;

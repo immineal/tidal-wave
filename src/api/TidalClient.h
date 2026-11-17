@@ -78,6 +78,35 @@ struct FavoriteIds {
     QSet<qint64> artists;
 };
 
+// One card of Tidal's own Home feed (v2/home/feed/<feed>).
+struct HomeItem {
+    enum class Kind { Album, Playlist, Mix, Artist };
+    Kind     kind = Kind::Album;
+    Album    album;
+    Playlist playlist;
+    Mix      mix;
+    Artist   artist;
+};
+
+// One row of that feed, titled as Tidal titles it in the locale asked for.
+struct HomeModule {
+    QString id;          // Tidal's moduleId, e.g. NEW_ALBUM_SUGGESTIONS
+    QString title;
+    // The item a "Because you listened to" row is about; "" for most rows.
+    QString context;
+    // Where one of Home's own rows stands in for this one: "recent", "mixes",
+    // "artists" or "playlists". Such a row carries no items.
+    QString ownRow;
+    QList<HomeItem> items;
+};
+
+struct HomeFeed {
+    QList<HomeModule> modules;
+    // The feeds the header offers, as {name, key}; key is a feed name
+    // fetchHomeFeed() takes.
+    QList<std::pair<QString, QString>> tabs;
+};
+
 class TidalClient : public QObject {
     Q_OBJECT
 public:
@@ -111,6 +140,19 @@ public:
     // Home page feeds
     void fetchHomeMixes   (MixesCallback cb);
     void fetchMixTracks   (const QString &mixId, TracksCallback cb);
+    // Every page of v2/home/feed/<feed> merged into one body: the first
+    // page's header and all pages' items. `locale` words the titles. A later
+    // page failing still delivers the earlier ones.
+    using FeedCallback = std::function<void(QJsonObject, QString)>;
+    void fetchHomeFeed(const QString &feed, const QString &locale, FeedCallback cb);
+    // The feeds fetchHomeFeed() takes: "For you" and the staff picks.
+    static constexpr auto kHomeFeedForYou   = "static";
+    static constexpr auto kHomeFeedEditorial = "editorial";
+    static constexpr int  kMaxHomeFeedPages = 5;
+    // The rows and tabs of such a body. Rows of a kind the app cannot show
+    // (track lists, shortcuts, videos, types it does not know) are left out,
+    // and so is a row left with no cards.
+    static HomeFeed parseHomeFeed(const QJsonObject &root);
     // The same request as fetchMixTracks(), delivering the MIX_HEADER beside
     // the tracks. The virtuals in this class are test seams: a fake client
     // answers them and nothing in the app overrides one.
@@ -351,6 +393,9 @@ private:
     // A backstop on the offset loop, per filter, for a server that claims a
     // total it never reaches.
     static constexpr int kMaxArtistAlbums = 500;
+
+    void fetchHomeFeedPage(const QString &feed, const QString &locale, FeedCallback cb,
+                           const QString &cursor, QJsonObject acc, int page);
 
     // Daily Discovery, then New Arrivals, then the order they came in.
     static QList<Mix> orderMixes(QList<Mix> mixes);
