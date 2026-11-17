@@ -136,4 +136,39 @@ TestCase {
     function test_now_playing_play_button_shows_a_ring_while_loading() {
         checkLoadingDisc(show(npHost), "nowPlayingPlayButton", "nowPlayingLoadingRing")
     }
+
+    // ── Now Playing with nothing to play ─────────────────────────────────
+
+    function test_empty_now_playing_says_so() {
+        player.setCurrentTrackForTest({})
+        player.setQueueForTest([], -1)
+        var host = show(npHost)
+        var page = host.page
+
+        var title = findByName(page, "nowPlayingTitle")
+        verify(title, "no title")
+        compare(title.text, qsTranslate("PlayerBar", "No track playing"),
+                "the empty page's title is not the bar's words for it")
+
+        var hint = findByName(page, "nowPlayingEmptyHint")
+        verify(hint && hint.visible && hint.text.length > 0,
+               "the empty page does not say how to start")
+
+        // Nothing that acts on a track is offered.
+        var lyrics = findByName(page, "nowPlayingLyricsToggle")
+        verify(lyrics && !lyrics.visible, "a Lyrics chip is offered with no track")
+        var sleep = findByName(page, "nowPlayingSleepTimerButton")
+        verify(sleep && !sleep.visible, "a sleep timer is offered with no track")
+
+        // The cover box draws the placeholder glyph, not an empty square.
+        var art = findByName(page, "nowPlayingArt")
+        var ph = findByName(art, "coverPlaceholder")
+        verify(ph && ph.visible, "the empty cover box draws nothing")
+
+        // And a track coming in replaces all of it.
+        player.setCurrentTrackForTest(makeTrack())
+        tryCompare(title, "text", "Ein Titel")
+        verify(!hint.visible, "the hint stays once a track is playing")
+        verify(sleep.visible, "the sleep timer does not come back with a track")
+    }
 }

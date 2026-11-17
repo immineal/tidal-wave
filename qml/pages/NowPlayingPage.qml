@@ -1201,7 +1201,7 @@ Rectangle {
 
                         PanelChip {
                             objectName: "nowPlayingLyricsToggle"
-                            visible: root.lyricsState !== "unavailable"
+                            visible: root.hasTrack && root.lyricsState !== "unavailable"
                             on: root.showLyrics
                             label: root.lyricsState === "loading"
                                    ? qsTr("Loading…") : qsTr("Lyrics")
@@ -1274,7 +1274,8 @@ Rectangle {
                             Text {
                                 id: titleLink
                                 objectName: "nowPlayingTitle"
-                                text: hasTrack ? track.title : "–"; color: Theme.textPrimary
+                                text: hasTrack ? track.title : qsTranslate("PlayerBar", "No track playing")
+                                color: Theme.textPrimary
                                 font.pixelSize: Theme.fontDisplay; font.bold: true; Layout.fillWidth: true
                                 // Two lines before it elides: a long title is
                                 // most of what this page is for.
@@ -1304,6 +1305,7 @@ Rectangle {
                             // and elides: without Layout.fillWidth the names'
                             // own width is the column's minimum width.
                             ArtistLinks {
+                                visible: hasTrack
                                 Layout.fillWidth: true
                                 namePrefix: "nowPlaying"
                                 fontPixelSize: Theme.fontSection
@@ -1313,6 +1315,7 @@ Rectangle {
                             }
                             Text {
                                 id: albumLink
+                                visible: hasTrack
                                 text: hasTrack ? track.albumTitle : ""; color: Theme.textSec; font.pixelSize: Theme.fontBody
                                 // Same reason as the artist line above.
                                 Layout.fillWidth: true
@@ -1337,6 +1340,16 @@ Rectangle {
                                     cursorShape: hasTrack && Number(track.albumId) > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                                     onClicked: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
                                 }
+                            }
+                            // With nothing playing, the one thing to say is
+                            // how to start.
+                            Text {
+                                objectName: "nowPlayingEmptyHint"
+                                visible: !hasTrack
+                                Layout.fillWidth: true
+                                text: qsTr("Play a track, an album or a playlist and it shows here.")
+                                color: Theme.textSec; font.pixelSize: Theme.fontBody
+                                wrapMode: Text.Wrap
                             }
                         }
 
@@ -1425,6 +1438,8 @@ Rectangle {
                         Rectangle {
                             id: sleepTimerBtn
                             objectName: "nowPlayingSleepTimerButton"
+                            // A running timer stays reachable after the queue ends.
+                            visible: root.hasTrack || root.sleepTimerActive
                             // height minus glyphSize has to stay even, so the
                             // ring round the glyph is a whole number of pixels:
                             // anchor centring rounds.
