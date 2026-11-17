@@ -201,6 +201,7 @@ TestCase {
         var page = makeHome(true)
         var strip = findByName(page, "homeTabsRow")
         verify(strip.visible, "no tabs over a feed that names two")
+        compare(strip.model, ["For you", "Staff picks"], "a tab name is not in sentence case")
         compare(bridge.homeFeedFetchesForTest(), ["static/en"], "the staff picks were asked for unseen")
 
         strip.activated(1)
@@ -212,6 +213,21 @@ TestCase {
         strip.activated(0)
         settle(page)
         compare(titles(page).length, 8, "For you did not come back whole: " + titles(page))
+    }
+
+    // Tidal names the tabs in title case; the app writes sentence case. A
+    // name stays a name, and German keeps the capitals its grammar asks for.
+    function test_tab_names_are_in_sentence_case_data() {
+        return [{ tag: "two words", name: "Staff Picks", language: "en", shown: "Staff picks" },
+                { tag: "already", name: "For you", language: "en", shown: "For you" },
+                { tag: "the name", name: "New On Tidal", language: "en", shown: "New on Tidal" },
+                { tag: "an acronym", name: "Top DJ Mixes", language: "en", shown: "Top DJ mixes" },
+                { tag: "German", name: "Wir empfehlen", language: "de", shown: "Wir empfehlen" },
+                { tag: "German nouns", name: "Neue Musik", language: "de", shown: "Neue Musik" }]
+    }
+    function test_tab_names_are_in_sentence_case(data) {
+        var page = makeHome(false)
+        compare(page.tabTitle(data.name, data.language), data.shown)
     }
 
     // A failed staff picks feed leaves an empty tab, not a broken page.
