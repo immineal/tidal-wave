@@ -330,20 +330,24 @@ Popup {
                 heading: qsTr("Appearance")
                 key: "appearance"
 
-                Text {
-                    text: qsTr("Theme")
-                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-
-                // Side by side, not stacked. kSpecs lists the dark palettes and
-                // the light ones in the same hue order, so the two columns line
-                // up row by row as a grid of three colour families.
-                RowLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.space3
-                    ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
-                    ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
+                    spacing: Theme.space2
+                    Text {
+                        text: qsTr("Theme")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+
+                    // Side by side, not stacked. kSpecs lists the dark palettes
+                    // and the light ones in the same hue order, so the two
+                    // columns line up row by row as three colour families.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space3
+                        ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
+                        ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
+                    }
                 }
 
                 // The colour switch, under the grid because it changes what the
@@ -352,7 +356,6 @@ Popup {
                 RowLayout {
                     objectName: "settingsTintedBlock"
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.spaceHalf
                     spacing: Theme.space3
 
                     ColumnLayout {
@@ -387,7 +390,6 @@ Popup {
                 RowLayout {
                     objectName: "settingsOledBlock"
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.spaceHalf
                     spacing: Theme.space3
 
                     ColumnLayout {
@@ -424,7 +426,6 @@ Popup {
                 RowLayout {
                     objectName: "settingsCoverGradientBlock"
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.spaceHalf
                     spacing: Theme.space3
 
                     ColumnLayout {
@@ -458,7 +459,6 @@ Popup {
                     objectName: "settingsSpectrumBlock"
                     visible: Spectrum.available
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.spaceHalf
                     spacing: Theme.space3
 
                     ColumnLayout {
@@ -489,34 +489,40 @@ Popup {
                     }
                 }
 
-                Text {
-                    text: qsTr("Language")
-                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                    Layout.topMargin: Theme.space1
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-                SettingSelect {
-                    objectName: "settingsLanguage"
-                    options: root.languageOptions()
-                    value: prefs.language
-                    onPicked: function (value) { prefs.language = value }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    Text {
+                        text: qsTr("Language")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    SettingSelect {
+                        objectName: "settingsLanguage"
+                        options: root.languageOptions()
+                        value: prefs.language
+                        onPicked: function (value) { prefs.language = value }
+                    }
                 }
 
-                Text {
-                    text: qsTr("Reduce motion")
-                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                    Layout.topMargin: Theme.space1
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-                SettingSelect {
-                    objectName: "settingsReducedMotion"
-                    options: [
-                        { value: "system", label: qsTr("As the system says", "reduce motion: follow the desktop setting") },
-                        { value: "on",     label: qsTr("On", "reduce motion: always animate less") },
-                        { value: "off",    label: qsTr("Off", "reduce motion: always animate") }
-                    ]
-                    value: prefs.reducedMotion
-                    onPicked: function (value) { prefs.reducedMotion = value }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    Text {
+                        text: qsTr("Reduce motion")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    SettingSelect {
+                        objectName: "settingsReducedMotion"
+                        options: [
+                            { value: "system", label: qsTr("As the system says", "reduce motion: follow the desktop setting") },
+                            { value: "on",     label: qsTr("On", "reduce motion: always animate less") },
+                            { value: "off",    label: qsTr("Off", "reduce motion: always animate") }
+                        ]
+                        value: prefs.reducedMotion
+                        onPicked: function (value) { prefs.reducedMotion = value }
+                    }
                 }
             }
 
@@ -529,48 +535,57 @@ Popup {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.space3
-                    Text {
-                        text: qsTr("Closing the window quits Tidal Wave")
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Closing the window quits Tidal Wave")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsQuitOnCloseNote"
+                            // Left visible with no tray icon, unlike the pure-black
+                            // switch above: it starts working when a tray appears,
+                            // and a StatusNotifier host can turn up long after login.
+                            text: qsTr("While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                     }
                     Toggle {
                         objectName: "settingsQuitOnCloseToggle"
                         label: qsTr("Closing the window quits Tidal Wave")
+                        Layout.alignment: Qt.AlignVCenter
                         checked: prefs.quitOnClose
                         onToggled: prefs.quitOnClose = !prefs.quitOnClose
                     }
                 }
-                Text {
-                    objectName: "settingsQuitOnCloseNote"
-                    // Left visible with no tray icon, unlike the pure-black
-                    // switch above: it starts working when a tray appears, and
-                    // a StatusNotifier host can turn up long after login.
-                    text: qsTr("While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space2
                     spacing: Theme.space3
-                    Text {
-                        text: qsTr("Show a notification when a new track starts")
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Show a notification when a new track starts")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsTrackNotificationsNote"
+                            text: qsTr("Not while the Tidal Wave window is in front.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                     }
                     Toggle {
                         objectName: "settingsTrackNotificationsToggle"
+                        Layout.alignment: Qt.AlignVCenter
                         checked: prefs.trackNotifications
                         onToggled: prefs.trackNotifications = !prefs.trackNotifications
                     }
-                }
-                Text {
-                    objectName: "settingsTrackNotificationsNote"
-                    text: qsTr("Not while the Tidal Wave window is in front.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
 
@@ -580,75 +595,90 @@ Popup {
                 heading: qsTr("Playback")
                 key: "playback"
 
-                Text {
-                    text: qsTr("Streaming quality")
-                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-                SettingSelect {
-                    objectName: "settingsQuality"
-                    options: [
-                        { value: "LOW",             label: qsTr("Normal (96 kbps)") },
-                        { value: "HIGH",            label: qsTr("High (320 kbps)") },
-                        // Tidal's lossless tier is CD quality, 16-bit/44.1kHz.
-                        // Named by bit depth so it pairs with the hi-res row
-                        // under it.
-                        { value: "LOSSLESS",        label: qsTr("Lossless (16-bit)") },
-                        { value: "HI_RES_LOSSLESS", label: qsTr("Hi-Res (24-bit)") }
-                    ]
-                    value: bridge.preferredQuality
-                    onPicked: function (value) { bridge.preferredQuality = value }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    Text {
+                        text: qsTr("Streaming quality")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    SettingSelect {
+                        objectName: "settingsQuality"
+                        options: [
+                            { value: "LOW",             label: qsTr("Normal (96 kbps)") },
+                            { value: "HIGH",            label: qsTr("High (320 kbps)") },
+                            // Tidal's lossless tier is CD quality, 16-bit/44.1kHz.
+                            // Named by bit depth so it pairs with the hi-res row
+                            // under it.
+                            { value: "LOSSLESS",        label: qsTr("Lossless (16-bit)") },
+                            { value: "HI_RES_LOSSLESS", label: qsTr("Hi-Res (24-bit)") }
+                        ]
+                        value: bridge.preferredQuality
+                        onPicked: function (value) { bridge.preferredQuality = value }
+                    }
                 }
 
                 // Where Tidal has a release explicit and clean, which one lists
                 // show. Explicit by default, as in Tidal's own apps.
-                Text {
-                    Layout.topMargin: Theme.space2
-                    text: qsTr("Version of records with explicit lyrics")
-                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-                SettingSelect {
-                    objectName: "settingsPreferredVersion"
-                    options: [
-                        { value: "explicit", label: qsTr("Explicit", "the version of a record with its lyrics as recorded") },
-                        { value: "clean",    label: qsTr("Clean", "the version of a record with its lyrics edited") }
-                    ]
-                    value: bridge.preferExplicit ? "explicit" : "clean"
-                    onPicked: function (value) { bridge.preferExplicit = value === "explicit" }
-                }
-                Text {
-                    objectName: "settingsPreferredVersionNote"
-                    text: qsTr("Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Version of records with explicit lyrics")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsPreferredVersionNote"
+                            text: qsTr("Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    SettingSelect {
+                        objectName: "settingsPreferredVersion"
+                        Layout.alignment: Qt.AlignVCenter
+                        options: [
+                            { value: "explicit", label: qsTr("Explicit", "the version of a record with its lyrics as recorded") },
+                            { value: "clean",    label: qsTr("Clean", "the version of a record with its lyrics edited") }
+                        ]
+                        value: bridge.preferExplicit ? "explicit" : "clean"
+                        onPicked: function (value) { bridge.preferExplicit = value === "explicit" }
+                    }
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space2
                     spacing: Theme.space3
-                    Text {
-                        text: qsTr("Normalize loudness")
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Normalize loudness")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsNormalizeNote"
+                            text: qsTr("Plays every track about as loud as the others, by Tidal's own measure. An album played in its order keeps its own balance.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                     }
                     Toggle {
                         objectName: "settingsNormalizeToggle"
+                        Layout.alignment: Qt.AlignVCenter
                         checked: prefs.normalizeLoudness
                         onToggled: prefs.normalizeLoudness = !prefs.normalizeLoudness
                     }
                 }
-                Text {
-                    objectName: "settingsNormalizeNote"
-                    text: qsTr("Plays every track about as loud as the others, by Tidal's own measure. An album played in its order keeps its own balance.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space2
                     spacing: Theme.space3
                     visible: prefs.crossfadeAvailable
                     Text {
@@ -665,7 +695,6 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space2
                     spacing: Theme.space3
                     Text {
                         text: qsTr("Crossfade between tracks")
@@ -704,67 +733,71 @@ Popup {
 
                 // Hidden where there is nothing to choose between, which is
                 // every box with no audio backend at all.
-                ColumnLayout {
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space1
-                    spacing: Theme.space1
+                    spacing: Theme.space3
                     visible: root.audioDevices.length > 0
 
-                    Text {
-                        text: qsTr("Audio output")
-                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Audio output")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsAudioDefaultNote"
+                            // Which real output the empty-id sentinel is pointing
+                            // at right now, so "System default" is not a guess.
+                            text: qsTr("The system default is currently %1.").arg(root.defaultDeviceLabel)
+                            visible: root.defaultDeviceLabel.length > 0
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                     }
                     SettingSelect {
                         objectName: "settingsAudioDevice"
+                        Layout.alignment: Qt.AlignVCenter
                         options: root.deviceOptions()
                         value: prefs.audioDevice
                         onPicked: function (value) { prefs.audioDevice = value }
                     }
-                    Text {
-                        objectName: "settingsAudioDefaultNote"
-                        // Which real output the empty-id sentinel is pointing
-                        // at right now, so "System default" is not a guess.
-                        text: qsTr("The system default is currently %1.").arg(root.defaultDeviceLabel)
-                        visible: root.defaultDeviceLabel.length > 0
-                        color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
-                    }
                 }
 
                 // Where the save dialog of a track download opens.
-                ColumnLayout {
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space1
-                    spacing: Theme.space1
+                    spacing: Theme.space3
                     visible: root.downloads !== null
 
-                    Text {
-                        text: qsTr("Download folder")
-                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
-                    }
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: Theme.space3
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Download folder")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                         Text {
                             objectName: "settingsDownloadFolder"
                             text: root.downloads ? root.downloads.folder : ""
-                            color: Theme.textPrimary; font.pixelSize: Theme.fontMeta
+                            color: Theme.textSec; font.pixelSize: Theme.fontMeta
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true
                         }
-                        PillButton {
-                            compact: true; accent: false
-                            objectName: "settingsDownloadFolderButton"
-                            text: qsTr("Change…", "button that picks another download folder")
-                            onClicked: if (root.downloads) root.downloads.chooseFolder()
+                        Text {
+                            text: qsTr("Each download asks for a file name and format, starting in this folder.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                     }
-                    Text {
-                        text: qsTr("Each download asks for a file name and format, starting in this folder.")
-                        color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    PillButton {
+                        compact: true; accent: false
+                        objectName: "settingsDownloadFolderButton"
+                        Layout.alignment: Qt.AlignVCenter
+                        text: qsTr("Change…", "button that picks another download folder")
+                        onClicked: if (root.downloads) root.downloads.chooseFolder()
                     }
                 }
             }
@@ -926,7 +959,11 @@ Popup {
 
                 // What waits to be sent, and the last thing that went wrong.
                 // Listens kept for an account not connected can be let go.
+                // Shown only with something in it, so an empty row adds no gap.
                 RowLayout {
+                    readonly property bool isNote: true
+                    visible: scrobbling.on && scrobbling.sink
+                             && (scrobbling.sink.statusText.length > 0 || scrobbling.sink.keptCount > 0)
                     Layout.fillWidth: true
                     spacing: Theme.space3
                     Text {
@@ -960,7 +997,6 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.space3
                     spacing: Theme.space3
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -1069,6 +1105,9 @@ Popup {
                 }
 
                 RowLayout {
+                    readonly property bool isNote: true
+                    visible: lastfmBlock.on && lastfmBlock.sink
+                             && (lastfmBlock.sink.statusText.length > 0 || lastfmBlock.sink.keptCount > 0)
                     Layout.fillWidth: true
                     spacing: Theme.space3
                     Text {
@@ -1119,10 +1158,32 @@ Popup {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.space3
-                    Text {
-                        text: qsTr("Interface size")
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Interface size")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        // Only when the scale was worked out here and not taken
+                        // from the desktop or the slider: the app is then sized
+                        // differently from every other window, which needs a word.
+                        Text {
+                            objectName: "settingsUiScaleAutoNote"
+                            visible: app.scaleWasChosenAutomatically()
+                                     && !app.scaleIsEnvironmentOverridden()
+                            text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsUiScaleEnvNote"
+                            visible: app.scaleIsEnvironmentOverridden()
+                            text: qsTr("The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                     }
                     // The number, always, so a size can be reported back.
                     Text {
@@ -1135,9 +1196,11 @@ Popup {
                                 : qsTr("Automatic", "interface size, the default")
                         }
                         color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                        Layout.alignment: Qt.AlignVCenter
                     }
                     Slider {
                         objectName: "settingsUiScaleSlider"
+                        Layout.alignment: Qt.AlignVCenter
                         Layout.preferredWidth: 140
                         // Disabled when something outside the process already
                         // set the factor, which the app leaves alone. Visibly
@@ -1158,34 +1221,12 @@ Popup {
                             (value < app.minScaleFactor()) ? 0 : value
                     }
                 }
-                // Only when the scale was worked out here and not taken from
-                // the desktop or the slider: the app is then sized differently
-                // from every other window, which needs a word.
-                Text {
-                    objectName: "settingsUiScaleAutoNote"
-                    visible: app.scaleWasChosenAutomatically()
-                             && !app.scaleIsEnvironmentOverridden()
-                    text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-
-                Text {
-                    objectName: "settingsUiScaleEnvNote"
-                    visible: app.scaleIsEnvironmentOverridden()
-                    text: qsTr("The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-
-                Text {
+                Note {
                     objectName: "settingsRestartNote"
                     // Qt picks the scene graph backend once, at startup, so
                     // this cannot take effect live. Said in the panel, not in a
                     // tooltip.
                     text: qsTr("Takes effect after you restart Tidal Wave.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
 
@@ -1198,22 +1239,27 @@ Popup {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.space3
-                    Text {
-                        text: qsTr("Check for updates automatically")
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody
-                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Check for updates automatically")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            text: qsTr("At most once a day, using the GitHub releases page.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
                     }
                     Toggle {
                         objectName: "settingsUpdateToggle"
                         label: qsTr("Check for updates automatically")
+                        Layout.alignment: Qt.AlignVCenter
                         checked: root.updatesOn
                         onToggled: if (root.check) root.check.enabled = !root.check.enabled
                     }
-                }
-                Text {
-                    text: qsTr("At most once a day, using the GitHub releases page.")
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
                 PillButton {
                     compact: true; accent: false
@@ -1238,12 +1284,13 @@ Popup {
                 Text {
                     objectName: "settingsFeedbackNote"
                     text: qsTr("Found a bug, or want to ask for something? Either way works.")
-                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
                 RowLayout {
                     objectName: "settingsFeedbackRow"
+                    readonly property bool isNote: true
                     Layout.fillWidth: true
                     spacing: Theme.space3
 
@@ -1269,15 +1316,13 @@ Popup {
                     Item { Layout.fillWidth: true }
                 }
 
-                Text {
+                Note {
                     objectName: "settingsFeedbackPrefillNote"
                     // The address is printed so the user sees where the mail is
                     // going before the mail client opens. It comes from
                     // Feedback, the one copy of it in the project.
                     text: qsTr("The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.")
                               .arg(Feedback.mailAddress())
-                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
 
@@ -1454,6 +1499,7 @@ Popup {
                 }
                 LinkLine {
                     objectName: "settingsReadmeLink"
+                    readonly property bool isNote: true
                     visible: privacyDetails.expanded
                     text: qsTr("Open the README")
                     onActivated: app.openUrl(Feedback.privacyUrl())
@@ -1550,9 +1596,9 @@ Popup {
 
     // ── inline components ────────────────────────────────────────────────
 
-    // A heading over a card of controls. Children declared on an instance land
-    // inside the card through the redirected default property, which is why the
-    // heading and the card are assigned to `data` by hand.
+    // A heading over a group of rows, as desktop settings lay them out: no
+    // card, a thin rule between rows. A Note under a row belongs to it and
+    // gets no rule. Children land in `body` through the default property.
     component Section : ColumnLayout {
         id: sec
         objectName: "settingsSection"
@@ -1562,45 +1608,62 @@ Popup {
         property string key: ""
         default property alias cardData: body.data
 
-        // The card's own inset. Its children are already 20px in from the
-        // panel edge, so this is air inside the card and not a second margin.
-        readonly property int cardPad: Theme.space4
-
         Layout.fillWidth: true
         Layout.leftMargin: root.sideMargin
         Layout.rightMargin: root.sideMargin
-        Layout.topMargin: Theme.space5
+        Layout.topMargin: Theme.space6
         Layout.bottomMargin: 0
         spacing: Theme.space2
 
         data: [
             Text {
+                objectName: "settingsSectionHeading"
                 text: sec.heading
-                color: Theme.textDim
-                font.pixelSize: Theme.fontMicro; font.bold: true
+                color: Theme.textSec
+                font.pixelSize: Theme.fontMeta; font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             },
-            Rectangle {
-                objectName: "settingsCard"
+            Item {
+                objectName: "settingsGroup"
                 Layout.fillWidth: true
-                // A Layout gives an anchored child its own size, so the card is
-                // told how tall its contents are. The inner column does not
-                // read its own height, so this cannot feed back.
-                Layout.preferredHeight: body.implicitHeight + 2 * sec.cardPad
-                color: Theme.surfaceHigh
-                radius: Theme.radiusLarge
-                border.width: 1
-                border.color: Theme.border
+                // Told its height, as an anchored child's size does not reach
+                // the layout. The column does not read this back.
+                Layout.preferredHeight: body.implicitHeight
 
                 ColumnLayout {
                     id: body
-                    anchors.fill: parent
-                    anchors.margins: sec.cardPad
-                    spacing: Theme.space3
+                    anchors { left: parent.left; right: parent.right; top: parent.top }
+                    spacing: Theme.space4
+                }
+
+                // Midway in the gap above every visible row but the first.
+                Repeater {
+                    model: body.visibleChildren
+                    delegate: Rectangle {
+                        required property var modelData
+                        required property int index
+                        objectName: "settingsRule"
+                        visible: index > 0 && modelData.isNote !== true && modelData.height > 0
+                        x: 0
+                        y: modelData.y - Math.round(body.spacing / 2)
+                        width: body.width
+                        height: 1
+                        color: Theme.border
+                    }
                 }
             }
         ]
+    }
+
+    // A line under a row about that row, or about the group as a whole. No
+    // rule above it, so it reads as part of what it follows.
+    component Note : Text {
+        readonly property bool isNote: true
+        color: Theme.textDim
+        font.pixelSize: Theme.fontMicro
+        wrapMode: Text.Wrap
+        Layout.fillWidth: true
     }
 
     // One switch under Experimental: a title, a line on what it sends, a toggle.
@@ -1642,6 +1705,8 @@ Popup {
     // notice with its tail cut off is worse than none.
     component PrivacyLine : Text {
         objectName: "settingsPrivacyText"
+        // One notice, so no rule between its paragraphs.
+        readonly property bool isNote: true
         color: Theme.textSec
         font.pixelSize: Theme.fontMeta
         lineHeight: 1.25
@@ -1653,6 +1718,7 @@ Popup {
     // open, by its chevron and to a screen reader.
     component DetailsToggle : Item {
         id: dt
+        readonly property bool isNote: true
         property bool expanded: false
         signal activated()
         onActivated: dt.expanded = !dt.expanded
@@ -1886,7 +1952,9 @@ Popup {
         onCountChanged:        Qt.callLater(sel.syncIndex)
         Component.onCompleted: sel.syncIndex()
 
-        Layout.fillWidth: true
+        // At the right end of its row, the label taking the rest.
+        Layout.preferredWidth: 200
+        Layout.minimumWidth: 120
         model: options
         // Explicit rather than textRole, so the delegate and the field agree
         // whatever the model is made of.
