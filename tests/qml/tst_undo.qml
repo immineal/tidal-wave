@@ -273,14 +273,86 @@ TestCase {
         compare(bridge.addWritesForTest().join(","), "100,100,50",
                 "the add did not go out in writes of a hundred")
         compare(bridge.serverPlaylistForTest("pl-1"), ids, "the tracks landed out of order")
-        // The undo reads the playlist once per track. Answered in place, 250
-        // reads nest 250 deep, past Qt 6.4's script stack; the app's answers
-        // come from the network, each on a fresh stack, and so do these.
-        bridge.answerReadsLaterForTest(true)
+    }
+
+    // Undoing a long add is one read, one removal of all its rows and one
+    // read-back, not three requests per track: Tidal rate-limits the account.
+    function test_undoing_a_long_add_takes_a_few_requests() {
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        var ids = []
+        for (var i = 0; i < 250; i++) ids.push(5000 + i)
+        Edits.addTracksToPlaylist("pl-1", "Tape", ids)
+        settleEdits()
+        compare(Edits.count, 1)
+        var reads = bridge.readBacksForTest()
+        var removals = bridge.removeFromPlaylistCallsForTest()
         Edits.undoLast()
-        verify(Edits.undoing, "the undo did not start")
         tryVerify(function () { return !Edits.undoing }, 10000, "the undo never finished")
-        compare(bridge.serverPlaylistForTest("pl-1"), [], "the undo left some behind")
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12], "the undo left some behind")
+        compare(Toasts.text, "Taken out of “Tape” again")
+        var requests = bridge.readBacksForTest() - reads
+                     + bridge.removeFromPlaylistCallsForTest() - removals
+                     + bridge.removeWritesForTest().length
+        verify(requests <= 5, "the undo took " + requests + " requests")
+        compare(bridge.removeWritesForTest().length, 1, "the rows did not go in one removal")
+        compare(bridge.removeWritesForTest()[0].split(",").length, 250)
+    }
+
+    // A track listed twice in the add, and held before it: the undo takes the
+    // last rows holding it, as many as were added, and leaves the rest.
+    function test_undoing_an_add_with_duplicates_takes_the_last_rows() {
+        bridge.setServerPlaylistForTest("pl-1", [11, 12, 13, 12, 14])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 15, 12])
+        settleEdits()
+        Edits.answerDuplicates("all")
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13, 12, 14, 12, 15, 12])
+        // Moved on another device since: 15 now sits first.
+        bridge.setServerPlaylistForTest("pl-1", [15, 11, 12, 13, 12, 14, 12, 12])
+        Edits.undoLast()
+        settleEdits()
+        compare(bridge.removeWritesForTest(), ["0,6,7"])
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13, 12, 14])
+        compare(Toasts.text, "Taken out of “Tape” again")
+    }
+
+    // Tidal refuses the removal: a stale version, or any other no. Nothing is
+    // said to be undone, and the page reads the playlist again.
+    function test_an_undo_of_an_add_tidal_refuses_says_so_data() {
+        return [ { tag: "stale", answer: "stale" }, { tag: "refused", answer: "fail" } ]
+    }
+    function test_an_undo_of_an_add_tidal_refuses_says_so(row) {
+        bridge.setServerPlaylistForTest("pl-1", [11])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13])
+        settleEdits()
+        compare(Edits.count, 1)
+        bridge.setRemoveAnswerForTest(row.answer)
+        var changed = []
+        var conn = function (uuid) { changed.push(uuid) }
+        Edits.playlistChanged.connect(conn)
+        Edits.undoLast()
+        settleEdits()
+        Edits.playlistChanged.disconnect(conn)
+        compare(bridge.removeWritesForTest(), ["1,2"])
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13])
+        compare(Toasts.text, Edits.undoFailedText)
+        compare(changed, ["pl-1"], "the page was not told to read the playlist again")
+        verify(!Edits.undoing)
+    }
+
+    // The removal went through but no read-back shows it.
+    function test_an_undo_of_an_add_tidal_never_shows_is_reported() {
+        bridge.setServerPlaylistForTest("pl-1", [11])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13])
+        settleEdits()
+        // Seeded again, so the undo's own read sees the add.
+        bridge.setServerPlaylistForTest("pl-1", [11, 12, 13])
+        bridge.setReadBackLagForTest(-1)
+        Edits.undoLast()
+        settleEdits()
+        compare(bridge.removeWritesForTest(), ["1,2"])
+        compare(Toasts.text, Edits.unconfirmedText)
+        verify(!Edits.undoing)
     }
 
     // Add all: the write that holds a duplicate asks Tidal to add it again.
