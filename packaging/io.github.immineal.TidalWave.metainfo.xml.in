@@ -104,7 +104,8 @@
   </content_rating>
 
   <!-- The URLs point at a tag, so each image stays what its caption describes.
-       Flathub and the store-metadata CI job fetch every one. -->
+       Flathub and the store-metadata CI job fetch every one. Shots drawn with
+       tests/visual/run.sh store credit their art in tests/visual/store/CREDITS.md. -->
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_home.png</image>
