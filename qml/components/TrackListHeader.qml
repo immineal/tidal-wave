@@ -278,6 +278,7 @@ Item {
     }
 
     Rectangle {
+        objectName: "trackListHeaderRule"
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
