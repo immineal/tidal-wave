@@ -38,7 +38,7 @@ endforeach()
 # These tests read the QML sources as text. They are given the source tree's
 # path so that a failure message can name the file to open.
 foreach(reads_qml_as_text tst_shortcuts tst_startup tst_qml_cpp_calls tst_wording tst_design_tokens
-        tst_owner_picks)
+        tst_chosen_values)
     if(TARGET ${reads_qml_as_text})
         target_compile_definitions(${reads_qml_as_text} PRIVATE
             TIDALWAVE_QML_DIR="${CMAKE_SOURCE_DIR}/qml")
