@@ -151,6 +151,8 @@ Item {
     property string savedFile: ""
     // A sentence to read, so it stays up as long as LoadErrorTip's.
     readonly property int dlErrorDwellMs: 6000
+    // The failure is up over the button until the error state ends.
+    property bool dlErrorShown: false
 
     // The column breakpoint, measured against the row's own width, not the
     // window's. The album column is the first to go.
@@ -207,13 +209,13 @@ Item {
         id: dlResetTimer
         interval: 3000
         onTriggered: {
-            if (root.dlState === "error") dlButton.ToolTip.hide()
+            root.dlErrorShown = false
             root.dlState = "idle"
             root.dlError = ""
         }
     }
     onTrackDataChanged: {
-        if (root.dlState === "error") dlButton.ToolTip.hide()
+        root.dlErrorShown = false
         root.dlState = (root.trackId > 0 && downloader.isDownloading(root.trackId)) ? "busy" : "idle"
         root.dlError = ""
         root.savedFile = root.trackId > 0 ? downloader.savedPath(root.trackId) : ""
@@ -223,7 +225,7 @@ Item {
     // player bar says why a track would not load. Not while the row is off screen.
     function showDownloadError() {
         if (root.dlError === "" || !root.visible || !Window.window || !Window.window.visible) return
-        dlButton.ToolTip.show(root.dlError, root.dlErrorDwellMs)
+        root.dlErrorShown = true
     }
 
     // Routing for the menu's artist rows. Asked from the row: a submenu is a
@@ -618,6 +620,18 @@ Item {
                             downloader.downloadTrack(root.trackData)
                     }
                 }
+                HoverHandler { id: dlHov }
+                // One tip for both: what a click does, or why the save failed,
+                // which stays up for dlErrorDwellMs.
+                ToolTip.visible: root.dlErrorShown || (dlHov.hovered && dlButton.shown)
+                // On the error state, not on dlErrorShown: the text has to be
+                // in place before the tip is asked to show.
+                ToolTip.text: root.dlState === "error" && root.dlError !== "" ? root.dlError
+                            : root.dlState === "done" && root.savedFile !== ""
+                              ? qsTr("Show in folder", "opens the file manager at a downloaded track")
+                            : root.dlState === "busy" ? qsTr("Downloading…", "row download button, while saving")
+                            : qsTr("Download", "row download button")
+                ToolTip.delay: Theme.tooltipDelay
             }
 
             // Context menu button, same reserved slot as the download button

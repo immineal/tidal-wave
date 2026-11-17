@@ -2564,6 +2564,16 @@
         <comment>a track&apos;s version after its title, e.g. (Live)</comment>
         <translation>(%1)</translation>
     </message>
+    <message>
+        <source>Download</source>
+        <comment>row download button</comment>
+        <translation>Herunterladen</translation>
+    </message>
+    <message>
+        <source>Downloading…</source>
+        <comment>row download button, while saving</comment>
+        <translation>Wird heruntergeladen…</translation>
+    </message>
 </context>
 <context>
     <name>TrayMenu</name>
