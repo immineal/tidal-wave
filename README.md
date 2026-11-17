@@ -58,7 +58,7 @@ author, source and licence of each image.
   the running app (`src/ui/ThemePalette.cpp`).
 - A complete German catalogue, following your system locale by default and
   switchable without a restart (`src/ui/I18n.cpp`, `i18n/tidal-wave_de.ts`).
-- The window goes down to 640x600, stacking the Now Playing transport and
+- The window goes down to 640x600, stacking the now playing transport and
   dropping the player bar's volume and cast controls on the way.
 - A queue panel with drag-to-reorder, shuffle and the three repeat modes.
 - A system tray icon, so playback carries on with the window closed.
@@ -68,7 +68,7 @@ author, source and licence of each image.
   small aligner in plain C++ that ships with the app (`src/lyricsync/`). Only
   timings it is confident of are shown, marked "Synced automatically, may be
   off". Real timings, from Tidal or a lyrics site, always come first.
-- A sleep timer on the Now Playing page, with presets, a custom slider, an
+- A sleep timer on the now playing page, with presets, a custom slider, an
   optional fade-out and a mode that stops at the end of the track.
 - The Qt scene graph can be moved onto the CPU for machines where the GPU path
   misbehaves. Qt picks the backend before the first window exists, so this needs
@@ -100,7 +100,7 @@ These are fixed; there is no rebinding UI yet. The table lives in
 | Ctrl + 1 | Go to Home |
 | Ctrl + 2 | Go to Search |
 | Ctrl + 3 | Go to Collection |
-| Ctrl + N | Go to Now Playing |
+| Ctrl + N | Go to now playing |
 | F11 | Toggle fullscreen |
 | Ctrl + J | Toggle the queue panel |
 | Escape | Go back |
@@ -323,7 +323,7 @@ named.
     4.  `https://genius.com/<Artist>-<title>-lyrics`, the song page whose address is
         built from the artist and title. Genius's search API is not used.
 
-    Lyrics are looked up only for the track playing while the Now Playing page is open.
+    Lyrics are looked up only for the track playing while the now playing page is open.
     So with the defaults, lrclib.net gets the artist, title, album and length of each
     such track that Tidal has no synced lyrics for, and nothing else is asked.
     music.163.com and lyrics.kugou.com are servers in China. No Tidal token or id is

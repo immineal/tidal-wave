@@ -102,8 +102,8 @@ Rectangle {
                 font.pixelSize: Theme.fontBody
                 clip: true
                 selectByMouse: true
-                selectionColor: Theme.accent
-                selectedTextColor: Theme.accentInk
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.textSelectionInk
                 verticalAlignment: TextInput.AlignVCenter
                 // Claimed ahead of the window's Escape shortcut, which would
                 // otherwise take it and go back.

@@ -198,8 +198,8 @@ Popup {
                 font.pixelSize: Theme.fontBody
                 clip: true
                 selectByMouse: true
-                selectionColor: Theme.accent
-                selectedTextColor: Theme.accentInk
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.textSelectionInk
                 verticalAlignment: TextInput.AlignVCenter
                 // The over-long case, stopped before it can be submitted.
                 // Applies to a paste as well as to typing.

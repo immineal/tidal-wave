@@ -313,7 +313,9 @@ jobs:
           echo "clean"
 
   # The desktop entry and the AppStream metainfo are read by every Linux store
-  # and by nothing else in CI.
+  # and by nothing else in CI. Offline here: the screenshots point at the
+  # release tag, which exists only once the release does. release.yml runs
+  # the same check with every URL fetched.
   store-metadata:
     name: The metadata stores read is valid
     runs-on: ubuntu-24.04
@@ -324,57 +326,8 @@ jobs:
       - name: Install the validators
         run: |
           sudo apt-get update
-          # ca-certificates: appstreamcli fetches every <url> in the file, and
-          # without a CA bundle each one fails as url-not-reachable.
           sudo apt-get install -y --no-install-recommends \
-            appstream desktop-file-utils ca-certificates
+            appstream desktop-file-utils
 
       - name: Validate both files, and check they still agree with the project
-        run: |
-          set -euo pipefail
-          id=io.github.immineal.TidalWave
-          # Named after the app id: Flatpak exports only <app-id>.desktop.
-          desktop="packaging/$id.desktop"
-          template="packaging/$id.metainfo.xml.in"
-
-          # --warn-kde: Plasma is where this app's tray lives.
-          desktop-file-validate --warn-kde "$desktop"
-          echo "desktop-file-validate: clean"
-
-          # The file in the tree is a configure_file() template: substitute the
-          # version as CMakeLists.txt does and validate what is installed.
-          ver=$(sed -n 's/^project(tidal-wave VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          test -n "$ver" || { echo "no version found in CMakeLists.txt"; exit 1; }
-          echo "project() version: $ver"
-          sed "s/@PROJECT_VERSION@/$ver/g" "$template" > "$id.metainfo.xml"
-          if grep -q '@[A-Z_]*@' "$id.metainfo.xml"; then
-            echo "a @PLACEHOLDER@ survived substitution:"
-            grep -n '@[A-Z_]*@' "$id.metainfo.xml"
-            exit 1
-          fi
-
-          # No --no-net: this step fetches each screenshot and fails on a missing
-          # one. --pedantic only adds hints to the log; appstreamcli exits
-          # non-zero on errors and warnings alone.
-          appstreamcli validate --explain --pedantic "$id.metainfo.xml"
-
-          # 1. AppStream pairs a metainfo file with its component by filename, so
-          #    <id> and the installed basename have to be the same string.
-          grep -q "<id>$id</id>" "$id.metainfo.xml" \
-            || { echo "<id> does not match the filename $id.metainfo.xml"; exit 1; }
-          # 2. <launchable> has to name the desktop entry as installed. If it
-          #    does not, the store lists an app with no way to start it.
-          want=$(sed -n 's@.*<launchable type="desktop-id">\(.*\)</launchable>.*@\1@p' \
-                 "$id.metainfo.xml")
-          test "$want" = "$(basename "$desktop")" \
-            || { echo "<launchable> says '$want', we install '$(basename "$desktop")'"; exit 1; }
-          # 3. The version must not be a second copy of project()'s. The template
-          #    has to defer to CMake for it, and the PKGBUILD cannot (pkgver is
-          #    needed before any source is fetched), so it is checked instead.
-          grep -q 'version="@PROJECT_VERSION@"' "$template" \
-            || { echo "$template hardcodes a version instead of taking @PROJECT_VERSION@"; exit 1; }
-          pkgver=$(sed -n 's/^pkgver=//p' packaging/PKGBUILD)
-          test "$pkgver" = "$ver" \
-            || { echo "packaging/PKGBUILD says pkgver=$pkgver, project() says $ver"; exit 1; }
-
-          echo "id, launchable and version all agree"
+        run: packaging/validate-store-metadata.sh --no-net
