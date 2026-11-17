@@ -703,9 +703,10 @@ TestCase {
                 var c = kids[i]
                 if (typeof c.radius === "number" && c.children.length === 0
                         && c.width > 0 && c.height > 0) {
-                    var at = c.mapToItem(ind, 0, 0)
-                    out.push({ x: at.x, top: at.y, bottom: at.y + c.height,
-                               w: c.width, h: c.height, aa: c.antialiasing })
+                    // Both corners mapped: the bars may sit under a transform.
+                    var at = c.mapToItem(ind, 0, 0), end = c.mapToItem(ind, c.width, c.height)
+                    out.push({ x: at.x, top: at.y, bottom: end.y,
+                               w: end.x - at.x, h: end.y - at.y, aa: c.antialiasing })
                 } else {
                     walk(c)
                 }
@@ -901,6 +902,68 @@ TestCase {
                 verify(bars[i].x >= -0.001 && bars[i].x + bars[i].w <= ind.width + 0.001,
                        row.tag + ": bar " + i + " reaches outside the box")
             }
+        }
+    }
+
+    // The same, in pixels, where layouts put the mark: at a fraction of a
+    // pixel. Every bar has to come out equally wide, on one baseline, with
+    // no half-tone edge.
+    Component {
+        id: placedMarkC
+        Rectangle {
+            id: ground
+            property real at: 0
+            // A scale transform stands in for the screen's: the grab is at 1x.
+            property real dpr: 1
+            width: 40 * dpr; height: 40 * dpr
+            color: "white"
+            Item {
+                transform: Scale { xScale: ground.dpr; yScale: ground.dpr }
+                VectorIcon.PlayingIndicator {
+                    x: 10 + ground.at; y: 10 + ground.at
+                    width: 16; height: 14
+                    dpr: ground.dpr
+                    color: "black"
+                }
+            }
+        }
+    }
+
+    function test_the_playing_mark_is_crisp_at_any_offset_data() {
+        var out = [], ats = [0, 0.25, 0.5, 0.75], dprs = [1, 1.5, 2]
+        for (var d = 0; d < dprs.length; ++d)
+            for (var a = 0; a < ats.length; ++a)
+                out.push({ tag: dprs[d] + "x +" + ats[a], at: ats[a], dpr: dprs[d] })
+        return out
+    }
+
+    function test_the_playing_mark_is_crisp_at_any_offset(row) {
+        app.setReducedMotionForTest(true)
+        var holder = createTemporaryObject(holderC, testCase, { width: 100, height: 100 })
+        var probe = createTemporaryObject(placedMarkC, holder, { at: row.at, dpr: row.dpr })
+        verify(probe, "the probe was not created")
+        settle(holder)
+        wait(80)
+        var img = grabImage(probe)
+        var bars = [], half = 0, inBar = false
+        for (var x = 0; x < img.width; ++x) {
+            var top = -1, bottom = -1
+            for (var y = 0; y < img.height; ++y) {
+                var v = img.red(x, y)
+                if (v > 0.1 && v < 0.9) ++half
+                if (v <= 0.5) { if (top < 0) top = y; bottom = y }
+            }
+            if (top >= 0 && !inBar) bars.push({ x: x, w: 0, bottom: bottom })
+            if (top >= 0) { bars[bars.length - 1].w++; inBar = true } else inBar = false
+            if (top >= 0) bars[bars.length - 1].bottom = Math.max(bars[bars.length - 1].bottom, bottom)
+        }
+        compare(half, 0, row.tag + ": " + half + " half-tone pixels, so the edges are soft")
+        compare(bars.length, 5, row.tag + ": " + bars.length + " bars drawn")
+        for (var i = 1; i < bars.length; ++i) {
+            compare(bars[i].w, bars[0].w, row.tag + ": bar " + i + " is not as wide as bar 0")
+            compare(bars[i].bottom, bars[0].bottom, row.tag + ": bar " + i + " is off the baseline")
+            compare(bars[i].x - bars[i - 1].x, bars[1].x - bars[0].x,
+                    row.tag + ": gap " + (i - 1) + " differs from the first")
         }
     }
 

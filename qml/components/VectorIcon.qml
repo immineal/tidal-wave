@@ -327,8 +327,7 @@ Item {
             while (g > 1 && 5 * barDev + 4 * g > boxWDev) --g
             return g
         }
-        readonly property real stripX:
-            Math.round((boxWDev - (5 * barDev + 4 * gapDev)) / 2) / dpr
+        readonly property int stripXDev: Math.round((boxWDev - (5 * barDev + 4 * gapDev)) / 2)
 
         // ── live levels ──────────────────────────────────────────────────
         // True only while the preference is on and audio is arriving. A paused
@@ -351,8 +350,13 @@ Item {
         opacity: animate ? 1 : 0.45
         Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
 
+        // The bars are laid out in device pixels, scaled down by dpr. In
+        // logical units a bar's y and height are fractions, and the software
+        // renderer rounds each on its own, a device pixel apart at 2x.
         Item {
-            anchors.fill: parent
+            width: ind.boxWDev
+            height: ind.floorDev
+            transform: Scale { xScale: 1 / ind.dpr; yScale: 1 / ind.dpr }
 
             Repeater {
                 // Heights as fractions of the box, so the figure is the same
@@ -390,10 +394,10 @@ Item {
                         Math.min(ind.floorDev, Math.max(1, Math.round(bar.level * ind.dpr)))
                     // Not anchors: `parent` is null while a Repeater builds
                     // its delegate, and that warns.
-                    x: ind.stripX + bar.index * (ind.barDev + ind.gapDev) / ind.dpr
-                    y: (ind.floorDev - bar.hDev) / ind.dpr
-                    width: ind.barDev / ind.dpr
-                    height: bar.hDev / ind.dpr
+                    x: ind.stripXDev + bar.index * (ind.barDev + ind.gapDev)
+                    y: ind.floorDev - bar.hDev
+                    width: ind.barDev
+                    height: bar.hDev
                     antialiasing: false
                     color: ind.color
 
