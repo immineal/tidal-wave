@@ -1295,6 +1295,13 @@ QNetworkReply* TidalClient::fetchRawWithStatus(const QUrl &url, TidalApi::RawSta
     return m_api->getRawWithStatus(url, std::move(cb));
 }
 
+// Any id stands for all of them: the hold is per endpoint.
+int TidalClient::streamRequestsHeldFor(AudioQuality quality) const {
+    return usesTrackManifests(quality)
+        ? m_api->rateLimitedFor(TidalApi::kOpenApiBase, QStringLiteral("trackManifests/1"))
+        : m_api->rateLimitedFor(TidalApi::kApiBase, QStringLiteral("tracks/1/playbackinfopostpaywall"));
+}
+
 // ─── Playlist management ───────────────────────────
 
 void TidalClient::createPlaylist(const QString &title,

@@ -257,6 +257,10 @@ Item {
                 dlResetTimer.restart()
             }
         }
+        // A cancelled album or playlist run: nothing went wrong.
+        function onDownloadCancelled(id) {
+            if (root.trackId > 0 && id === root.trackId) root.dlState = "idle"
+        }
         function onDownloadError(id, msg) {
             if (root.trackId > 0 && id === root.trackId) {
                 root.dlState = "error"

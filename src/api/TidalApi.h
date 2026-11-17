@@ -123,6 +123,8 @@ public:
     static int retryAfterSecs(const QByteArray &header, const QDateTime &now);
     // How long requests to `url` are held, 0 when they are not.
     int rateLimitedFor(const QUrl &url) const;
+    // The same for an endpoint of one of the base URLs above.
+    int rateLimitedFor(const char *base, const QString &endpoint) const;
 
     // Qt's error sentence with the query cut off every URL in it.
     static QString redactedError(const QString &errorString);

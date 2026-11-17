@@ -2,7 +2,9 @@
 
 #pragma once
 #include <QObject>
+#include <QElapsedTimer>
 #include <QHash>
+#include <QList>
 #include <QString>
 #include <QVariantMap>
 #include "TidalClient.h"
@@ -29,6 +31,22 @@ public:
     Q_INVOKABLE bool isDownloading(qlonglong id) const { return m_jobs.contains(id); }
     Q_INVOKABLE void cancelDownload(qlonglong id);
 
+    // A whole album or playlist (`kind` "album" or "playlist"), saved as FLAC
+    // into a folder named after it. Asks for the parent folder once; a run
+    // that stopped goes on in the same folder without asking.
+    Q_INVOKABLE void downloadCollection(const QString &kind, const QString &id,
+                                        const QString &title, const QVariantList &tracks);
+    Q_INVOKABLE void cancelCollection(const QString &kind, const QString &id);
+    // {state, total, saved, failed, position, progress, pauseSecs, error,
+    // folder}; state is idle, waiting, running, done, cancelled or paused.
+    Q_INVOKABLE QVariantMap collectionState(const QString &kind, const QString &id) const;
+    // downloadCollection() once the parent folder is known. Public for the tests.
+    void downloadCollectionInto(const QString &kind, const QString &id, const QString &title,
+                                const QVariantList &tracks, const QString &parentDir);
+    // The least time between two stream requests of a collection run.
+    static constexpr int kCollectionSpacingMs = 12000;
+    void setCollectionSpacingMs(int ms) { m_spacingMs = ms; }   // for the tests
+
     QString folder() const;
     void setFolder(const QString &dir);
     // A folder picker, deferred like the save dialog; a pick sets `folder`.
@@ -52,6 +70,10 @@ signals:
     void downloadStarted(qlonglong id);
     void downloadFinished(qlonglong id, const QString &path);
     void downloadError(qlonglong id, const QString &msg);
+    // The user stopped it; no error to show.
+    void downloadCancelled(qlonglong id);
+    // Anything collectionState() reports for this "kind:id" changed.
+    void collectionChanged(const QString &key);
 
 private:
     struct DownloadJob {
@@ -65,6 +87,9 @@ private:
         double    replayGainAlbum = 0.0;
 
         QString   targetPath;        // final output file chosen by the user
+        QString   writePath;         // where ffmpeg writes; moved to targetPath after
+        QString   collectionKey;     // the album or playlist run it belongs to, or ""
+        int       rateLimitedSecs = 0;  // Tidal's 429 wait, when that ended it
         QString   format;            // "flac" | "mp3" | "wav"
 
         QString   srcTier;           // delivered tier: LOW/HIGH/LOSSLESS/HI_RES_LOSSLESS
@@ -88,10 +113,38 @@ private:
     void fetchCoverThenConvert(DownloadJob *job);
     void runFfmpeg(DownloadJob *job, bool flacForceEncode = false);
     QStringList ffmpegArgs(const DownloadJob *job, bool flacForceEncode) const;
-    void finish(DownloadJob *job, const QString &err);   // emits, cleans up temp files, deletes job
+    // Emits, cleans up temp files, deletes job.
+    void finish(DownloadJob *job, const QString &err, bool cancelled = false);
     static QString sanitizeFilename(QString name);
+    DownloadJob *makeJob(const QVariantMap &track, const QString &path, const QString &format);
+
+    struct Collection {
+        QString key, kind, title, folder;
+        QVariantList tracks;
+        QString state = QStringLiteral("waiting");
+        int next = 0;                // the track to start next
+        int saved = 0, failed = 0;
+        qlonglong current = 0;       // the track downloading now, 0 for none
+        double currentDone = 0.0;    // how far into it, 0 to 1
+        int pauseSecs = 0;
+        QString error;               // the last track's failure
+    };
+    void pumpCollections();
+    void stepCollection(Collection *c);
+    Collection *findCollection(const QString &key) const;
+    void collectionTrackEnded(const QString &key, qlonglong id, bool ok, const QString &err,
+                              int rateLimitedSecs);
+    void pauseCollections(int secs);
+    void endCollection(Collection *c, const QString &state);
+    QString collectionFileName(const Collection *c, const QVariantMap &track) const;
 
     TidalClient *m_client;
     QHash<qlonglong, DownloadJob*> m_jobs;
     QHash<qlonglong, QString> m_saved;   // track id to the file it was saved as
+    // Runs in the order asked for; only the first waiting or running one
+    // goes, so two collections never spend Tidal's stream budget at once.
+    QList<Collection*> m_collections;
+    QElapsedTimer m_lastStreamRequest;
+    int  m_spacingMs = kCollectionSpacingMs;
+    bool m_stepPending = false;
 };

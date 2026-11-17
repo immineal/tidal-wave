@@ -590,6 +590,63 @@
     </message>
 </context>
 <context>
+    <name>DownloadAction</name>
+    <message>
+        <source>Cancel download</source>
+        <translation>Download abbrechen</translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded album or playlist</comment>
+        <translation>Im Ordner anzeigen</translation>
+    </message>
+    <message>
+        <source>Download album</source>
+        <translation>Album herunterladen</translation>
+    </message>
+    <message>
+        <source>Download playlist</source>
+        <translation>Playlist herunterladen</translation>
+    </message>
+    <message>
+        <source>Waiting for the other download to finish</source>
+        <translation>Wartet, bis der andere Download fertig ist</translation>
+    </message>
+    <message>
+        <source>Downloading %1 of %2</source>
+        <translation>%1 von %2 wird heruntergeladen</translation>
+    </message>
+    <message>
+        <source>Download cancelled. %1 of %2 saved.</source>
+        <translation>Download abgebrochen. %1 von %2 gespeichert.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minute(s).</source>
+        <translation>
+            <numerusform>Tidal hat um eine Pause gebeten. %1 von %2 gespeichert. In etwa %Ln Minute noch einmal versuchen.</numerusform>
+            <numerusform>Tidal hat um eine Pause gebeten. %1 von %2 gespeichert. In etwa %Ln Minuten noch einmal versuchen.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>None of the tracks could be downloaded. %1</source>
+        <translation>Keiner der Titel konnte heruntergeladen werden. %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 of %2 saved. %Ln track(s) could not be downloaded.</source>
+        <translation>
+            <numerusform>%1 von %2 gespeichert. %Ln Titel konnte nicht heruntergeladen werden.</numerusform>
+            <numerusform>%1 von %2 gespeichert. %Ln Titel konnten nicht heruntergeladen werden.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln track(s) saved</source>
+        <translation>
+            <numerusform>%Ln Titel gespeichert</numerusform>
+            <numerusform>%Ln Titel gespeichert</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>Downloader</name>
     <message>
         <source>ffmpeg was not found on PATH. Install ffmpeg to enable downloads.</source>
@@ -634,6 +691,18 @@
     <message>
         <source>Download folder</source>
         <translation>Download-Ordner</translation>
+    </message>
+    <message>
+        <source>Could not save the track in the download folder.</source>
+        <translation>Der Titel konnte nicht im Download-Ordner gespeichert werden.</translation>
+    </message>
+    <message>
+        <source>Download to folder</source>
+        <translation>In Ordner herunterladen</translation>
+    </message>
+    <message>
+        <source>Could not make the folder %1.</source>
+        <translation>Der Ordner %1 konnte nicht angelegt werden.</translation>
     </message>
 </context>
 <context>
