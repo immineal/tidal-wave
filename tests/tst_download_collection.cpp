@@ -243,6 +243,13 @@ private slots:
         QCOMPARE(st.value(QStringLiteral("failed")).toInt(), 0);
     }
 
+    // A run asks for one stream every 20 s at most: a 100-track playlist
+    // takes over half an hour and stays clear of Tidal's playback limit.
+    void theAppsGapBetweenStreamRequestsIsTwentySeconds()
+    {
+        QCOMPARE(Downloader::kCollectionSpacingMs, 20000);
+    }
+
     // One track at a time: the next stream request goes only once the track
     // before it is saved, and never sooner than the spacing after the last.
     void tracksGoOneAtATimeWithAGapBetweenStreamRequests()
