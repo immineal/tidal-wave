@@ -1084,6 +1084,9 @@ TestCase {
                    where + " shrank to " + c.width.toFixed(1) + "x"
                    + c.height.toFixed(1) + ", past the " + minChipWidth + "x"
                    + minChipHeight + " floor")
+            // Chosen value: the pill is a fixed 30px wide at every sidebar
+            // width. Do not change without asking.
+            compare(findByName(c, "finderChipFill").width, 30, where + " is not 30px wide")
 
             // Inside the finder block, which is the item that clips.
             var at = c.mapToItem(finder, 0, 0)
