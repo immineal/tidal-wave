@@ -22,6 +22,31 @@ Item {
     readonly property int albumBreakpoint: cols.albumBreakpoint
     readonly property int addedBreakpoint: cols.addedBreakpoint
 
+    // In a list's header item: the list, and how much of its top a bar
+    // covers. Once the hero is gone the headings stop under that bar and
+    // the rows pass beneath them.
+    property Flickable pinIn: null
+    property real pinBelow: 0
+    readonly property real pinReach: !pinIn || !parent ? -1
+        : pinIn.contentY + pinBelow - (parent.y + y)
+    readonly property real pinShift: Math.max(0, pinReach)
+    // From the moment they reach the bar, so a list left exactly there is
+    // pinned too.
+    readonly property bool pinned: pinReach > -0.5
+    transform: Translate { y: root.pinShift }
+
+    // A sort hands the list a new model, which sends it back to the top.
+    // Sorted from the pinned headings, it shows the first rows under them,
+    // once the view has reset.
+    function sortBy(k) {
+        var keep = root.pinned
+        root.sort.cycle(k)
+        if (keep) Qt.callLater(root.repin)
+    }
+    function repin() {
+        if (pinIn && parent) pinIn.contentY = parent.y + y - pinBelow
+    }
+
     // ── the order a track list is shown in ──────────────────────────────
     // key "" is the list's own order. order() gives each shown row's index
     // in the list: a list from C++ hands out a new object on every read, so
@@ -108,13 +133,13 @@ Item {
         implicitWidth: inner.implicitWidth
 
         activeFocusOnTab: sortable
-        Keys.onReturnPressed: root.sort.cycle(key)
-        Keys.onEnterPressed:  root.sort.cycle(key)
-        Keys.onSpacePressed:  root.sort.cycle(key)
+        Keys.onReturnPressed: root.sortBy(key)
+        Keys.onEnterPressed:  root.sortBy(key)
+        Keys.onSpacePressed:  root.sortBy(key)
         Accessible.role: Accessible.ColumnHeader
         Accessible.name: label
         Accessible.description: stateText
-        Accessible.onPressAction: if (sortable) root.sort.cycle(key)
+        Accessible.onPressAction: if (sortable) root.sortBy(key)
 
         Rectangle {
             anchors.fill: inner
@@ -177,11 +202,27 @@ Item {
         }
         TapHandler {
             enabled: cell.sortable
-            onTapped: root.sort.cycle(cell.key)
+            onTapped: root.sortBy(cell.key)
         }
         ToolTip.visible: hov.hovered && cell.iconName !== ""
         ToolTip.text: cell.label
         ToolTip.delay: Theme.tooltipDelay
+    }
+
+    // Pinned, a ground across the list's width, which takes the pointer so
+    // no row under it is hovered or clicked through it.
+    Rectangle {
+        objectName: "trackListHeaderGround"
+        visible: root.pinned
+        x: -root.x
+        width: root.pinIn ? root.pinIn.width : root.width
+        height: root.height
+        color: Theme.bg
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+        }
     }
 
     // The row's own insets: its ground is inset by spaceHalf and its columns

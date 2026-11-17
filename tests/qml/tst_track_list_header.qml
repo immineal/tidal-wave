@@ -312,6 +312,57 @@ TestCase {
         checkAligned(p, p.list.itemAtIndex(0), data.tag)
     }
 
+    // Scrolled past the hero, the headings stay at the top of the list with
+    // the rows going under them, still over their columns and still sorting
+    // by click and by key. At rest they sit under the hero.
+    function test_the_headings_stay_at_the_top_while_the_rows_scroll_data() {
+        return pagesWithHeadings().slice(1)
+    }
+    function test_the_headings_stay_at_the_top_while_the_rows_scroll(data) {
+        var p = openPage(data.which)
+        var bar = null
+        for (var i = 0; i < p.page.children.length; ++i)
+            if (p.page.children[i].reveal !== undefined) bar = p.page.children[i]
+        verify(bar, "no bar over the page")
+        function topOn(item) { return item.mapToItem(p.page, 0, 0).y }
+        var atRest = topOn(p.head)
+        verify(atRest > bar.height + 100, "the headings are not under the hero at rest")
+        fuzzyCompare(atRest, topOn(p.list.headerItem) + p.list.headerItem.height - p.head.height, 1,
+                     "the headings left their place under the hero")
+
+        p.list.contentY = p.list.originY + p.list.headerItem.height + 52 * 10
+        waitForRendering(p.page)
+        fuzzyCompare(topOn(p.head), bar.height, 1, "the headings scrolled away with the rows")
+        compare(bar.reveal, 1, "rows that passed under the headings show through the bar")
+        var under = p.list.itemAt(40, p.list.contentY + bar.height + p.head.height / 2)
+        verify(under, "no row under the headings")
+        checkAligned(p, under, data.tag + " scrolled")
+        // The heart's slot has no heading; a click there is not the row's.
+        var lh = findByName(p.head, "trackListHeadingLength")
+        var queued = JSON.stringify(player.queueTracks)
+        mouseClick(p.head, lh.mapToItem(p.head, 0, 0).x - 24, p.head.height / 2)
+        compare(JSON.stringify(player.queueTracks), queued, "a click on the headings played the row under them")
+
+        var title = findByName(p.head, "trackListHeadingTitle")
+        var sort = p.head.sort
+        function staysPinned() { return Math.abs(topOn(p.head) - bar.height) <= 1 }
+        mouseClick(title, 10, title.height / 2)
+        compare(sort.key, "title", "a click on the pinned headings did not reach them")
+        tryVerify(staysPinned, 1000, "a sort by click moved the headings off the top")
+        title.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space)
+        compare(sort.descending, true, "the keyboard does not reach the pinned headings")
+        tryVerify(staysPinned, 1000, "a sort by key moved the headings off the top")
+        var first = p.list.itemAtIndex(0)
+        verify(first, "the first sorted row is not drawn")
+        fuzzyCompare(topOn(first), bar.height + p.head.height, 1,
+                     "a sort from the pinned headings does not show the first rows under them")
+
+        p.list.contentY = p.list.originY
+        waitForRendering(p.page)
+        fuzzyCompare(topOn(p.head), atRest, 1, "the headings did not go back under the hero")
+    }
+
     // A long list opens at the top, its hero on screen, not scrolled by
     // the hero's height.
     function test_a_long_list_opens_at_its_hero_data() { return pagesWithHeadings().slice(1) }
