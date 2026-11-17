@@ -426,6 +426,12 @@ Rectangle {
                             editPlaylistPopup.open()
                         }
                 },
+                DownloadAction {
+                    kind: "playlist"
+                    itemId: root.playlistUuid
+                    folderName: root.playlistTitle
+                    trackSource: root.allTracks
+                },
                 // The hero's menu, which right-click also opens: the queue
                 // actions, Pin and Copy link.
                 IconButton {

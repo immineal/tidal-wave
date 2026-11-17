@@ -638,6 +638,7 @@ Rectangle {
         function onDownloadStarted(id)         { if (root.hasTrack && id === root.track.id) root.dlState = "busy" }
         function onDownloadFinished(id, path)  { if (root.hasTrack && id === root.track.id) { root.dlState = "done";  npDlReset.restart() } }
         function onDownloadError(id, msg)      { if (root.hasTrack && id === root.track.id) { root.dlState = "error"; npDlReset.restart() } }
+        function onDownloadCancelled(id)       { if (root.hasTrack && id === root.track.id) root.dlState = "idle" }
     }
     Timer { id: npDlReset; interval: 3000; onTriggered: root.dlState = "idle" }
     function updateLikedState() {

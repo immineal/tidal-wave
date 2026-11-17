@@ -138,6 +138,10 @@ int TidalApi::rateLimitedFor(const QUrl &url) const {
     return int(qMax<qint64>(1, (it->until.remainingTime() + 999) / 1000));
 }
 
+int TidalApi::rateLimitedFor(const char *base, const QString &endpoint) const {
+    return rateLimitedFor(QUrl(baseUrl(QString::fromLatin1(base)) + endpoint));
+}
+
 void TidalApi::noteReachable(bool reachable) {
     if (m_reachable == reachable) return;
     m_reachable = reachable;
@@ -484,6 +488,10 @@ void TidalApi::postApiFormEtagWithStatus(const QString &endpoint, const QUrlQuer
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
+    return getRawWithStatus(url, [cb](const RawAnswer &a) { cb(a.body, a.error); });
+}
+
+QNetworkReply* TidalApi::getRawWithStatus(const QUrl &url, RawStatusCallback cb) {
     QNetworkRequest req = makeRequest(url);
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     // Older Qt's HTTP/2 header compression falls out of step with the audio
@@ -494,11 +502,21 @@ QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
     auto *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
         reply->deleteLater();
+        RawAnswer a;
+        a.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
-            cb({}, redactedError(reply->errorString()));
-            return;
+            a.error = redactedError(reply->errorString());
+            if (a.httpStatus == 429)
+                a.retryAfterSecs = retryAfterSecs(reply->rawHeader("Retry-After"),
+                                                  QDateTime::currentDateTimeUtc());
+            // The transfer timeout: TimeoutError, or a cancel on older Qt.
+            a.timedOut = a.httpStatus == 0
+                      && (reply->error() == QNetworkReply::TimeoutError
+                          || reply->error() == QNetworkReply::OperationCanceledError);
+        } else {
+            a.body = reply->readAll();
         }
-        cb(reply->readAll(), {});
+        cb(a);
     });
     return reply;
 }
