@@ -526,6 +526,7 @@ Rectangle {
         // Tab 2: Artists Tab (virtualized GridView)
         GridView {
             id: artistsGrid
+            objectName: "collectionArtistsGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 2
