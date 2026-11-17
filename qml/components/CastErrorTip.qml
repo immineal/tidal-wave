@@ -25,9 +25,14 @@ Item {
     property var hostWindow: null
     Component.onCompleted: hostWindow = Window.window
 
-    readonly property bool windowOnScreen: !!hostWindow && hostWindow.visible
-        && hostWindow.visibility !== Window.Hidden
-        && hostWindow.visibility !== Window.Minimized
+    // sync() asks afresh: on Qt 6.4 the window's change signals come a turn
+    // late, and the binding still says on screen just after a hide().
+    function windowShows() {
+        return !!hostWindow && hostWindow.visible
+            && hostWindow.visibility !== Window.Hidden
+            && hostWindow.visibility !== Window.Minimized
+    }
+    readonly property bool windowOnScreen: windowShows()
     readonly property bool onScreen: parent !== null && parent.visible && windowOnScreen
 
     // Placed over the button it is moved into, so the tip stands above that.
@@ -60,7 +65,7 @@ Item {
     }
 
     function sync() {
-        if (pending === "" || !windowOnScreen) return
+        if (pending === "" || !windowShows()) return
         var a = visibleAnchor()
         if (!a) return
         tip.parent = a

@@ -818,7 +818,9 @@ TestCase {
     }
 
     function test_the_bar_flyout_stands_over_both_rows() {
-        var host = showHost(playerBarHost, 960, 200)
+        // The app's smallest window (Main.qml): in a 200 px one the flyout
+        // runs past the top, and Qt 6.5 and 6.6 push it back down over the bar.
+        var host = showHost(playerBarHost, 960, 600)
         var bar = host.bar
         var btn = bar.volumeButton
         var p = btn.mapToItem(host.contentItem, btn.width / 2, btn.height / 2)

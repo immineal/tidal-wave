@@ -89,6 +89,10 @@ public:
     QString     audioFormat() const;
     // The badge text for a stream: format, bit depth and rate, or bit rate.
     static QString formatLabel(const StreamManifest &info);
+    // Whether a lossless track plays from the front of its join. Below 6.6 the
+    // FFmpeg backend opens a source inside setSource(), on the thread that
+    // GrowingFileServer answers on, so the open would wait for good.
+    static constexpr bool kStreamsJoins = QT_VERSION >= QT_VERSION_CHECK(6, 6, 0);
     // The loudness factor applied to the current track, 1.0 for none.
     double      trackGain() const;
     int          queueCount()    const { return m_queue.count(); }
@@ -304,6 +308,8 @@ private:
     qint64 playedNow(qint64 reported) const;
     static constexpr int kOffsetsKept   = 32;
     static constexpr int kOffsetsNeeded = 4;
+    // A drift of the offsets below this, per ms of clock, is report jitter.
+    static constexpr double kDriftFloor = 0.02;
     // Starts a timer for the moment the next track is to start.
     void planHandover(qint64 pos);
     // ended: the current track has run out already.
@@ -700,7 +706,8 @@ private:
     QElapsedTimer        m_fadeClock;
     // Clock minus reported position, one per report; see notePosition().
     QElapsedTimer        m_wall;
-    QList<qint64>        m_offsets;
+    struct Offset { qint64 at; qint64 off; };
+    QList<Offset>        m_offsets;
     int                  m_fadeMs        = 0;
     // The backend that took over reports buffering, which is no load.
     bool                 m_handoffSettling = false;
