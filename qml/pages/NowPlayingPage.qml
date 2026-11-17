@@ -1886,39 +1886,17 @@ Rectangle {
                                     }
                                 }
                             
-                                Rectangle {
+                                // The way back, so the quiet pill and not red.
+                                PillButton {
                                     id: sleepCancel
                                     objectName: "nowPlayingSleepCancel"
                                     Layout.fillWidth: true
-                                    height: 32
-                                    radius: Theme.radiusMedium
-                                    color: Theme.redSoft
-                                    border.color: activeFocus ? Theme.accent : Theme.red
-                                    border.width: activeFocus ? 2 : 1
-                                    function activate() {
+                                    compact: true
+                                    accent: false
+                                    text: qsTr("Cancel sleep timer")
+                                    onClicked: {
                                         root.cancelSleepTimer()
                                         sleepTimerPopup.close()
-                                    }
-                                    activeFocusOnTab: true
-                                    Keys.onReturnPressed: activate()
-                                    Keys.onSpacePressed:  activate()
-                                    Accessible.role: Accessible.Button
-                                    Accessible.name: cancelText.text
-                                    Accessible.onPressAction: activate()
-                                
-                                    Text {
-                                        id: cancelText
-                                        anchors.centerIn: parent
-                                        text: qsTr("Cancel sleep timer")
-                                        color: Theme.redText
-                                        font.pixelSize: Theme.fontMeta
-                                        font.bold: true
-                                    }
-                                
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: sleepCancel.activate()
                                     }
                                 }
                             }
