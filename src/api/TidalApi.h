@@ -85,6 +85,9 @@ public:
     void deleteApiEtagWithStatus(const QString &endpoint, const QUrlQuery &params,
                                  const QString &etag, StatusCallback cb);
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
+    // The same with the HTTP status, for a move refused over a stale ETag.
+    void postApiFormEtagWithStatus(const QString &endpoint, const QUrlQuery &form,
+                                   const QString &etag, StatusCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
 
     // The request every call above except post() sends. Public for

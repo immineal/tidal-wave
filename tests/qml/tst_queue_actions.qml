@@ -188,6 +188,22 @@ TestCase {
         menu.close()
     }
 
+    // An album is added to a playlist whole, from its header, as in Spotify.
+    SignalSpy { id: pickSpy; target: Edits; signalName: "playlistPickRequested" }
+
+    function test_a_page_header_adds_the_whole_album_to_a_playlist() {
+        var menu = openHeroMenu(makeAlbumPage(4))
+        verify(menu.addToPlaylistItem.visible, "an album header offers no Add to playlist")
+        verify(indexOfItem(menu, menu.addToQueueItem) < indexOfItem(menu, menu.addToPlaylistItem),
+               "Add to playlist is not after the queue entries")
+        pickSpy.clear()
+        menu.addToPlaylistItem.triggered()
+        compare(pickSpy.count, 1, "no picker was asked for")
+        compare(titlesOf(pickSpy.signalArguments[0][0]), "Track 1,Track 2,Track 3,Track 4",
+                "the picker was not handed the album")
+        menu.close()
+    }
+
     // A sidebar row has a thing to pin and no tracklist behind it, so it
     // offers neither action.
     function test_nothing_to_queue_offers_neither_action() {

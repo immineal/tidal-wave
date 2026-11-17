@@ -232,6 +232,10 @@ public:
     void editPlaylist            (const QString &uuid,  const QString &title,
                                   const QString &description, std::function<void(bool)> cb);
     virtual void addTrackToPlaylist     (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
+    // Several at the end in one POST, in order. With allowDupes a track the
+    // playlist holds already is added again (ADD), else it is left out (SKIP).
+    virtual void addTracksToPlaylist    (const QString &uuid,  const QList<qint64> &trackIds,
+                                         bool allowDupes, std::function<void(bool)> cb);
     // Puts a removed row back at `toIndex`, a duplicate or not: the undo of
     // removeTrackFromPlaylist.
     virtual void restoreTrackToPlaylist (const QString &uuid,  qint64 trackId, int toIndex,
@@ -239,6 +243,10 @@ public:
     // Takes out the row at `itemIndex`, sending the ETag of the version
     // fetchPlaylist() last read, so a view that has gone stale is refused.
     virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,
+                                          std::function<void(PlaylistWrite)> cb);
+    // Moves the row at `fromIndex` so it ends at `toIndex`, with the ETag as
+    // removeTrackFromPlaylist sends it. python-tidal's move_by_index().
+    virtual void moveTrackInPlaylist     (const QString &uuid,  int fromIndex, int toIndex,
                                           std::function<void(PlaylistWrite)> cb);
     // Deletes a playlist this account made. A 404 counts: it is gone.
     virtual void deletePlaylist          (const QString &uuid,  std::function<void(bool)> cb);

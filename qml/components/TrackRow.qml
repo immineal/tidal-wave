@@ -310,6 +310,14 @@ Item {
     signal playRequested()
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
+    // A press that travels drags the row, for a list that can be reordered.
+    // The points are the row's own; the list does the rest.
+    property bool reorderable: false
+    signal reorderStarted(real x, real y)
+    signal reorderMoved(real x, real y)
+    signal reorderEnded()
+    signal reorderCanceled()
+    property bool reordering: false
 
     // A list is one tab stop and the arrows walk it. In a ListView that is
     // the current row; rows laid out by a Repeater share a rowGroup
@@ -399,9 +407,11 @@ Item {
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusMedium
-        color: root.isCurrent ? Theme.accentSoft
+        // A dragged row is lifted: opaque, so the rows it passes stay under it.
+        color: root.reordering ? Theme.surfaceHigh
+               : root.isCurrent ? Theme.accentSoft
                : hov.hovered || root.menuOpen ? Theme.hoverFill : "transparent"
-        border.width: root.activeFocus ? 2 : 0
+        border.width: root.activeFocus || root.reordering ? 2 : 0
         border.color: Theme.accent
 
         // The row's hover, as a handler and not the MouseArea's containsMouse:
@@ -413,10 +423,32 @@ Item {
             id: hov
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: root.reordering ? Qt.ClosedHandCursor : Qt.PointingHandCursor
             readonly property bool hovered: rowHover.hovered
+            // A drag on a row moves it rather than scrolling the list; the
+            // wheel and the scroll bar still scroll.
+            preventStealing: root.reorderable
+            property point pressAt
+            property bool travelled: false
+            onPressed: (mouse) => { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
+            onPositionChanged: (mouse) => {
+                var at = hov.mapToItem(root, mouse.x, mouse.y)
+                if (root.reordering) { root.reorderMoved(at.x, at.y); return }
+                if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
+                        || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
+                    travelled = true
+                if (travelled && root.reorderable && (mouse.buttons & Qt.LeftButton)) {
+                    var from = hov.mapToItem(root, pressAt.x, pressAt.y)
+                    root.reordering = true
+                    root.reorderStarted(from.x, from.y)
+                    root.reorderMoved(at.x, at.y)
+                }
+            }
+            onReleased: if (root.reordering) { root.reordering = false; root.reorderEnded() }
+            onCanceled: if (root.reordering) { root.reordering = false; root.reorderCanceled() }
 
             onClicked: (mouse) => {
+                if (travelled && root.reorderable) return
                 if (mouse.button === Qt.RightButton) {
                     root.openMenu()
                 } else {
@@ -785,6 +817,12 @@ Item {
                     root.addToPlaylist(uuid, title)
                 }
                 if (pickerLoader.item) pickerLoader.item.close()
+                // Then to the new playlist, as Spotify goes; it reloads when
+                // the add is confirmed.
+                var w = root.Window.window
+                if (uuid.length > 0 && w && typeof w.navigate === "function")
+                    w.navigate("playlist", { playlistUuid: uuid, playlistTitle: title,
+                                             coverUrl: "", playlistType: "USER" })
             }
         }
     }
@@ -1023,229 +1061,9 @@ Item {
     Loader {
         id: pickerLoader
         active: false
-        sourceComponent: Popup {
-            id: trackPicker
-            anchors.centerIn: Overlay.overlay
-            width: 340
-            modal: true
-            // Dims the app behind, as the queue panel does. Fusion's own is faint.
-            Overlay.modal: Rectangle { color: Theme.scrim }
-            focus: true
-            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-            padding: 0
-            property var pendingTrackId: 0
-
-            // Only the user's own playlists: Tidal refuses a song for an
-            // editorial one or another user's saved here.
-            function fillFrom(pls) {
-                plPickerModel.clear()
-                for (var i = 0; i < pls.length; i++)
-                    if (pls[i].editable === true) plPickerModel.append(pls[i])
-            }
-
-            // Filled from the bridge's cache, which is paged in at sign-in and
-            // kept current. The fetch covers the empty case only: an empty
-            // cache cannot be told from one the paging has not reached yet.
-            function openFor(trackId) {
-                pendingTrackId = trackId
-                plPickerModel.clear()
-                open()
-
-                var cached = bridge.getUserPlaylists()
-                if (cached && cached.length > 0) { fillFrom(cached); return }
-
-                bridge.fetchUserPlaylists(function(pls, err) {
-                    fillFrom(pls)
-                }, 50, 0)
-            }
-
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
-
-            Column {
-                width: parent.width
-
-                Item {
-                    width: parent.width
-                    height: 52
-                    Text {
-                        anchors.left: parent.left; anchors.leftMargin: Theme.space4
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("Add to playlist")
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true
-                    }
-                    // ── the way out ──────────────────────────────────────
-                    Item {
-                        id: pickerClose
-                        objectName: "pickerCloseButton"
-                        anchors.right: parent.right; anchors.rightMargin: Theme.space3
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 32
-                        height: 32
-                        activeFocusOnTab: true
-                        Accessible.role: Accessible.Button
-                        Accessible.name: qsTranslate("NewPlaylistDialog", "Close", "button, closes the dialog")
-                        Accessible.onPressAction: trackPicker.close()
-                        Keys.onReturnPressed: trackPicker.close()
-                        Keys.onEnterPressed:  trackPicker.close()
-                        Keys.onSpacePressed:  trackPicker.close()
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: Theme.radiusMedium
-                            color: "transparent"
-                            border.width: pickerClose.activeFocus ? 2 : 0
-                            border.color: Theme.accent
-                        }
-                        VectorIcon {
-                            anchors.centerIn: parent
-                            name: "x"
-                            width: 14; height: 14
-                            color: pickerClose.activeFocus ? Theme.accentText
-                                 : pickerCloseHov.hovered ? Theme.textPrimary
-                                 : Theme.textSec
-                        }
-                        HoverHandler { id: pickerCloseHov; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: trackPicker.close() }
-                    }
-                }
-                Rectangle { width: parent.width; height: 1; color: Theme.border }
-
-                // ── "New playlist…", above the list it adds to ───────────
-                // First in the popup: the list underneath scrolls, and a
-                // row at the bottom of a scrolling list is rarely seen.
-                Item {
-                    id: pickerNewRow
-                    objectName: "pickerNewPlaylistRow"
-                    width: parent.width
-                    height: 44
-                    activeFocusOnTab: true
-                    Keys.onReturnPressed: root.openNewPlaylist()
-                    Keys.onEnterPressed:  root.openNewPlaylist()
-                    Keys.onSpacePressed:  root.openNewPlaylist()
-                    Accessible.role: Accessible.Button
-                    Accessible.name: pickerNewLabel.text
-                    Accessible.onPressAction: root.openNewPlaylist()
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: Theme.space1
-                        radius: Theme.radiusMedium
-                        color: newPlHov.hovered ? Theme.hoverFill : "transparent"
-                        border.width: pickerNewRow.activeFocus ? 2 : 0
-                        border.color: Theme.accent
-
-                        HoverHandler { id: newPlHov; cursorShape: Qt.PointingHandCursor }
-                        TapHandler  { onTapped: root.openNewPlaylist() }
-
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.space3
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.space3
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.space3
-
-                            // An outlined tile the size of the artwork below,
-                            // so the labels line up, and plainly not a cover.
-                            Rectangle {
-                                width: 28
-                                height: 28
-                                radius: Theme.radiusSmall
-                                color: "transparent"
-                                border.width: 1
-                                border.color: newPlHov.hovered ? Theme.accent : Theme.border
-                                VectorIcon {
-                                    anchors.centerIn: parent
-                                    name: "plus"
-                                    width: 13
-                                    height: 13
-                                    color: newPlHov.hovered ? Theme.accentText : Theme.textDim
-                                }
-                            }
-                            Text {
-                                id: pickerNewLabel
-                                objectName: "pickerNewPlaylistLabel"
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: qsTr("New playlist…")
-                                color: Theme.textPrimary
-                                font.pixelSize: Theme.fontMeta
-                                elide: Text.ElideRight
-                            }
-                        }
-                    }
-                }
-
-                Rectangle { width: parent.width; height: 1; color: Theme.border }
-
-                ListView {
-                    id: plPickerList
-                    objectName: "pickerPlaylistList"
-                    width: parent.width
-                    height: Math.min(contentHeight, 300)
-                    clip: true
-                    model: ListModel { id: plPickerModel }
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                    delegate: Item {
-                        id: pickRow
-                        width: plPickerList.width
-                        height: 44
-                        function choose() {
-                            root.addToPlaylist(model.uuid, model.title,
-                                               trackPicker.pendingTrackId)
-                            trackPicker.close()
-                        }
-                        // One tab stop for the list, the current row; the
-                        // ListView walks it with Up and Down.
-                        activeFocusOnTab: activeFocus || ListView.isCurrentItem || plPickerList.currentIndex < 0
-                        Keys.onReturnPressed: choose()
-                        Keys.onEnterPressed:  choose()
-                        Keys.onSpacePressed:  choose()
-                        Accessible.role: Accessible.ListItem
-                        Accessible.name: model.title
-                        Accessible.onPressAction: choose()
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: Theme.space1
-                            radius: Theme.radiusMedium
-                            color: plHov2.hovered ? Theme.hoverFill : "transparent"
-                            border.width: pickRow.activeFocus ? 2 : 0
-                            border.color: Theme.accent
-                            HoverHandler { id: plHov2 }
-                            TapHandler { onTapped: pickRow.choose() }
-                            Row {
-                                anchors.left: parent.left; anchors.leftMargin: Theme.space3
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: Theme.space3
-                                // 28px box, doubled; see the row cover above.
-                                CoverArt {
-                                    width: 28; height: 28; color: Theme.surface
-                                    source: model.coverUrl || ""
-                                    glyph: "playlist"
-                                    decodeSize: Qt.size(56, 56)
-                                }
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: Theme.spaceHalf
-                                    Text {
-                                        objectName: "pickerRowTitle"
-                                        text: model.title; color: Theme.textPrimary; font.pixelSize: Theme.fontMeta
-                                    }
-                                    // Named so a test can read what the row
-                                    // actually draws.
-                                    Text {
-                                        objectName: "pickerRowTrackCount"
-                                        text: qsTr("%Ln track(s)", "", model.numTracks)
-                                        color: Theme.textSec; font.pixelSize: Theme.fontMicro
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Item { width: parent.width; height: Theme.space2 }
-            }
+        sourceComponent: PlaylistPicker {
+            onChosen: (uuid, title) => root.addToPlaylist(uuid, title, trackIds[0])
+            onNewPlaylistRequested: root.openNewPlaylist()
         }
     }
 }

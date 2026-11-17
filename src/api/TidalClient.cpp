@@ -1331,13 +1331,23 @@ void TidalClient::editPlaylist(const QString &uuid, const QString &title,
 void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
     std::function<void(bool)> cb)
 {
+    addTracksToPlaylist(uuid, {trackId}, false, std::move(cb));
+}
+
+// python-tidal's add(): the ids comma-separated in one form field.
+void TidalClient::addTracksToPlaylist(const QString &uuid, const QList<qint64> &trackIds,
+    bool allowDupes, std::function<void(bool)> cb)
+{
+    if (uuid.isEmpty() || trackIds.isEmpty()) { cb(false); return; }
+    QStringList ids;
+    for (qint64 id : trackIds) ids << QString::number(id);
     m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
-        [this, uuid, trackId, cb](QString etag, QString err) {
+        [this, uuid, ids, allowDupes, cb](QString etag, QString err) {
             if (!err.isEmpty()) { cb(false); return; }
             QUrlQuery form;
-            form.addQueryItem("trackIds",           QString::number(trackId));
+            form.addQueryItem("trackIds",           ids.join(QLatin1Char(',')));
             form.addQueryItem("onArtifactNotFound", "FAIL");
-            form.addQueryItem("onDupes",            "SKIP");
+            form.addQueryItem("onDupes",            allowDupes ? "ADD" : "SKIP");
             m_api->postApiFormEtag(QStringLiteral("playlists/%1/items").arg(uuid), form, etag,
                 [this, uuid, cb](QJsonObject, QString e) {
                     if (e.isEmpty()) m_playlistEtags.remove(uuid);
@@ -1395,6 +1405,32 @@ void TidalClient::removeTrackFromPlaylist(const QString &uuid, int itemIndex,
         [cb, remove](QString etag, QString err) {
             if (!err.isEmpty() || etag.isEmpty()) { cb(PlaylistWrite::Failed); return; }
             remove(etag);
+        });
+}
+
+void TidalClient::moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+    std::function<void(PlaylistWrite)> cb)
+{
+    if (uuid.isEmpty() || fromIndex < 0 || toIndex < 0) { cb(PlaylistWrite::Failed); return; }
+    const auto move = [this, uuid, fromIndex, toIndex, cb](const QString &etag) {
+        QUrlQuery form;
+        form.addQueryItem("toIndex", QString::number(toIndex));
+        m_api->postApiFormEtagWithStatus(
+            QStringLiteral("playlists/%1/items/%2").arg(uuid).arg(fromIndex), form, etag,
+            [this, uuid, cb](QJsonObject, QString e, int status) {
+                const PlaylistWrite r = e.isEmpty() ? PlaylistWrite::Done
+                                      : status == 412 ? PlaylistWrite::Stale
+                                                      : PlaylistWrite::Failed;
+                if (r != PlaylistWrite::Failed) m_playlistEtags.remove(uuid);
+                cb(r);
+            });
+    };
+    const QString known = m_playlistEtags.value(uuid);
+    if (!known.isEmpty()) { move(known); return; }
+    m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
+        [cb, move](QString etag, QString err) {
+            if (!err.isEmpty() || etag.isEmpty()) { cb(PlaylistWrite::Failed); return; }
+            move(etag);
         });
 }
 
