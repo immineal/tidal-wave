@@ -75,6 +75,7 @@ set(SOURCES
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
     src/ui/Shortcuts.cpp
+    src/ui/SvgGlyph.cpp
     src/ui/SignalWatcher.cpp
     src/ui/TrayMenu.cpp
     src/ui/RemoteControl.cpp
@@ -115,6 +116,7 @@ set(HEADERS
     src/ui/I18n.h
     src/ui/PinStore.h
     src/ui/Shortcuts.h
+    src/ui/SvgGlyph.h
     src/ui/SignalWatcher.h
     src/ui/TrayMenu.h
     src/ui/RemoteControl.h
