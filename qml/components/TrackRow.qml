@@ -59,7 +59,14 @@ Item {
         // beside an empty title column.
         readonly property real albumWidth: Math.round(Math.max(160, Math.min(320, rowWidth * 0.28)))
         readonly property bool addedShown: showAdded && rowWidth >= addedBreakpoint
-        readonly property real addedWidth: Math.max(96, Math.ceil(dateRoom.advanceWidth))
+        // Room for its heading too, set bold with the sort arrow when active.
+        property TextMetrics addedHeadingRoom: TextMetrics {
+            font.pixelSize: Theme.fontMeta
+            font.bold: true
+            text: qsTranslate("TrackListHeader", "Date added", "column heading")
+        }
+        readonly property real addedWidth: Math.max(96, Math.ceil(dateRoom.advanceWidth),
+                                                    Math.ceil(addedHeadingRoom.advanceWidth) + 16)
         readonly property real heartWidth: 24
         // Fixed, so the lengths line up and the heading can end where they do.
         readonly property real durationWidth: Math.max(40, Math.ceil(lengthRoom.advanceWidth))
