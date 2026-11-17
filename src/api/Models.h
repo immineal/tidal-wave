@@ -141,6 +141,9 @@ struct Album {
 struct Track {
     qint64  id = 0;
     QString title;
+    // "Live", "Remastered 2011": what tells two recordings of a title apart.
+    // Most tracks answer null, which reads as "".
+    QString version;
     int     duration = 0;
     int     trackNumber = 0;
     int     discNumber  = 1;
@@ -163,6 +166,7 @@ struct Track {
         Track t;
         t.id           = j["id"].toVariant().toLongLong();
         t.title        = j["title"].toString();
+        t.version      = j["version"].toString();
         t.duration     = j["duration"].toInt();
         t.trackNumber  = j["trackNumber"].toInt();
         t.discNumber   = j["volumeNumber"].toInt(1);

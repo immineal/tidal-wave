@@ -78,6 +78,7 @@ QJsonObject toJson(const Track &t) {
     QJsonObject o;
     o["id"]             = double(t.id);
     o["title"]          = t.title;
+    o["version"]        = t.version;
     o["duration"]       = t.duration;
     o["trackNumber"]    = t.trackNumber;
     o["volumeNumber"]   = t.discNumber;
