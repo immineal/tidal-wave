@@ -8,6 +8,7 @@
 #include "ui/ReducedMotion.h"
 #include "ui/ThemePalette.h"
 #include "ui/RemoteControl.h"
+#include "mediasession/MediaSession.h"
 #include "ui/TidalLink.h"
 #include "ui/TrackNotifier.h"
 #include "ui/TrayMenu.h"
@@ -948,6 +949,13 @@ int Application::run(int argc, char **argv) {
         connect(window, &QWindow::visibleChanged, this, &Application::refreshTray);
         connect(window, &QWindow::windowStateChanged, this, &Application::refreshTray);
         trackWindowState(window, restored);
+#ifndef Q_OS_LINUX
+        // The media keys and the system's now-playing panel. Windows needs
+        // the window's handle, so after the window exists.
+        m_mediaSession = new MediaSession(this);
+        m_mediaSession->setBackend(MediaSession::createPlatformBackend(m_mediaSession, window));
+        m_mediaSession->attach(m_player);
+#endif
     }
     refreshTray();
 
