@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tidal-wave VERSION 0.4.3 LANGUAGES CXX)
+project(tidal-wave VERSION 0.5.0 LANGUAGES CXX)
 
 # The macOS media controls are Objective-C++.
 if(APPLE)
