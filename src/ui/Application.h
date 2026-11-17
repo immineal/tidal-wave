@@ -34,6 +34,8 @@ class TrackNotifier;
 class Scrobbler;
 class ScrobbleSink;
 
+class QWindow;
+
 class Application : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool reallyQuit READ reallyQuit NOTIFY reallyQuitChanged)
@@ -48,6 +50,8 @@ public:
     bool reducedMotion() const { return m_reducedMotion; }
     Q_INVOKABLE void quit();
     Q_INVOKABLE void openUrl(const QString &url);
+    // The page the last run left, read once at start; the window opens it.
+    Q_INVOKABLE QString startPage() const { return m_startPage; }
 
     // Makes SIGTERM, SIGINT and SIGHUP quit the ordinary way, so ~Player runs.
     // Call once, after the QApplication exists. False means the handlers
@@ -92,6 +96,12 @@ public:
     static int sweepStaleTempFiles(const QString &dir);
     // The lock every instance holds on its temp directory while it runs.
     static QString tempLockPath(const QString &dir);
+
+    // Where a saved window goes on the screens there are now: kept where it
+    // fits, moved onto the screen it overlaps most (or the first) where it
+    // does not, and shrunk to that screen. Invalid when nothing was saved.
+    static QRect placeWindow(const QRect &saved, const QList<QRect> &screens,
+                             const QSize &fallback);
 
     // ── High-DPI scaling ─────────────────────────────────────────────────
     // Qt derives its scale factor from the logical DPI, which is 96 where the
@@ -215,6 +225,8 @@ private:
     void refreshTray();
     void setUpTrackNotifier();
     void checkFavorites(qint64 minGapMs);
+    // Keeps the window's size, place and maximised state in Prefs.
+    void trackWindowState(QWindow *window, const QRect &restored);
 
     Prefs       *m_prefs  = nullptr;
     I18n        *m_i18n   = nullptr;
@@ -243,6 +255,7 @@ private:
     SignalWatcher *m_signals = nullptr;
     std::unique_ptr<QLockFile> m_tempLock;
 
+    QString      m_startPage;
     bool         m_reallyQuit = false;
     bool         m_reducedMotion = false;
 };
