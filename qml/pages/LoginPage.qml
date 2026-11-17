@@ -205,8 +205,8 @@ Rectangle {
                             text: auth.userCode || "…"
                             readOnly: true
                             selectByMouse: true
-                            selectionColor: Theme.accent
-                            selectedTextColor: Theme.accentInk
+                            selectionColor: Theme.textSelection
+                            selectedTextColor: Theme.textSelectionInk
                             color: Theme.textPrimary
                             font.pixelSize: Theme.fontDisplay
                             font.bold: true

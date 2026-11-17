@@ -921,8 +921,8 @@ Popup {
                                 font.pixelSize: Theme.fontBody
                                 clip: true
                                 selectByMouse: true
-                                selectionColor: Theme.accent
-                                selectedTextColor: Theme.accentInk
+                                selectionColor: Theme.textSelection
+                                selectedTextColor: Theme.textSelectionInk
                                 verticalAlignment: TextInput.AlignVCenter
                                 echoMode: scrobbling.showToken ? TextInput.Normal : TextInput.Password
                                 readOnly: scrobbling.sink ? scrobbling.sink.checking === true : false

@@ -54,6 +54,8 @@ Rectangle {
                 focus: true
                 color: Theme.textPrimary
                 font.pixelSize: Theme.fontBody
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.textSelectionInk
                 verticalAlignment: TextInput.AlignVCenter
                 Keys.onReturnPressed: root.submitted(text)
                 // Claimed ahead of the window's Escape shortcut, which would
