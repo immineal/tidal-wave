@@ -1287,8 +1287,14 @@ public:
         m_favoriteArtistList = artists;
         emit favoriteArtistsChanged();
     }
+    // Every listed track is liked, as on the real bridge, which puts each row
+    // of the listing into its hearts.
     Q_INVOKABLE void setFavoriteTracksListForTest(const QVariantList &tracks) {
         m_favoriteTrackList = tracks;
+        for (const QVariant &v : tracks) {
+            const qlonglong id = v.toMap().value(QStringLiteral("id")).toLongLong();
+            if (id > 0) m_favoriteTracks[id] = true;
+        }
         emit favoriteTracksChanged();
     }
 
