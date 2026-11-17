@@ -333,6 +333,23 @@ private slots:
                      .constData());
     }
 
+    // A Menu's setup (fades, insets, popup type, width, panel) is written once,
+    // in MenuBase.qml. QueuePanel's row menu moves with the queue work.
+    void menusShareOneBase() {
+        const auto all = scanAll([](const QString &line) {
+            return line.contains(QLatin1String("this.popupType = Popup.Item"));
+        });
+        QList<Hit> hits;
+        for (const Hit &h : all)
+            if (h.file != QLatin1String("components/MenuBase.qml")
+                && h.file != QLatin1String("components/QueuePanel.qml")) hits.append(h);
+        QVERIFY2(QFile::exists(qmlDir() + QStringLiteral("/components/MenuBase.qml")),
+                 "qml/components/MenuBase.qml is gone");
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("set a Menu up by hand instead of building on MenuBase"))
+                     .constData());
+    }
+
     // Lengths are formatted in Theme.clock() and Theme.lengthText() only.
     void lengthsHaveOneFormatter() {
         const auto hits = scan([](const QString &code) {
