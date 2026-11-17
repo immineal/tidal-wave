@@ -578,9 +578,10 @@ TestCase {
             var wrapped = false
             for (var tab = 0; tab < 5; ++tab) {
                 page.activeTab = tab
+                // A frame, so the row is laid out for this tab's sort words.
+                frame(page)
                 var chip = tabs.children[tab]
                 verify(chip, "@" + w + ": chip " + tab + " was not built")
-                if (chip.y > 1) wrapped = true
 
                 // tryVerify, because the pill is still travelling when the tab
                 // is set. Exactly on the chip: a pill that stops a fraction
@@ -595,6 +596,8 @@ TestCase {
                 + " with chip " + tab + " at "
                 + chip.x.toFixed(1) + "," + chip.y.toFixed(1) + " "
                 + chip.width.toFixed(1) + "x" + chip.height.toFixed(1))
+                for (var k = 0; k < 5; ++k)
+                    if (tabs.children[k].y > 1) wrapped = true
 
                 // The accent's ink copy covers the chip exactly when the pill
                 // does, and off the chip it is not drawn at all.

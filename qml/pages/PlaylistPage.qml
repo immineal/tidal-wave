@@ -43,6 +43,13 @@ Rectangle {
         if (root.loadError.length === 0) root.loadError = err
     }
 
+    // The order the column headings ask for: only what is shown and what
+    // plays from here. root.tracks, and Tidal's copy, keep their order.
+    TrackListHeader.Sort { id: trackSort }
+    readonly property var shownTracks: trackSort.sorted(root.tracks)
+    // Each shown row's index in root.tracks, which a removal names.
+    readonly property var shownOrder: trackSort.order(root.tracks)
+
     // Records this playlist as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("playlist", root.playlistUuid, root.playlistTitle)
@@ -163,104 +170,131 @@ Rectangle {
 
     ListView {
         id: tracksList
+        objectName: "playlistTracksList"
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: DetailHero {
-            id: hero
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
+        header: Item {
             width: tracksList.width
-            kind: qsTr("Playlist")
-            title: root.playlistTitle
-            artSource: root.coverUrl
-            // Without a cover of its own, the tracks' covers; see DetailHero.
-            artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
-            artIcon: "playlist"
-            onPinRequested: (x, y) => {
-                var p = hero.mapToItem(root, x, y)
-                root.showHeroPinMenu(p.x, p.y)
-            }
+            z: 2
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
-            Text {
-                visible: root.playlistDescription.length > 0
-                Layout.fillWidth: true
-                text: root.playlistDescription
-                color: Theme.textSec
-                font.pixelSize: Theme.fontMeta
-                wrapMode: Text.WordWrap
-                maximumLineCount: 3
-                elide: Text.ElideRight
-            }
-
-            Text {
-                text: {
-                    // One complete sentence per case rather than glued
-                    // fragments, so a translation can reorder it.
-                    var n = root.tracks.length
-                    var d = root.playlistDuration
-                    // The count is the tracklist's, still on its way.
-                    if (root.loading && n === 0)
-                        return d > 0 ? Theme.lengthText(d) : ""
-                    return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(Theme.lengthText(d))
-                                 : qsTr("%Ln track(s)", "", n)
+            DetailHero {
+                id: hero
+                width: tracksList.width
+                kind: qsTr("Playlist")
+                title: root.playlistTitle
+                artSource: root.coverUrl
+                // Without a cover of its own, the tracks' covers; see DetailHero.
+                artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
+                artIcon: "playlist"
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
                 }
-                color: Theme.textSec
-                font.pixelSize: Theme.fontBody
-                Layout.fillWidth: true
-                elide: Text.ElideRight
-            }
 
-            actions: [
-                PillButton {
-                    text: qsTr("Play", "verb, button label")
-                    icon: "play"
-                    accent: true
-                    onClicked: {
-                        if (root.tracks.length > 0) {
-                            bridge.markPlaylistPlayed(root.playlistUuid)
-                            root.playFrom(root.tracks, 0)
+                Text {
+                    visible: root.playlistDescription.length > 0
+                    Layout.fillWidth: true
+                    text: root.playlistDescription
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    text: {
+                        // One complete sentence per case rather than glued
+                        // fragments, so a translation can reorder it.
+                        var n = root.tracks.length
+                        var d = root.playlistDuration
+                        // The count is the tracklist's, still on its way.
+                        if (root.loading && n === 0)
+                            return d > 0 ? Theme.lengthText(d) : ""
+                        return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(Theme.lengthText(d))
+                                     : qsTr("%Ln track(s)", "", n)
+                    }
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                bridge.markPlaylistPlayed(root.playlistUuid)
+                                root.playFrom(root.shownTracks, 0)
+                            }
+                        }
+                    },
+                    PillButton {
+                        text: qsTr("Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                bridge.markPlaylistPlayed(root.playlistUuid)
+                                player.setShuffle(true)
+                                root.playFrom(root.shownTracks, Math.floor(Math.random() * root.tracks.length))
+                            }
+                        }
+                    },
+                    PillButton {
+                        objectName: "playlistEditButton"
+                        visible: root.playlistEditable
+                        text: qsTr("Edit")
+                        icon: "edit"
+                        accent: false
+                        onClicked: {
+                            editTitleField.text         = root.playlistTitle
+                            editDescField.text          = root.playlistDescription
+                            editPlaylistPopup.errorText = ""
+                            editPlaylistPopup.busy      = false
+                            editPlaylistPopup.open()
                         }
                     }
-                },
-                PillButton {
-                    text: qsTr("Shuffle")
-                    icon: "shuffle"
-                    accent: false
-                    onClicked: {
-                        if (root.tracks.length > 0) {
-                            bridge.markPlaylistPlayed(root.playlistUuid)
-                            player.setShuffle(true)
-                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                        }
-                    }
-                },
-                PillButton {
-                    objectName: "playlistEditButton"
-                    visible: root.playlistEditable
-                    text: qsTr("Edit")
-                    icon: "edit"
-                    accent: false
-                    onClicked: {
-                        editTitleField.text         = root.playlistTitle
-                        editDescField.text          = root.playlistDescription
-                        editPlaylistPopup.errorText = ""
-                        editPlaylistPopup.busy      = false
-                        editPlaylistPopup.open()
-                    }
-                }
-            ]
+                ]
+            }
+
+            TrackListHeader {
+                id: headings
+                objectName: "playlistTracksHeader"
+                y: hero.height
+                pinIn: tracksList
+                pinBelow: detailBar.height
+                // At x 0 with the rows' width: a vertical ListView puts its
+                // rows at its left edge, whatever x they ask for.
+                width: tracksList.width - 32
+                sort: trackSort
+                showAlbum: width - root.sidebarReclaim >= albumBreakpoint
+                showAdded: width - root.sidebarReclaim >= addedBreakpoint
+            }
         }
 
         delegate: TrackRow {
             id: playlistTrackRow
             objectName: "playlistTrackRow"
             width: tracksList.width - 32
-            x: 16
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
             showAlbum:      width - root.sidebarReclaim >= albumBreakpoint
+            showAdded:      width - root.sidebarReclaim >= addedBreakpoint
             trackNum:       index + 1
             title:          modelData.title
             artists:        modelData.artists
@@ -269,10 +303,12 @@ Rectangle {
             coverUrl:       modelData.coverUrl80
             trackData:      modelData
             playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
-            trackItemIndex: index
+            // Its place on Tidal's list, which a sort does not move. A new
+            // list can make its rows before its order is worked out.
+            trackItemIndex: index < root.shownOrder.length ? root.shownOrder[index] : index
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
-                root.playFrom(root.tracks, index)
+                root.playFrom(root.shownTracks, index)
             }
             // The row leaves the page only on the server's word. The count
             // beside the title reads root.tracks.length, and the bridge repairs
@@ -351,15 +387,20 @@ Rectangle {
         }
 
         ScrollBar.vertical: ScrollBar {
+            objectName: "playlistScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
         }
+        WheelStep { view: tracksList }
     }
 
     DetailBar {
+        id: detailBar
         objectName: "playlistStickyHeader"
         flickable: tracksList
-        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.heroHeight : 280
         title: root.playlistTitle
     }
 

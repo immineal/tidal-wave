@@ -1,6 +1,6 @@
 // The icon-only controls say what they do when pointed at: shuffle, previous,
 // next, repeat and queue in the player bar, a card's play button and a track
-// row's menu. Each tip is the control's screen reader name, after the one
+// row's menu and download buttons. Each tip is the control's screen reader name, after the one
 // delay in Theme.
 
 import QtQuick
@@ -182,5 +182,17 @@ TestCase {
         tryVerify(function () { return menu.opacity > 0.99 }, 2000,
                   "the menu button did not come up on hover")
         tipShows(host, menu, "More options", "the row's menu button")
+    }
+
+    function test_track_row_download_button() {
+        var host = show()
+        var t = track()
+        var row = place(host, rowC, { title: t.title, artists: t.artists, trackData: t })
+        hover(host, row)
+        var dl = findNamed(row, "trackDownloadButton")
+        verify(dl, "the row has no download button")
+        tryVerify(function () { return dl.opacity > 0.99 }, 2000,
+                  "the download button did not come up on hover")
+        tipShows(host, dl, "Download", "the row's download button")
     }
 }

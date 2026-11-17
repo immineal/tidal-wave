@@ -293,10 +293,6 @@
         <translation>Standard</translation>
     </message>
     <message>
-        <source>Default: most recently liked first</source>
-        <translation>Standard: zuletzt mit „Gefällt mir“ markierte zuerst</translation>
-    </message>
-    <message>
         <source>Default: most recently saved first</source>
         <translation>Standard: zuletzt gespeicherte zuerst</translation>
     </message>
@@ -435,6 +431,16 @@
     <message>
         <source>Try again</source>
         <translation>Erneut versuchen</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <comment>sorts albums by artist</comment>
+        <translation>Künstler</translation>
+    </message>
+    <message>
+        <source>Year</source>
+        <comment>sorts albums by release, newest first</comment>
+        <translation>Jahr</translation>
     </message>
 </context>
 <context>
@@ -2559,6 +2565,21 @@
         <comment>track row for a screen reader: album, length</comment>
         <translation>%1, %2</translation>
     </message>
+    <message>
+        <source>(%1)</source>
+        <comment>a track&apos;s version after its title, e.g. (Live)</comment>
+        <translation>(%1)</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <comment>row download button</comment>
+        <translation>Herunterladen</translation>
+    </message>
+    <message>
+        <source>Downloading…</source>
+        <comment>row download button, while saving</comment>
+        <translation>Wird heruntergeladen…</translation>
+    </message>
 </context>
 <context>
     <name>TrayMenu</name>
@@ -2628,6 +2649,52 @@
     <message>
         <source>Volume</source>
         <translation>Lautstärke</translation>
+    </message>
+</context>
+<context>
+    <name>ExplicitBadge</name>
+    <message>
+        <source>Explicit</source>
+        <comment>mark on a track whose lyrics are as recorded</comment>
+        <translation>Explizit</translation>
+    </message>
+</context>
+<context>
+    <name>TrackListHeader</name>
+    <message>
+        <source>#</source>
+        <comment>column heading over the track numbers</comment>
+        <translation>#</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <comment>column heading</comment>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>column heading</comment>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Date added</source>
+        <comment>column heading</comment>
+        <translation>Hinzugefügt am</translation>
+    </message>
+    <message>
+        <source>Length</source>
+        <comment>column heading over the track lengths</comment>
+        <translation>Länge</translation>
+    </message>
+    <message>
+        <source>sorted ascending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>aufsteigend sortiert</translation>
+    </message>
+    <message>
+        <source>sorted descending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>absteigend sortiert</translation>
     </message>
 </context>
 </TS>

@@ -407,9 +407,13 @@ Rectangle {
         }
 
         ScrollBar.vertical: ScrollBar {
+            objectName: "albumScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
         }
+        WheelStep { view: tracksList }
     }
 
     // What the page says when there is nothing to draw and a reason for it.
