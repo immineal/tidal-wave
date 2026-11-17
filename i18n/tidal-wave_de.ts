@@ -432,6 +432,16 @@
         <source>Try again</source>
         <translation>Erneut versuchen</translation>
     </message>
+    <message>
+        <source>Artist</source>
+        <comment>sorts albums by artist</comment>
+        <translation>Künstler</translation>
+    </message>
+    <message>
+        <source>Year</source>
+        <comment>sorts albums by release, newest first</comment>
+        <translation>Jahr</translation>
+    </message>
 </context>
 <context>
     <name>ConfirmDialog</name>
