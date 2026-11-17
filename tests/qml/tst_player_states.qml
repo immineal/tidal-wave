@@ -263,4 +263,18 @@ TestCase {
         fuzzyCompare(player.volume, 0.45, 1e-9, "a notch down over the slider is not a step")
         host.bar.hoverVolumePopup.close()
     }
+
+    // ── figures that do not jiggle ───────────────────────────────────────
+
+    function test_time_readouts_use_tabular_figures() {
+        var host = show(barHost)
+        var seek = findByName(host.bar, "playerBarSeekBar")
+        var probe = findByName(seek, "seekBarElapsed")
+        verify(probe, "the seek bar has no elapsed time label")
+        if (!("features" in probe.font))
+            skip("font.features needs Qt 6.6")
+        compare(probe.font.features["tnum"], 1, "the elapsed time is set in proportional figures")
+        compare(findByName(seek, "seekBarTotal").font.features["tnum"], 1)
+        compare(host.bar.volumePercentText.font.features["tnum"], 1)
+    }
 }
