@@ -267,14 +267,15 @@ Rectangle {
                         height: 24
                         visible: !player.loading
                     }
-                    // The still-loading state of the play button. No label
-                    // fits in a 40px disc, so the mark is all there is.
-                    VectorIcon {
+                    // A turning ring while the track loads, where three dots
+                    // read as a menu.
+                    BusyRing {
+                        objectName: "playerBarLoadingRing"
                         anchors.centerIn: parent
-                        name: "more"
+                        width: 22; height: 22
                         color: Theme.bg
-                        width: 18; height: 18
                         visible: player.loading
+                        running: player.loading
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
                     TapHandler   { onTapped: player.playPause() }
