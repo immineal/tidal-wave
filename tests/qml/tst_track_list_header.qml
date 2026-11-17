@@ -30,6 +30,9 @@ TestCase {
     function cleanup() {
         bridge.setFavoriteTracksListForTest([])
         bridge.setPlaylistTracksForTest([])
+        // Here as well as in the test, so a failed check does not leave
+        // every later test in German.
+        bridge.useCatalogueForTest("")
     }
 
     function findByName(item, name) {
@@ -103,6 +106,22 @@ TestCase {
         var lenHead = findByName(head, "trackListHeadingLength")
         fuzzyCompare(xIn(lenHead, head) + lenHead.width, xIn(len, row) + len.width, 1,
                      "the length heading does not end where the lengths do")
+    }
+
+    // The date column is as wide as its heading needs in German, set bold
+    // with its arrow, not only as wide as a date.
+    function test_the_date_heading_fits_in_german() {
+        verify(bridge.useCatalogueForTest("de"), "the German catalogue did not load")
+        var sort = createTemporaryObject(sortC, testCase)
+        var head = createTemporaryObject(headerC, testCase, { width: 1200, showAdded: true, sort: sort })
+        waitForRendering(head)
+        var cell = findByName(head, "trackListHeadingAdded")
+        var label = findByName(cell, "trackListHeadingLabel")
+        compare(label.text, "Hinzugefügt am")
+        verify(!label.truncated, "the date heading is cut at rest")
+        sort.cycle("added")
+        waitForRendering(head)
+        verify(!label.truncated, "the date heading is cut while it sorts")
     }
 
     // A column the page turns off has no heading either.
