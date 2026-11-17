@@ -65,10 +65,15 @@ Rectangle {
         }
         return false
     }
-    // 0=default, 1=A-Z, 2=Z-A. Default is the order the bridge hands over:
-    // newest saved first, playlists by the later of last played and added.
-    // It is not persisted, so it is 0 on every visit.
+    // 0=default, 1=A-Z, 2=Z-A; albums also 3=artist, 4=year. Default is the
+    // order the bridge hands over: newest saved first, playlists by the later
+    // of last played and added. It is not persisted, so it is 0 on every visit.
     property int  sortMode: 0
+    // One list for every tab, so a tab switch keeps the pills; the last two
+    // are shown on the albums tab only.
+    readonly property var sortLabels: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A"),
+        qsTr("Artist", "sorts albums by artist"), qsTr("Year", "sorts albums by release, newest first")]
+    function sortCountOn(tab) { return tab === 1 ? 5 : 3 }
     // Liked tracks sort in their column headings instead; see TrackListHeader.
     TrackListHeader.Sort {
         id: trackSort
@@ -127,6 +132,8 @@ Rectangle {
     }
 
     onActiveTabChanged: {
+        // Artist and Year are the albums' alone.
+        if (sortMode >= sortCountOn(activeTab)) sortMode = 0
         updateFilteredContent()
         if (activeTab === 4 && mixes.length === 0) loadMixes()
         contentEntry.restart()
@@ -141,11 +148,21 @@ Rectangle {
 
     function sortItems(items, mode) {
         if (mode === 0) return items
+        function name(x) { return (x.title || x.name || "").toLowerCase() }
+        function year(x) { return String(x.releaseDate || "") }
         var copy = items.slice()
         copy.sort(function(a, b) {
-            var titleA = (a.title || a.name || "").toLowerCase()
-            var titleB = (b.title || b.name || "").toLowerCase()
-            return mode === 1 ? titleA.localeCompare(titleB) : titleB.localeCompare(titleA)
+            switch (mode) {
+            case 1: return name(a).localeCompare(name(b))
+            case 2: return name(b).localeCompare(name(a))
+            // An artist's albums oldest first, as a discography reads.
+            case 3: return String(a.artists || "").toLowerCase().localeCompare(String(b.artists || "").toLowerCase())
+                           || year(a).localeCompare(year(b)) || name(a).localeCompare(name(b))
+            // Newest first; an album with no date goes last.
+            case 4: return (year(a) === "") - (year(b) === "") || year(b).localeCompare(year(a))
+                           || name(a).localeCompare(name(b))
+            }
+            return 0
         })
         return copy
     }
@@ -235,12 +252,13 @@ Rectangle {
                 Layout.alignment: Qt.AlignVCenter
                 spacing: Theme.space1
                 Repeater {
-                    model: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A")]
+                    model: root.sortLabels
                     Rectangle {
                         required property string modelData
                         required property int    index
                         id: sortPill
                         objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
+                        visible: index < root.sortCountOn(root.activeTab)
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
                         readonly property bool chosen: root.sortMode === index
                         // Sized for the bold label, so choosing one moves nothing.
