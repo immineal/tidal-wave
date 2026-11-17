@@ -1291,6 +1291,10 @@ QNetworkReply* TidalClient::fetchRaw(const QUrl &url, std::function<void(QByteAr
     return m_api->getRaw(url, cb);
 }
 
+QNetworkReply* TidalClient::fetchRawWithStatus(const QUrl &url, TidalApi::RawStatusCallback cb) {
+    return m_api->getRawWithStatus(url, std::move(cb));
+}
+
 // ─── Playlist management ───────────────────────────
 
 void TidalClient::createPlaylist(const QString &title,
