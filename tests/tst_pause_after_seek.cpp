@@ -611,6 +611,7 @@ private slots:
     {
         QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle(streamFirst)) QSKIP(why);
         Launch l;
         QVERIFY(sounding(l, 1, streamFirst));
         QVERIFY2(l.heard.blanks == 0,
