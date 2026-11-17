@@ -303,8 +303,9 @@ Rectangle {
             coverUrl:       modelData.coverUrl80
             trackData:      modelData
             playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
-            // Its place on Tidal's list, which a sort does not move.
-            trackItemIndex: root.shownOrder[index]
+            // Its place on Tidal's list, which a sort does not move. A new
+            // list can make its rows before its order is worked out.
+            trackItemIndex: index < root.shownOrder.length ? root.shownOrder[index] : index
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
                 root.playFrom(root.shownTracks, index)
