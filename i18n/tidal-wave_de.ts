@@ -1764,11 +1764,6 @@
         <comment>the queue was started from the search results</comment>
         <translation>Als Nächstes von: Suche „%1“</translation>
     </message>
-    <message>
-        <source>Add the queue to a playlist</source>
-        <comment>button in the queue&apos;s header</comment>
-        <translation>Warteschlange zu einer Playlist hinzufügen</translation>
-    </message>
 </context>
 <context>
     <name>RadioPage</name>

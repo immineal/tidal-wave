@@ -664,20 +664,14 @@ TestCase {
         compare(pickSpy.signalArguments[0][0][0].title, "Manual 0", "the picker got another row")
     }
 
-    // The header adds the whole queue, as listed, to a playlist.
-    function test_the_header_adds_the_queue_to_a_playlist() {
+    // The header has no button that puts the whole queue into a playlist.
+    // Albums, playlists and mixes keep Add to playlist in their menus.
+    function test_the_header_has_no_add_to_playlist() {
         seedAll()
         var host = showHost()
         var panel = openPanel(host)
-        pickSpy.clear()
         var btn = findByName(panel, "queueAddToPlaylist")
-        verify(btn && btn.visible, "the queue offers no way into a playlist")
-        var p = pointIn(host, btn, btn.width / 2, btn.height / 2)
-        mouseClick(host.contentItem, p.x, p.y)
-        compare(pickSpy.count, 1, "no picker was asked for")
-        var titles = pickSpy.signalArguments[0][0].map(function (t) { return t.title })
-        compare(titles.join(","), "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Ctx 3,Ctx 4,Ctx 5",
-                "the picker was not handed the queue in its order")
+        verify(!btn || !btn.visible, "the queue's header offers to add the queue to a playlist")
     }
 
     // Going to the album or the artist leaves the queue for the page.
