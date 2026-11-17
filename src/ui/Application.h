@@ -189,6 +189,10 @@ public:
     // the scale factor once, while the QApplication is built.
     static void applyScaleFactor();
 
+    // Turns Qt's incremental QML garbage collector off unless
+    // QV4_GC_TIMELIMIT holds a value. Call from main() before any QML engine.
+    static void useWholeHeapQmlCollector();
+
     // The UI font stack, most specific first, without families that are not
     // installed: the first missing name makes Qt build its alias table on
     // every launch. Needs a QGuiApplication.

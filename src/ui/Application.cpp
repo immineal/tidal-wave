@@ -463,6 +463,16 @@ bool Application::scaleWasChosenAutomatically() const {
 }
 double Application::activeScaleFactor() const { return g_scaleFactor; }
 
+void Application::useWholeHeapQmlCollector() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // Qt's incremental collector can sweep objects of a component still being
+    // built, which crashes the window now and then; 0 turns it off. Not filed
+    // yet, nearest: https://bugreports.qt.io/browse/QTBUG-143167
+    if (qEnvironmentVariableIsEmpty("QV4_GC_TIMELIMIT"))
+        qputenv("QV4_GC_TIMELIMIT", QByteArrayLiteral("0"));
+#endif
+}
+
 void Application::applyScaleFactor() {
     if (scaleFactorSetInEnvironment()) {
         g_scaleSource = ScaleSource::Environment;
