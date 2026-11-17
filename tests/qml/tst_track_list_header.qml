@@ -372,6 +372,15 @@ TestCase {
         verify(p.head.mapToItem(p.page, 0, 0).y > 200, "the headings are not under the hero")
     }
 
+    // Each row is handed its place on the playlist as it is made, also
+    // while the order for the new list is still on its way.
+    function test_a_playlist_hands_every_row_its_place() {
+        failOnWarning(/Unable to assign \[undefined\]/)
+        var p = openPage("playlist")
+        for (var i = 0; i < 5; ++i)
+            compare(p.list.itemAtIndex(i).trackItemIndex, i)
+    }
+
     // ── Liked tracks ─────────────────────────────────────────────────────
 
     function makeCollection() {
