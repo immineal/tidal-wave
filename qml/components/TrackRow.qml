@@ -74,6 +74,15 @@ Item {
         // Fixed, so the lengths line up and the heading can end where they do.
         readonly property real durationWidth: Math.max(40, Math.ceil(lengthRoom.advanceWidth))
         readonly property real buttonWidth: 24
+        // The columns' insets inside the row's ground. The right one leaves
+        // as much after the lengths as the centred "#" has before it.
+        property TextMetrics hashRoom: TextMetrics {
+            font.pixelSize: Theme.fontMeta
+            text: qsTranslate("TrackListHeader", "#", "column heading over the track numbers")
+        }
+        readonly property real leftInset: Theme.space3
+        readonly property real rightInset:
+            Theme.space3 + Math.max(0, Math.round((numberWidth - hashRoom.advanceWidth) / 2))
     }
     Columns {
         id: cols
@@ -408,6 +417,7 @@ Item {
     readonly property bool menuOpen: menuLoader.item ? menuLoader.item.visible : false
 
     Rectangle {
+        objectName: "trackRowGround"
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusMedium
@@ -462,7 +472,7 @@ Item {
         }
 
         RowLayout {
-            anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
+            anchors { fill: parent; leftMargin: cols.leftInset; rightMargin: cols.rightInset }
             spacing: Theme.space3
 
             // Track number / now playing indicator.
@@ -650,15 +660,6 @@ Item {
                 ToolTip.delay: Theme.tooltipDelay
             }
 
-            Text {
-                objectName: "trackDuration"
-                text: root.durationText
-                color: Theme.textDim
-                font.pixelSize: Theme.fontMeta
-                Layout.preferredWidth: cols.durationWidth
-                horizontalAlignment: Text.AlignRight
-            }
-
             // Download button, shown on hover and kept while busy, done or in
             // error. The slot is always laid out and only the glyphs fade, so
             // the title does not jump under the cursor.
@@ -768,6 +769,17 @@ Item {
                 ToolTip.visible: menuHov.hovered && menuButton.shown
                 ToolTip.text: qsTr("More options", "button on a track row, opens its menu")
                 ToolTip.delay: Theme.tooltipDelay
+            }
+
+            // Last, after the hover buttons, so the lengths end as far from
+            // the row's end as "#" starts from its start.
+            Text {
+                objectName: "trackDuration"
+                text: root.durationText
+                color: Theme.textDim
+                font.pixelSize: Theme.fontMeta
+                Layout.preferredWidth: cols.durationWidth
+                horizontalAlignment: Text.AlignRight
             }
         }
     }

@@ -413,7 +413,9 @@ Rectangle {
             // The rows' inset: a vertical ListView puts its delegates at x 0
             // whatever x they ask for, so the view's margins inset them.
             leftMargin: Theme.space4
-            rightMargin: Theme.space4
+            // Plus the scroll bar's lane, so the rows end as far from its inner
+            // edge as they start from the left edge.
+            rightMargin: Theme.space4 + Math.round(vbar.width - vbar.leftPadding)
 
             // The fields are passed as they came off the API. TrackRow takes
             // them as `var` and decides what a missing or mistyped one shows.
@@ -439,6 +441,7 @@ Rectangle {
             }
 
             ScrollBar.vertical: ScrollBar {
+                id: vbar
                 objectName: "collectionTracksScrollBar"
                 active: true
                 policy: ScrollBar.AsNeeded
