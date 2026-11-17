@@ -1,5 +1,6 @@
 // What a track row says beside its title: the version that tells two
-// recordings of one title apart. Every id and title is invented.
+// recordings of one title apart and the explicit mark. Every id and title is
+// invented.
 
 import QtQuick
 import QtQuick.Window
@@ -72,5 +73,25 @@ TestCase {
         var version = findByName(row, "trackVersion")
         verify(!title.truncated || version.width <= 64,
                "the title was cut while the version kept its room")
+    }
+
+    function test_an_explicit_track_is_marked() {
+        var row = makeRow({ explicit_: true, version: "Live" })
+        var badge = findByName(row, "trackExplicitBadge")
+        verify(badge, "the row has no explicit mark")
+        verify(badge.visible, "an explicit track is not marked")
+        compare(badge.label, "E")
+        compare(badge.Accessible.name, "Explicit")
+        // After the title and its version, on their line.
+        var version = findByName(row, "trackVersion")
+        var b = badge.mapToItem(row, 0, 0), v = version.mapToItem(row, 0, 0)
+        verify(b.x >= v.x + version.width, "the mark is not after the version")
+        verify(badge.width <= 20 && badge.height <= 20, "the mark is not small")
+    }
+
+    function test_a_clean_track_has_no_mark() {
+        var row = makeRow({ explicit_: false })
+        var badge = findByName(row, "trackExplicitBadge")
+        verify(!badge || !badge.visible, "a clean track is marked explicit")
     }
 }

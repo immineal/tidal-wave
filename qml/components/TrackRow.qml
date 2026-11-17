@@ -53,6 +53,8 @@ Item {
     // "Live", "Remastered 2011": what tells this recording from another of
     // the same title. Most tracks have none.
     readonly property string versionText: root.trackData ? textOf(root.trackData.version) : ""
+    // Only a real true marks a track; a payload without the key is clean.
+    readonly property bool isExplicit: root.trackData ? root.trackData.explicit_ === true : false
 
     // ── this track's radio, as a mix id ─────────────────────────────────
     // "" when the payload carried none, which is normal: not every listing
@@ -408,20 +410,24 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space1
-                // The title and, after it, the version. The title gives way
-                // last: past a short stub the version is cut first.
+                // The title, the version and the explicit mark. The title gives
+                // way last: past a short stub the version is cut first, and
+                // the mark always keeps its room.
                 Item {
                     id: titleLine
                     Layout.fillWidth: true
                     implicitHeight: titleLabel.implicitHeight
                     readonly property real gap: Theme.space1
+                    readonly property real badgeRoom: explicitBadge.visible
+                        ? explicitBadge.width + Theme.space2 : 0
                     readonly property real versionStub: versionLabel.visible
                         ? Math.min(versionLabel.implicitWidth, Theme.space16) + gap : 0
 
                     Text {
                         id: titleLabel
                         objectName: "trackTitle"
-                        width: Math.max(0, Math.min(implicitWidth, titleLine.width - titleLine.versionStub))
+                        width: Math.max(0, Math.min(implicitWidth, titleLine.width
+                                                    - titleLine.versionStub - titleLine.badgeRoom))
                         text: root.titleText
                         color: root.isCurrent ? Theme.accentText : Theme.textPrimary
                         font.pixelSize: Theme.fontBody
@@ -433,12 +439,20 @@ Item {
                         visible: root.versionText.length > 0
                         x: titleLabel.width + titleLine.gap
                         anchors.baseline: titleLabel.baseline
-                        width: Math.max(0, Math.min(implicitWidth, titleLine.width - x))
+                        width: Math.max(0, Math.min(implicitWidth, titleLine.width - x - titleLine.badgeRoom))
                         text: qsTr("(%1)", "a track's version after its title, e.g. (Live)")
                                   .arg(root.versionText)
                         color: Theme.textSec
                         font.pixelSize: Theme.fontBody
                         elide: Text.ElideRight
+                    }
+                    ExplicitBadge {
+                        id: explicitBadge
+                        objectName: "trackExplicitBadge"
+                        visible: root.isExplicit
+                        x: (versionLabel.visible ? versionLabel.x + versionLabel.width
+                                                 : titleLabel.width) + Theme.space2
+                        anchors.verticalCenter: titleLabel.verticalCenter
                     }
                 }
                 // One hover target and one tab stop per artist. The row's

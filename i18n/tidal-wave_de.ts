@@ -2635,4 +2635,12 @@
         <translation>Lautstärke</translation>
     </message>
 </context>
+<context>
+    <name>ExplicitBadge</name>
+    <message>
+        <source>Explicit</source>
+        <comment>mark on a track whose lyrics are as recorded</comment>
+        <translation>Explizit</translation>
+    </message>
+</context>
 </TS>
