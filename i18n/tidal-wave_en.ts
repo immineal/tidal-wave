@@ -835,7 +835,7 @@
 <context>
     <name>NowPlayingPage</name>
     <message>
-        <source>Close Now Playing</source>
+        <source>Close now playing</source>
         <comment>returns to the page you came from</comment>
         <translation type="unfinished"></translation>
     </message>
@@ -1097,7 +1097,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Open Now Playing</source>
+        <source>Open now playing</source>
         <comment>player bar button, opens the full-page player</comment>
         <translation type="unfinished"></translation>
     </message>
@@ -1476,7 +1476,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Colour fullscreen Now Playing from the cover</source>
+        <source>Colour fullscreen now playing from the cover</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1665,7 +1665,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while the now playing page is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1738,11 +1738,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Now Playing</source>
+        <source>Now playing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Fullscreen Now Playing</source>
+        <source>Fullscreen now playing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
