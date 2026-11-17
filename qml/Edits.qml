@@ -446,6 +446,55 @@ QtObject {
         })
     }
 
+    // Moves the row at `from` so it ends at `to`. written(ok, stale) is the
+    // bridge's reply, for the page to move the row. No notice, as a drag
+    // shows itself; Ctrl+Z moves it back once the read-back shows it.
+    function movePlaylistItem(uuid, title, trackId, from, to, written) {
+        bridge.moveTrackInPlaylist(uuid, from, to, function (ok, stale) {
+            if (written) written(ok, stale)
+            if (ok !== true || stale === true) {
+                if (ok !== true && stale !== true)
+                    Toasts.show(qsTr("Could not move the track", "shown when reordering a playlist failed"))
+                return
+            }
+            edits._confirm(edits._playlistCheck(uuid, function (ids) {
+                return Number(ids[to]) === Number(trackId)
+            }), function (shown) {
+                if (!shown) {
+                    Toasts.show(edits.unconfirmedText)
+                    edits.playlistChanged(uuid)
+                    return
+                }
+                edits._push({ undo: function (done) { edits._moveBack(uuid, title, trackId, to, from, done) } })
+            })
+        })
+    }
+
+    function _moveBack(uuid, title, trackId, from, to, done) {
+        bridge.readPlaylistTrackIds(uuid, function (readOk, ids) {
+            // Moved again since, or no longer there: not this undo's to touch.
+            if (readOk !== true || Number(ids[from]) !== Number(trackId)) {
+                Toasts.show(edits.undoFailedText); done(false); return
+            }
+            bridge.moveTrackInPlaylist(uuid, from, to, function (ok) {
+                if (ok !== true) {
+                    Toasts.show(edits.undoFailedText)
+                    edits.playlistChanged(uuid)
+                    done(false)
+                    return
+                }
+                edits._confirm(edits._playlistCheck(uuid, function (now) {
+                    return Number(now[to]) === Number(trackId)
+                }), function (shown) {
+                    edits.playlistChanged(uuid)
+                    Toasts.show(shown ? qsTr("Moved back in “%1”", "after undoing a move in a playlist").arg(title)
+                                      : edits.unconfirmedText)
+                    done(shown)
+                })
+            })
+        })
+    }
+
     // Undoes a removal: the track goes back at its old row, or the end when
     // the playlist has shrunk since.
     function _putBack(uuid, title, trackId, index, done) {

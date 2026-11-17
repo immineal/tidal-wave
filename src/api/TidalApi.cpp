@@ -448,6 +448,11 @@ void TidalApi::sendDelete(const QString &endpoint, const QUrlQuery &params, cons
 }
 
 void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb) {
+    postApiFormEtagWithStatus(endpoint, form, etag, writeWithoutStatus(std::move(cb)));
+}
+
+void TidalApi::postApiFormEtagWithStatus(const QString &endpoint, const QUrlQuery &form,
+                                         const QString &etag, StatusCallback cb) {
     const QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     const QByteArray body = form.toString(QUrl::FullyEncoded).toUtf8();
     send(url, [this, url, body, etag] {
@@ -456,7 +461,7 @@ void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, c
         if (!etag.isEmpty())
             req.setRawHeader("If-None-Match", etag.toLatin1());
         return m_nam->post(req, body);
-    }, writeAnswer(writeWithoutStatus(std::move(cb)), true));
+    }, writeAnswer(std::move(cb), true));
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {

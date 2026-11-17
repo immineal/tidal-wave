@@ -768,6 +768,16 @@
         <comment>after undoing a removal from a playlist</comment>
         <translation>Wieder in „%1“</translation>
     </message>
+    <message>
+        <source>Could not move the track</source>
+        <comment>shown when reordering a playlist failed</comment>
+        <translation>Der Titel konnte nicht verschoben werden</translation>
+    </message>
+    <message>
+        <source>Moved back in “%1”</source>
+        <comment>after undoing a move in a playlist</comment>
+        <translation>Zurückverschoben in „%1“</translation>
+    </message>
 </context>
 <context>
     <name>ErrorState</name>
@@ -1584,6 +1594,10 @@
     <message>
         <source>Clear the field above to see every track again.</source>
         <translation>Leere das Feld oben, um wieder alle Titel zu sehen.</translation>
+    </message>
+    <message>
+        <source>This playlist was changed somewhere else, so nothing was moved. It has been reloaded.</source>
+        <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts verschoben. Sie wurde neu geladen.</translation>
     </message>
 </context>
 <context>

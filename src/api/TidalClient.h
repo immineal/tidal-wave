@@ -202,6 +202,10 @@ public:
     // fetchPlaylist() last read, so a view that has gone stale is refused.
     virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,
                                           std::function<void(PlaylistWrite)> cb);
+    // Moves the row at `fromIndex` so it ends at `toIndex`, with the ETag as
+    // removeTrackFromPlaylist sends it. python-tidal's move_by_index().
+    virtual void moveTrackInPlaylist     (const QString &uuid,  int fromIndex, int toIndex,
+                                          std::function<void(PlaylistWrite)> cb);
     // Deletes a playlist this account made. A 404 counts: it is gone.
     virtual void deletePlaylist          (const QString &uuid,  std::function<void(bool)> cb);
 
