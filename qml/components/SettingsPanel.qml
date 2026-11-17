@@ -363,7 +363,7 @@ Popup {
                         spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsTintedLabel"
-                            text: qsTr("Tinted greys")
+                            text: qsTr("Let the colour in")
                             color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -376,7 +376,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsTintedToggle"
-                        label: qsTr("Tinted greys")
+                        label: qsTr("Let the colour in")
                         rainbow: true
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.tintedGreys

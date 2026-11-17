@@ -2192,7 +2192,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Tinted greys</source>
+        <source>Let the colour in</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
