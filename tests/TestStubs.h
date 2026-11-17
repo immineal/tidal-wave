@@ -743,6 +743,19 @@ public:
     Q_INVOKABLE void readPlaylistTrackIds(const QString &uuid, QJSValue cb) {
         ++m_readBacks;
         if (!cb.isCallable()) return;
+        if (m_readsLater) {
+            // On a fresh stack, as the network answers: a chain of reads
+            // answered in place nests one call per read.
+            QMetaObject::invokeMethod(this, [this, uuid, cb]() mutable {
+                answerPlaylistRead(uuid, cb);
+            }, Qt::QueuedConnection);
+            return;
+        }
+        answerPlaylistRead(uuid, cb);
+    }
+    // Reads of a playlist answer on the next turn of the event loop.
+    Q_INVOKABLE void answerReadsLaterForTest(bool on) { m_readsLater = on; }
+    void answerPlaylistRead(const QString &uuid, QJSValue cb) {
         QJSEngine *e = jsEngine();
         if (m_readBackFails || !e) { cb.call({ QJSValue(false), emptyArray() }); return; }
         QVariantList rows = m_serverPlaylists.value(uuid);
@@ -766,6 +779,7 @@ public:
     }
     Q_INVOKABLE void resetReadBacksForTest() {
         m_readLag = 0; m_lagLeft = 0; m_readBackFails = false; m_readBacks = 0;
+        m_readsLater = false;
         m_favBefore.clear(); m_playlistBefore.clear(); m_serverPlaylists.clear();
         m_favoriteReloads.clear();
     }
@@ -1787,6 +1801,7 @@ private:
     int       m_readLag = 0;
     int       m_lagLeft = 0;
     bool      m_readBackFails = false;
+    bool      m_readsLater = false;
     int       m_readBacks = 0;
     QHash<QString, bool>         m_favBefore;
     QHash<QString, QVariantList> m_serverPlaylists;

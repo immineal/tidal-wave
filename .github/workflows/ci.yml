@@ -48,8 +48,8 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
-  # Tests are Linux-only on purpose: the suite is platform-independent, and one
-  # runner keeps CI fast. QML tests need a QPA plugin, hence offscreen.
+  # QML tests need a QPA plugin, hence offscreen. Windows does not run the
+  # suite; macOS does, in test-macos.
   test:
     name: Tests (Ubuntu 24.04, Qt 6.12)
     runs-on: ubuntu-24.04
@@ -90,6 +90,44 @@ jobs:
           tests/list-skipped.sh build-tests | tee skipped.txt
           # The session bus test guards the media keys. It must not be among them.
           ! grep -q TestSessionBus skipped.txt
+
+  # The suite on macOS, offscreen, so Mac behaviour is run and not only built.
+  # Not blocking until it has been seen green: the suite has never run on a
+  # Mac before this job.
+  test-macos:
+    name: Tests (macOS, Qt 6.12)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.12.0'
+          modules: 'qtmultimedia'
+
+      - name: Configure
+        run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
+
+      - name: Build
+        run: cmake --build build-tests --parallel 4
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          n=$(ctest --test-dir build-tests -N | sed -n 's/^Total Tests: //p')
+          echo "ctest sees ${n:-0} tests"
+          test "${n:-0}" -ge 1
+          ctest --test-dir build-tests --output-on-failure
+
+      - name: List skipped test cases
+        if: always()
+        run: tests/list-skipped.sh build-tests | tee skipped.txt
 
   # The declared Qt floor: Debian 12 has Qt 6.4.2 and GCC 12.2. Tests run too,
   # because QML that 6.4 rejects fails at load time, which a build cannot see.
