@@ -25,6 +25,16 @@ Flow {
     objectName: namePrefix + "TabsRow"
     spacing: Theme.space1
 
+    // The width the chips take on one line, read off the font rather than
+    // the Flow, so a page can decide where the strip goes without a loop.
+    readonly property real lineWidth: {
+        var w = 0
+        for (var i = 0; i < model.length; ++i)
+            w += Math.ceil(boldMetrics.advanceWidth(labelFor(i, model[i]))) + Theme.space6
+        return w + spacing * Math.max(0, model.length - 1)
+    }
+    FontMetrics { id: boldMetrics; font.pixelSize: Theme.fontBody; font.bold: true }
+
     // Only `markT` is animated: the geometry is read live off the two chips,
     // whose widths change with every count.
     property Item markFrom: null
@@ -174,6 +184,15 @@ Flow {
                     font: label.font
                     color: Theme.accentInk
                 }
+            }
+
+            // The strip's baseline is its first label's, so a page can line
+            // the strip up with a title's text.
+            Binding {
+                when: chip.index === 0
+                target: strip
+                property: "baselineOffset"
+                value: chip.y + label.y + label.baselineOffset
             }
 
             HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
