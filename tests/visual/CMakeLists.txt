@@ -52,8 +52,10 @@ target_link_libraries(tst_shots PRIVATE
 )
 
 # Default location of the scene files; run.sh overrides it with -input.
+# STORE_ART_DIR is where StoreArt.h reads the store set's covers from.
 target_compile_definitions(tst_shots PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml"
+    STORE_ART_DIR="${CMAKE_CURRENT_SOURCE_DIR}/store/art"
 )
 
 qt_import_qml_plugins(tst_shots)

@@ -141,4 +141,94 @@ TestCase {
         fuzzyCompare(list.contentY - before, notch, 1, "one notch did not move one notch")
         bridge.setPlaylistTracksForTest([])
     }
+
+    // Every list WheelStep scrolls, filled past four screens.
+    function fillAndOpen(which) {
+        var p = null, name = ""
+        if (which === "tracks" || which === "albums" || which === "artists"
+                || which === "playlists" || which === "mixes") {
+            var rows = []
+            for (var i = 0; i < 300; ++i)
+                rows.push({ id: 700 + i, uuid: "pl-" + i, title: "Platte " + i, name: "Jemand " + i,
+                            artists: "Jemand", subtitle: "", coverUrl: "", picture: "",
+                            numTracks: 10, mixType: "DISCOVERY_MIX" })
+            bridge.setFavoriteTracksListForTest(manyTracks(400))
+            bridge.setFavoriteAlbumsForTest(rows)
+            bridge.setFavoriteArtistsForTest(rows)
+            bridge.setUserPlaylistsForTest(rows)
+            bridge.setHomeMixesForTest(rows.map(function (r) { return { id: "mx-" + r.id, title: r.title,
+                                                                         subtitle: "", coverUrl: "",
+                                                                         mixType: "DISCOVERY_MIX" } }))
+            p = page(collectionC)
+            var tab = ["tracks", "albums", "artists", "playlists", "mixes"].indexOf(which)
+            p.activeTab = tab
+            name = ["collectionTracksList", "collectionAlbumsGrid", "collectionArtistsGrid",
+                    "collectionPlaylistsGrid", "collectionMixesGrid"][tab]
+        } else if (which === "album") {
+            bridge.setAlbumForTest({ id: 4711, title: "Eine lange Platte", artists: "Eine Band",
+                                     artistId: 3, numTracks: 120, coverUrl: "" }, manyTracks(120))
+            p = page(albumC)
+            p.albumId = 4711
+            name = "albumTracksList"
+        } else if (which === "playlist") {
+            bridge.setPlaylistTracksForTest(manyTracks(200))
+            p = page(playlistC)
+            p.playlistUuid = "11111111-2222-3333-4444-555555555555"
+            name = "playlistTracksList"
+        } else if (which === "mix") {
+            bridge.setMixPageForTest({ id: "mx-1", title: "Eine Mischung", subtitle: "",
+                                       coverUrl: "", mixType: "DISCOVERY_MIX" }, manyTracks(200))
+            p = page(mixC)
+            p.mixId = "mx-1"
+        } else {
+            bridge.setTrackRadioForTest(manyTracks(200))
+            p = page(radioC)
+            p.trackId = 900000022
+            name = "radioTracksList"
+        }
+        var view = null
+        tryVerify(function () {
+            if (name) {
+                view = findChild(p, name)
+            } else {
+                // The mix list has no name of its own; its scroll bar does.
+                var bar = findChild(p, "mixScrollBar")
+                view = bar ? bar.parent : null
+            }
+            return view && view.visible && view.height > 0 && view.contentHeight > view.height * 4
+        }, 4000, which + " never filled")
+        waitForRendering(p)
+        return view
+    }
+
+    function test_the_scroll_bar_fades_after_a_wheel_notch_data() {
+        return [{ tag: "Liked tracks" , which: "tracks" }, { tag: "album grid", which: "albums" },
+                { tag: "artist grid", which: "artists" }, { tag: "playlist grid", which: "playlists" },
+                { tag: "mix grid", which: "mixes" }, { tag: "album", which: "album" },
+                { tag: "playlist", which: "playlist" }, { tag: "mix", which: "mix" },
+                { tag: "track radio", which: "radio" }]
+    }
+
+    // As after a drag or a flick: the bar shows while the list moves and
+    // fades once it stops. A notch sets contentY, so the view never moves.
+    function test_the_scroll_bar_fades_after_a_wheel_notch(data) {
+        var view = fillAndOpen(data.which)
+        var bar = view.ScrollBar.vertical
+        verify(bar, data.tag + ": no scroll bar")
+        verify(bar.size < 1, data.tag + ": the list is not long enough to scroll")
+        var before = view.contentY
+        mouseWheel(view, view.width / 2, view.height / 2, 0, -120)
+        verify(view.contentY > before, data.tag + ": the notch did not move the list")
+        tryVerify(function () { return !bar.active && bar.contentItem.opacity === 0 }, 3000,
+                  data.tag + ": the scroll bar stayed on after a wheel notch")
+        // A later notch shows it again, and it fades again.
+        mouseWheel(view, view.width / 2, view.height / 2, 0, -120)
+        verify(bar.contentItem.opacity > 0, data.tag + ": a notch did not show the scroll bar")
+        tryVerify(function () { return !bar.active && bar.contentItem.opacity === 0 }, 3000,
+                  data.tag + ": the scroll bar stayed on after the second notch")
+        bridge.setFavoriteAlbumsForTest([])
+        bridge.setFavoriteArtistsForTest([])
+        bridge.setUserPlaylistsForTest([])
+        bridge.setPlaylistTracksForTest([])
+    }
 }
