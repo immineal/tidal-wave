@@ -27,6 +27,7 @@
 
 #include "TestStubs.h"
 #include "StoreArt.h"
+#include "CoverColor.h"
 
 #include "I18n.h"
 #include "Prefs.h"
@@ -41,12 +42,22 @@ public:
     ShotArtProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
 
     QImage requestImage(const QString &id, QSize *size, const QSize &requested) override {
+        const QImage cover = paint(id, requested);
+        // As TidalImageProvider does, so the heroes and Now Playing tint.
+        CoverColorStore::instance()->record(id, cover);
+        if (size) *size = cover.size();
+        return cover;
+    }
+
+private:
+    QImage paint(const QString &id, const QSize &requested) {
         // The store set has its own art; every other id keeps the wash below.
-        if (storeart::handles(id)) {
-            const QImage cover = storeart::render(id, requested);
-            if (size) *size = cover.size();
-            return cover;
-        }
+        if (storeart::handles(id))
+            return storeart::render(id, requested);
+
+        // "swatch/RRGGBB": a sleeve of one known colour, for the hero tints.
+        if (id.startsWith(QLatin1String("swatch/")))
+            return swatch(QColor(QLatin1Char('#') + id.mid(7, 6)), requested);
 
         const int w = requested.width()  > 0 ? requested.width()  : 600;
         const int h = requested.height() > 0 ? requested.height() : 600;
@@ -75,8 +86,26 @@ public:
         p.setBrush(QColor(255, 255, 255, 60));
         p.drawEllipse(QRectF(w * 0.55, h * 0.06, w * 0.40, w * 0.40));
         p.end();
+        return img;
+    }
 
-        if (size) *size = QSize(w, h);
+    // The colour as the ground, a lighter and a darker shade of it, and a thin
+    // neutral rule, so it reads as a sleeve and the colour still dominates.
+    static QImage swatch(const QColor &c, const QSize &requested) {
+        const int w = requested.width()  > 0 ? requested.width()  : 600;
+        const int h = requested.height() > 0 ? requested.height() : 600;
+        QImage img(w, h, QImage::Format_ARGB32_Premultiplied);
+        img.fill(c);
+        QPainter p(&img);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        p.setBrush(c.lighter(118));
+        p.drawEllipse(QRectF(w * 0.18, h * 0.16, w * 0.64, h * 0.64));
+        p.setBrush(c.darker(130));
+        p.drawRect(QRectF(0, h * 0.82, w, h * 0.18));
+        p.setBrush(c.lightness() > 128 ? QColor(20, 20, 20) : QColor(240, 240, 240));
+        p.drawRect(QRectF(w * 0.08, h * 0.88, w * 0.30, h * 0.012));
+        p.end();
         return img;
     }
 };

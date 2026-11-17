@@ -151,6 +151,16 @@ QColor dominant(const QImage &image) {
     return fromLinear(anyR / anyN, anyG / anyN, anyB / anyN);
 }
 
+// How much chroma a hue keeps: 0.3 across yellow, amber and ochre, easing
+// back to all of it towards orange (55) and green (135).
+static double yellowKeep(double hue) {
+    auto ease = [](double t) { t = std::clamp(t, 0.0, 1.0); return t * t * (3 - 2 * t); };
+    if (hue <= 55.0 || hue >= 135.0) return 1.0;
+    const double in = hue < 70.0 ? ease((hue - 55.0) / 15.0)
+                    : hue > 118.0 ? 1.0 - ease((hue - 118.0) / 17.0) : 1.0;
+    return 1.0 - 0.7 * in;
+}
+
 QColor calmYellow(const QColor &c) {
     if (!c.isValid()) return c;
     const QColor rgb = c.toRgb();
@@ -164,9 +174,10 @@ QColor calmYellow(const QColor &c) {
     double B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
     double hue = std::atan2(B, A) * 180.0 / M_PI;
     if (hue < 0) hue += 360.0;
-    if (hue < 70.0 || hue > 125.0) return rgb;
-    A *= 0.7;
-    B *= 0.7;
+    const double keep = yellowKeep(hue);
+    if (keep >= 1.0) return rgb;
+    A *= keep;
+    B *= keep;
     const double l2 = std::pow(L + 0.3963377774 * A + 0.2158037573 * B, 3.0);
     const double m2 = std::pow(L - 0.1055613458 * A - 0.0638541728 * B, 3.0);
     const double s2 = std::pow(L - 0.0894841775 * A - 1.2914855480 * B, 3.0);

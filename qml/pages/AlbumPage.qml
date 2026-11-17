@@ -263,7 +263,6 @@ Rectangle {
                 title: albumData.title || ""
                 artSource: albumData.coverUrl || ""
                 artIcon: "album"
-                backdropSource: albumData.coverUrl640 || ""
                 onPinRequested: (x, y) => {
                     var p = hero.mapToItem(root, x, y)
                     root.showHeroPinMenu(p.x, p.y)
