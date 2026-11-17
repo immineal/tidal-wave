@@ -187,6 +187,9 @@ public slots:
         ctx->setContextProperty(QStringLiteral("shotOutDir"),
                                 qEnvironmentVariable("TW_SHOT_OUT"));
         ctx->setContextProperty(QStringLiteral("shotGrabber"), new ShotGrabber(this));
+        // The palette the store set is drawn in; run.sh draws it once per theme.
+        ctx->setContextProperty(QStringLiteral("shotTheme"),
+                                qEnvironmentVariable("TW_SHOT_THEME"));
     }
 
 private:

@@ -104,26 +104,27 @@
   </content_rating>
 
   <!-- The URLs point at a tag, so each image stays what its caption describes.
-       Flathub and the store-metadata CI job fetch every one. -->
+       Flathub and the store-metadata CI job fetch every one. Shots drawn with
+       tests/visual/run.sh store credit their art in tests/visual/store/CREDITS.md. -->
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_home.png</image>
-      <caption>The home page, with mixes, saved albums and playlists for the account</caption>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.5.0/assets/screenshot_home.png</image>
+      <caption>The home page, with the track that plays, your mixes and favourite artists</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_collection.png</image>
-      <caption>My Collection, showing saved albums, with tabs for tracks, artists, playlists and mixes</caption>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.5.0/assets/screenshot_collection.png</image>
+      <caption>The collection, showing saved albums, with tabs for tracks, artists, playlists and mixes</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_album.png</image>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.5.0/assets/screenshot_album.png</image>
       <caption>An album page with its track list, over a background taken from the cover</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_nowplaying.png</image>
-      <caption>Now Playing, with the queue below it and buttons for credits and lyrics</caption>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.5.0/assets/screenshot_nowplaying.png</image>
+      <caption>Now playing, with what comes next and buttons for credits and lyrics</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_search.png</image>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.5.0/assets/screenshot_search.png</image>
       <caption>Search results grouped into artists, tracks and albums</caption>
     </screenshot>
   </screenshots>
