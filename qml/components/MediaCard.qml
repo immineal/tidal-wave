@@ -264,6 +264,10 @@ Item {
         text: root.subtitle
         color: Theme.textSec
         font.pixelSize: Theme.fontMeta
+        // A line a little too long shrinks to fit, down to the micro size,
+        // and is cut below that. The height stays the 13 px line's.
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: Theme.fontMicro
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
     }

@@ -45,7 +45,9 @@ Rectangle {
         var asked = root.albumId
         root.unsaving = true
         root.unsaveRefused = false
-        bridge.removeAlbumFavorite(asked, function (ok) {
+        // Through Edits, as every removal goes: its notice and Ctrl+Z come
+        // once Tidal shows the album gone.
+        Edits.setFavorite("album", asked, false, function (ok) {
             // albumId can change before the reply lands, and a reply for the
             // album on screen at the press says nothing about the one there now.
             if (asked !== root.albumId) return
@@ -93,6 +95,8 @@ Rectangle {
     function updateSavedState() {
         isSaved = albumId > 0 ? bridge.isAlbumFavorite(albumId) : false
     }
+    // Saved again, by an undo: the panel offers Unsave once more.
+    onIsSavedChanged: if (isSaved) root.unsaveDone = false
 
     // The Save pill's one call, and what it says when the server refuses it.
     // isSaved is read back from the bridge and never written here.
