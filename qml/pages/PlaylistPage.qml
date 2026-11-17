@@ -176,12 +176,16 @@ Rectangle {
         model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
 
-        // The hero, then the column headings, which scroll away with it.
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
         header: Item {
             width: tracksList.width
+            z: 2
             // A height from the start: a Column reports one only after its
             // first layout, and the view, scrolled to that, stays past the hero.
             height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
             DetailHero {
                 id: hero
@@ -271,6 +275,8 @@ Rectangle {
                 id: headings
                 objectName: "playlistTracksHeader"
                 y: hero.height
+                pinIn: tracksList
+                pinBelow: detailBar.height
                 // At x 0 with the rows' width: a vertical ListView puts its
                 // rows at its left edge, whatever x they ask for.
                 width: tracksList.width - 32
@@ -390,9 +396,10 @@ Rectangle {
     }
 
     DetailBar {
+        id: detailBar
         objectName: "playlistStickyHeader"
         flickable: tracksList
-        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.heroHeight : 280
         title: root.playlistTitle
     }
 

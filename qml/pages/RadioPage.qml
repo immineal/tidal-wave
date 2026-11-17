@@ -71,12 +71,16 @@ Rectangle {
 
         // The radio has no artwork of its own, so the hero shows the covers
         // of the first four tracks in it.
-        // The hero, then the column headings, which scroll away with it.
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
         header: Item {
             width: trackList.width
+            z: 2
             // A height from the start: a Column reports one only after its
             // first layout, and the view, scrolled to that, stays past the hero.
             height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
             DetailHero {
                 id: hero
@@ -111,6 +115,8 @@ Rectangle {
                 id: headings
                 objectName: "radioTracksHeader"
                 y: hero.height
+                pinIn: trackList
+                pinBelow: detailBar.height
                 // At x 0 with the rows' width: a vertical ListView puts its
                 // rows at its left edge, whatever x they ask for.
                 width: trackList.width - 32
@@ -181,10 +187,11 @@ Rectangle {
     }
 
     DetailBar {
+        id: detailBar
         objectName: "radioStickyHeader"
         backObjectName: "radioBack"
         flickable: trackList
-        heroHeight: trackList.headerItem ? trackList.headerItem.height : 280
+        heroHeight: trackList.headerItem ? trackList.headerItem.heroHeight : 280
         title: root.radioTitle || qsTr("Track radio")
     }
 
