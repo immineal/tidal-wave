@@ -43,8 +43,9 @@ public:
     // downloadCollection() once the parent folder is known. Public for the tests.
     void downloadCollectionInto(const QString &kind, const QString &id, const QString &title,
                                 const QVariantList &tracks, const QString &parentDir);
-    // The least time between two stream requests of a collection run.
-    static constexpr int kCollectionSpacingMs = 12000;
+    // The least time between two stream requests of a collection run: at
+    // most three a minute, well inside what Tidal allows for playback.
+    static constexpr int kCollectionSpacingMs = 20000;
     void setCollectionSpacingMs(int ms) { m_spacingMs = ms; }   // for the tests
 
     QString folder() const;

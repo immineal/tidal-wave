@@ -4,6 +4,7 @@
 // the network: FeedApi answers getV2Web() from those files.
 
 #include <QTest>
+#include <QDateTime>
 #include <QFile>
 #include <QJSEngine>
 #include <QJsonArray>
@@ -166,7 +167,8 @@ private slots:
         for (const HomeModule &m : feed.modules) {
             if (m.ownRow.isEmpty()) continue;
             owns << m.id + "=" + m.ownRow;
-            QVERIFY2(m.items.isEmpty(), qPrintable(m.id));
+            // Only the history comes with its cards; see below.
+            QVERIFY2(m.items.isEmpty() == (m.ownRow != QLatin1String("recent")), qPrintable(m.id));
         }
         QCOMPARE(owns, (QStringList{"DAILY_MIXES=mixes", "CONTINUE_LISTEN_TO=recent",
                                     "YOUR_FAVORITE_ARTISTS=artists", "MY_PLAYLISTS=playlists"}));
@@ -208,6 +210,22 @@ private slots:
         QCOMPARE(byId.value("NEW_ALBUM_SUGGESTIONS").items.size(), 3);
         // The app writes the name as a word, never in capitals.
         QCOMPARE(byId.value("POPULAR_PLAYLISTS").title, QStringLiteral("Popular playlists on Tidal"));
+    }
+
+    // Tidal's recently played row, from every device the account plays on,
+    // keeps its cards for Home's own row to merge with this machine's plays.
+    void theRecentlyPlayedRowKeepsTidalsHistory() {
+        FeedApi api;
+        api.pages.insert(QString(), fixture(QStringLiteral("home_feed_static_1.json")));
+        const HomeFeed feed = fetchedFeed(api);
+        HomeModule recent;
+        for (const HomeModule &m : feed.modules)
+            if (m.id == QLatin1String("CONTINUE_LISTEN_TO")) recent = m;
+        QCOMPARE(recent.ownRow, QStringLiteral("recent"));
+        QCOMPARE(recent.items.size(), 1);
+        QVERIFY(recent.items[0].kind == HomeItem::Kind::Album);
+        QCOMPARE(recent.items[0].album.id, qint64(9100002));
+        QCOMPARE(recent.items[0].album.title, QStringLiteral("Played Album"));
     }
 
     // One broken row is left out and the rest stand.
@@ -297,6 +315,30 @@ private slots:
         const QVariantList tabs = feed.value("tabs").toList();
         QCOMPARE(tabs.size(), 2);
         QCOMPARE(tabs[1].toMap().value("feed").toString(), QStringLiteral("editorial"));
+        const QVariantList recent = moduleOf(feed, "CONTINUE_LISTEN_TO").value("items").toList();
+        QCOMPARE(recent.size(), 1);
+        QCOMPARE(recent[0].toMap().value("kind").toString(), QStringLiteral("album"));
+        QCOMPARE(recent[0].toMap().value("id").toLongLong(), qlonglong(9100002));
+    }
+
+    // When the answer was had: Home puts this machine's plays since then
+    // before Tidal's history, which cannot hold them yet.
+    void theFeedSaysWhenItWasFetched() {
+        const qint64 before = QDateTime::currentMSecsSinceEpoch();
+        {
+            Harness h;
+            const QVariantMap fresh = h.fetch(QStringLiteral("static"), QStringLiteral("en"));
+            QVERIFY(fresh.value("fetchedAt").toLongLong() >= before);
+        }
+        Harness h;
+        const QString path = h.bridge.homeFeedCachePath(QStringLiteral("static"));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadWrite));
+        const QDateTime then = QDateTime::currentDateTimeUtc().addDays(-2);
+        QVERIFY(f.setFileTime(then, QFileDevice::FileModificationTime));
+        f.close();
+        const QVariantMap cached = h.bridge.cachedHomeFeed(QStringLiteral("static"));
+        QCOMPARE(cached.value("fetchedAt").toLongLong(), then.toMSecsSinceEpoch());
     }
 
     // Home opens on the last answer while the next is on its way, and a

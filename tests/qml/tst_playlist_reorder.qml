@@ -138,6 +138,10 @@ TestCase {
         var line = findByName(p.page, "playlistDropIndicator")
         verify(line.visible, "no drop line while dragging")
         compare(p.page.dropTo, 2)
+        // Across the rows, a little inside their ends.
+        var row = rowAt(p, 1), rx = row.mapToItem(p.page, 0, 0).x
+        fuzzyCompare(line.mapToItem(p.page, 0, 0).x, rx + Theme.space2, 0.5, "the line starts off the rows")
+        fuzzyCompare(line.width, row.width - 2 * Theme.space2, 0.5, "the line is not as wide as the rows")
         verify(rowAt(p, 0).reordering, "the row is not marked as dragged")
         mouseRelease(p.host.contentItem, at.x, at.y + 2 * 52 + 10)
     }

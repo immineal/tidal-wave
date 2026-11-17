@@ -321,10 +321,17 @@ Rectangle {
         clip: true
         model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
+        // The rows' 16 px inset: a vertical ListView puts its delegates at
+        // x 0 whatever x they ask for, so the view's margins inset them. The
+        // header and footer step back out to the view's edges.
+        leftMargin: Theme.space4
+        rightMargin: Theme.space4
+        readonly property real rowWidth: width - leftMargin - rightMargin
 
         // The hero, then the column headings, which stay under the bar once
         // the hero has scrolled away. Over the rows, which pass beneath them.
         header: Item {
+            x: -tracksList.leftMargin
             width: tracksList.width
             z: 2
             // A height from the start: a Column reports one only after its
@@ -455,9 +462,9 @@ Rectangle {
                 y: hero.height
                 pinIn: tracksList
                 pinBelow: detailBar.height
-                // At x 0 with the rows' width: a vertical ListView puts its
-                // rows at its left edge, whatever x they ask for.
-                width: tracksList.width - 32
+                // Over the rows, inset as they are.
+                x: tracksList.leftMargin
+                width: tracksList.rowWidth
                 sort: trackSort
                 showAlbum: width - root.sidebarReclaim >= albumBreakpoint
                 showAdded: width - root.sidebarReclaim >= addedBreakpoint
@@ -467,7 +474,7 @@ Rectangle {
         delegate: TrackRow {
             id: playlistTrackRow
             objectName: "playlistTrackRow"
-            width: tracksList.width - 32
+            width: tracksList.rowWidth
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
@@ -527,6 +534,7 @@ Rectangle {
         // The footer, so the message sits directly beneath the header and
         // scrolls with it, as on MixPage.
         footer: Item {
+            x: -tracksList.leftMargin
             width: tracksList.width
             height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12
                   : noMatches.visible ? noMatches.implicitHeight + 2 * Theme.space12 : 32
@@ -588,8 +596,8 @@ Rectangle {
         Rectangle {
             objectName: "playlistDropIndicator"
             visible: root.dragging && root.dropTo !== root.dragFrom
-            x: Theme.space2
-            width: tracksList.width - 32 - 2 * Theme.space2
+            x: tracksList.leftMargin + Theme.space2
+            width: tracksList.rowWidth - 2 * Theme.space2
             height: 2
             color: Theme.accent
             y: root.dragRowY + (root.dropGap - root.dragFrom) * root.rowHeight - tracksList.contentY - 1

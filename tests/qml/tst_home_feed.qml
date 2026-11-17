@@ -85,10 +85,13 @@ TestCase {
 
     function init() {
         bridge.resetForTest()
+        library.setEntriesForTest([])
         bridge.setFavoriteAlbumsForTest([])
         bridge.setFavoriteArtistsForTest([])
         bridge.setUserPlaylistsForTest([])
     }
+
+    function cleanup() { library.setEntriesForTest([]) }
 
     function settle(item) {
         wait(1)
@@ -201,6 +204,7 @@ TestCase {
         var page = makeHome(true)
         var strip = findByName(page, "homeTabsRow")
         verify(strip.visible, "no tabs over a feed that names two")
+        compare(strip.model, ["For you", "Staff picks"], "a tab name is not in sentence case")
         compare(bridge.homeFeedFetchesForTest(), ["static/en"], "the staff picks were asked for unseen")
 
         strip.activated(1)
@@ -212,6 +216,21 @@ TestCase {
         strip.activated(0)
         settle(page)
         compare(titles(page).length, 8, "For you did not come back whole: " + titles(page))
+    }
+
+    // Tidal names the tabs in title case; the app writes sentence case. A
+    // name stays a name, and German keeps the capitals its grammar asks for.
+    function test_tab_names_are_in_sentence_case_data() {
+        return [{ tag: "two words", name: "Staff Picks", language: "en", shown: "Staff picks" },
+                { tag: "already", name: "For you", language: "en", shown: "For you" },
+                { tag: "the name", name: "New On Tidal", language: "en", shown: "New on Tidal" },
+                { tag: "an acronym", name: "Top DJ Mixes", language: "en", shown: "Top DJ mixes" },
+                { tag: "German", name: "Wir empfehlen", language: "de", shown: "Wir empfehlen" },
+                { tag: "German nouns", name: "Neue Musik", language: "de", shown: "Neue Musik" }]
+    }
+    function test_tab_names_are_in_sentence_case(data) {
+        var page = makeHome(false)
+        compare(page.tabTitle(data.name, data.language), data.shown)
     }
 
     // A failed staff picks feed leaves an empty tab, not a broken page.
@@ -240,5 +259,79 @@ TestCase {
         compare(rows[0].items.length, 1)
         compare(rows[0].items[0].title, "The Other Version")
         bridge.preferExplicit = !bridge.preferExplicit
+    }
+
+    // ── Recently played ─────────────────────────────────────────────────────
+
+    // Tidal's history, newest first, from every device the account plays on.
+    function recentFeed(fetchedAt) {
+        var f = forYou()
+        f.fetchedAt = fetchedAt
+        f.modules[1] = { id: "CONTINUE_LISTEN_TO", title: "Recently played", ownRow: "recent",
+                         mediaType: "recent", items: [
+            album(71, "Played on the phone"),
+            playlist("p-9", "Played on the web"),
+            { kind: "mix", id: "mx-1", title: "A mix from the phone", subtitle: "",
+              coverUrl: "", mixType: "DISCOVERY_MIX" }
+        ] }
+        return f
+    }
+    function local(kind, id, title, lastPlayed) {
+        return { kind: kind, id: id, title: title, subtitle: "", imageUrl: "", lastPlayed: lastPlayed }
+    }
+    function recentTitles(page) {
+        var row = findByName(page, "homeRecentlyPlayed")
+        verify(row, "Home has no recently played row")
+        return row.visible ? row.items.map(function (it) { return it.title }) : []
+    }
+
+    // Plays here since the feed came go first, then Tidal's list, then the
+    // older plays here it does not hold. Each item once, at its newest place.
+    function test_recently_played_merges_tidals_history_with_this_machine() {
+        library.setEntriesForTest([
+            local("album", "11", "Played here since", 9000),
+            local("playlist", "p-9", "Played on the web", 8000),
+            local("album", "71", "Played on the phone", 2000),
+            local("playlist", "p-3", "Played here before", 1000),
+            local("album", "12", "Never played", 0)
+        ])
+        bridge.setHomeFeedForTest("static", recentFeed(5000))
+        var page = makeHome(false)
+        compare(recentTitles(page), ["Played here since", "Played on the web", "Played on the phone",
+                                     "A mix from the phone", "Played here before"])
+        var row = findByName(page, "homeRecentlyPlayed")
+        compare(row.items.map(function (it) { return it.kind }),
+                ["album", "playlist", "album", "mix", "playlist"], "a card lost its kind")
+        compare(row.items[3].id, "mx-1")
+        compare(row.items[3].mixType, "DISCOVERY_MIX", "the mix card cannot open its page")
+        compare(row.title, "Recently played")
+    }
+
+    // With Tidal's list alone, it is the row.
+    function test_recently_played_shows_tidals_history_on_a_new_machine() {
+        bridge.setHomeFeedForTest("static", recentFeed(5000))
+        var page = makeHome(false)
+        compare(recentTitles(page), ["Played on the phone", "Played on the web", "A mix from the phone"])
+    }
+
+    // A failed feed, or one with no history row, leaves this machine's plays.
+    function test_recently_played_falls_back_to_this_machine() {
+        library.setEntriesForTest([local("album", "11", "Older here", 1000),
+                                   local("playlist", "p-3", "Newer here", 3000)])
+        bridge.setHomeFeedForTest("static", recentFeed(5000), "Host unreachable")
+        var page = makeHome(false)
+        compare(recentTitles(page), ["Newer here", "Older here"])
+
+        bridge.setHomeFeedForTest("static", forYou())
+        page = makeHome(false)
+        compare(recentTitles(page), ["Newer here", "Older here"])
+    }
+
+    // The copy on disk stands in while the fetch is out or fails.
+    function test_recently_played_uses_the_cached_history() {
+        bridge.setHomeFeedCacheForTest("static", recentFeed(5000))
+        bridge.setHomeFeedForTest("static", {}, "Host unreachable")
+        var page = makeHome(false)
+        compare(recentTitles(page), ["Played on the phone", "Played on the web", "A mix from the phone"])
     }
 }

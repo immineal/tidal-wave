@@ -1342,16 +1342,6 @@ Rectangle {
                                     onClicked: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
                                 }
                             }
-                            // With nothing playing, the one thing to say is
-                            // how to start.
-                            Text {
-                                objectName: "nowPlayingEmptyHint"
-                                visible: !hasTrack
-                                Layout.fillWidth: true
-                                text: qsTr("Play a track, an album or a playlist and it shows here.")
-                                color: Theme.textSec; font.pixelSize: Theme.fontBody
-                                wrapMode: Text.Wrap
-                            }
                         }
 
                         // Download button, shown while a track is playing.

@@ -79,6 +79,12 @@ Rectangle {
         clip: true
         model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
+        // The rows' 16 px inset: a vertical ListView puts its delegates at
+        // x 0 whatever x they ask for, so the view's margins inset them. The
+        // header and footer step back out to the view's edges.
+        leftMargin: Theme.space4
+        rightMargin: Theme.space4
+        readonly property real rowWidth: width - leftMargin - rightMargin
         ScrollBar.vertical: ScrollBar {
             objectName: "radioScrollBar"
             policy: ScrollBar.AsNeeded
@@ -92,6 +98,7 @@ Rectangle {
         // The hero, then the column headings, which stay under the bar once
         // the hero has scrolled away. Over the rows, which pass beneath them.
         header: Item {
+            x: -trackList.leftMargin
             width: trackList.width
             z: 2
             // A height from the start: a Column reports one only after its
@@ -135,9 +142,9 @@ Rectangle {
                 y: hero.height
                 pinIn: trackList
                 pinBelow: detailBar.height
-                // At x 0 with the rows' width: a vertical ListView puts its
-                // rows at its left edge, whatever x they ask for.
-                width: trackList.width - 32
+                // Over the rows, inset as they are.
+                x: trackList.leftMargin
+                width: trackList.rowWidth
                 sort: trackSort
             }
         }
@@ -145,7 +152,7 @@ Rectangle {
         delegate: TrackRow {
             required property var modelData
             required property int index
-            width: trackList.width - 32
+            width: trackList.rowWidth
             trackNum:    index + 1
             title:       modelData.title
             artists:     modelData.artists
@@ -159,6 +166,7 @@ Rectangle {
         // The footer, so with no tracks the message sits directly beneath
         // the hero and scrolls with it, as on MixPage.
         footer: Item {
+            x: -trackList.leftMargin
             width: trackList.width
             height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
 

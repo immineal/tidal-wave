@@ -306,6 +306,59 @@ TestCase {
                      what + ": the length heading does not end where the lengths do")
     }
 
+    // ── the rows' inset ──────────────────────────────────────────────────
+
+    Component { id: albumC;  AlbumPage  { anchors.fill: parent } }
+    Component { id: searchC; SearchPage { anchors.fill: parent } }
+
+    function firstRow(item) {
+        if (!item) return null
+        if (item.visible && item.trackData !== undefined && item.rowIndex !== undefined
+                && item.width > 0) return item
+        for (var i = 0; i < item.children.length; ++i) {
+            var hit = firstRow(item.children[i])
+            if (hit) return hit
+        }
+        return null
+    }
+    // A page's first row and the list it scrolls in, which it is inset from.
+    function openRows(which) {
+        if (which !== "album" && which !== "search") {
+            var p = openPage(which)
+            return { page: p.page, frame: p.list, row: p.list.itemAtIndex(0) }
+        }
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var page = null
+        if (which === "album") {
+            bridge.setAlbumForTest({ id: 900000101, title: "Ein Album", artists: "Eine Band",
+                                     artistId: 3, numTracks: 12, coverUrl: "" }, manyTracks(12))
+            page = createTemporaryObject(albumC, holder, {})
+            page.albumId = 900000101
+        } else {
+            bridge.setSearchResultsForTest(manyTracks(5), [], [], [])
+            page = createTemporaryObject(searchC, holder, {})
+            findByName(page, "searchPageBar").text = "eine band"
+        }
+        var row = null
+        tryVerify(function () { row = firstRow(page); return row !== null }, 3000, which + " never filled")
+        waitForRendering(page)
+        return { page: page, row: row,
+                 frame: which === "album" ? findByName(page, "albumTracksList") : row.parent }
+    }
+
+    // 16 px from the list's left edge and as far from its right.
+    function test_every_track_list_insets_its_rows_data() {
+        return pagesWithHeadings().concat([{ tag: "album", which: "album" },
+                                           { tag: "search", which: "search" }])
+    }
+    function test_every_track_list_insets_its_rows(data) {
+        var r = openRows(data.which)
+        var left = r.row.mapToItem(r.frame, 0, 0).x
+        fuzzyCompare(left, Theme.space4, 0.5, data.tag + ": the rows sit at " + left)
+        fuzzyCompare(r.frame.width - left - r.row.width, Theme.space4, 0.5,
+                     data.tag + ": the rows' right inset is not their left one")
+    }
+
     function test_every_page_lines_its_headings_up_with_its_rows_data() { return pagesWithHeadings() }
     function test_every_page_lines_its_headings_up_with_its_rows(data) {
         var p = openPage(data.which)
@@ -337,6 +390,11 @@ TestCase {
         var under = p.list.itemAt(40, p.list.contentY + bar.height + p.head.height / 2)
         verify(under, "no row under the headings")
         checkAligned(p, under, data.tag + " scrolled")
+        // Their ground covers the list from edge to edge, insets included.
+        var ground = findByName(p.head, "trackListHeaderGround")
+        verify(ground.visible, "the pinned headings have no ground")
+        fuzzyCompare(ground.mapToItem(p.list, 0, 0).x, 0, 0.5, "the ground does not start at the list's edge")
+        fuzzyCompare(ground.width, p.list.width, 0.5, "the ground is not as wide as the list")
         // The heart's slot has no heading; a click there is not the row's.
         var lh = findByName(p.head, "trackListHeadingLength")
         var queued = JSON.stringify(player.queueTracks)
