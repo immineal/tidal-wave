@@ -857,6 +857,31 @@ ApplicationWindow {
         }
     }
 
+    // ─── A link dropped on the window ───────────────────────────────────
+    // A link dragged from a browser comes as a URL, or as text from the
+    // address bar. Only a Tidal link is taken; the cursor says so on entry.
+    function _droppedLink(urls, text) {
+        for (var i = 0; urls && i < urls.length; ++i)
+            if (app.isTidalLink(String(urls[i]))) return String(urls[i])
+        var t = (text || "").trim()
+        return app.isTidalLink(t) ? t : ""
+    }
+    function takesDrop(urls, text) { return _droppedLink(urls, text) !== "" }
+    function openDropped(urls, text) {
+        var link = _droppedLink(urls, text)
+        if (link !== "") app.openLink(link)
+    }
+    DropArea {
+        anchors.fill: parent
+        enabled: auth.state === 2
+        onEntered: (drag) => { drag.accepted = root.takesDrop(drag.urls, drag.text) }
+        onDropped: (drop) => {
+            if (!root.takesDrop(drop.urls, drop.text)) return
+            root.openDropped(drop.urls, drop.text)
+            drop.acceptProposedAction()
+        }
+    }
+
     // Over everything but popups: sees each press first, then turns it down so
     // it reaches the item under it. A parent's PointHandler misses presses a
     // MouseArea accepts.

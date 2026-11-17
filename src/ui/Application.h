@@ -50,6 +50,9 @@ public:
     bool reducedMotion() const { return m_reducedMotion; }
     Q_INVOKABLE void quit();
     Q_INVOKABLE void openUrl(const QString &url);
+    // A Tidal link dropped on the window or pasted into Search.
+    Q_INVOKABLE bool isTidalLink(const QString &text) const;
+    Q_INVOKABLE void openLink(const QString &text);
     // The page the last run left, read once at start; the window opens it.
     Q_INVOKABLE QString startPage() const { return m_startPage; }
 
