@@ -1611,7 +1611,9 @@ Popup {
         Layout.fillWidth: true
         Layout.leftMargin: root.sideMargin
         Layout.rightMargin: root.sideMargin
-        Layout.topMargin: Theme.space6
+        // Twice the gap between rows, so groups read as groups, as in GNOME's
+        // and macOS's settings. The heading sits nearer its own rows.
+        Layout.topMargin: Theme.space8
         Layout.bottomMargin: 0
         spacing: Theme.space2
 
