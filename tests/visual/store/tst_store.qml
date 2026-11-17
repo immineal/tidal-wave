@@ -229,6 +229,11 @@ TestCase {
         compare(page.sectionOrder[0], page.kArtists)
         // A focused field draws a caret, and a caret blinks.
         page.releaseFocus()
+        // The query arrives selected. In the app leaving the field clears
+        // that, but this window never had active focus to lose.
+        var field = findWith(page, "persistentSelection")
+        verify(field, "no text field on the search page")
+        field.deselect()
         shoot(win, fileName("store_search"))
     }
 }
