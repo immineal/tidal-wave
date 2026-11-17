@@ -1787,10 +1787,6 @@
         <translation>Tidal durchsuchen</translation>
     </message>
     <message>
-        <source>Find tracks, albums, artists and more</source>
-        <translation>Titel, Alben, Künstler und mehr finden</translation>
-    </message>
-    <message>
         <source>No results for &quot;%1&quot;</source>
         <translation>Keine Ergebnisse für „%1“</translation>
     </message>
@@ -1888,6 +1884,10 @@
         <source>Playlist</source>
         <comment>the kind of a search's top result</comment>
         <translation>Playlist</translation>
+    </message>
+    <message>
+        <source>Results appear as you type. Searches that found something are kept here.</source>
+        <translation>Ergebnisse erscheinen beim Tippen. Suchen, die etwas gefunden haben, bleiben hier stehen.</translation>
     </message>
 </context>
 <context>

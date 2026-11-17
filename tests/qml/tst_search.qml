@@ -1866,6 +1866,15 @@ TestCase {
                "the list does not line up with the field: " + listLeft + " vs " + barLeft)
     }
 
+    // The first-run page says something a reader can use, not a slogan.
+    function test_the_first_run_page_has_no_filler_line() {
+        var win = showPage()
+        verify(!saysSomethingContaining(win.page, "Find tracks, albums, artists and more"),
+               "the generic filler line is still there")
+        verify(saysSomethingContaining(win.page, "as you type"),
+               "the first-run page does not say how search works: " + visibleCopy(win.page))
+    }
+
     // Every Item in the tree with this objectName, in tree order.
     function findAllByName(item, name) {
         return collectByName(item, name, [])

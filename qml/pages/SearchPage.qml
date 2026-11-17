@@ -251,7 +251,16 @@ Rectangle {
                     height: 48
                 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Search Tidal"); color: Theme.textPrimary; font.pixelSize: Theme.fontDisplay; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Find tracks, albums, artists and more"); color: Theme.textSec; font.pixelSize: Theme.fontBody }
+                Text {
+                    objectName: "searchFirstRunHint"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.maximumWidth: Math.max(0, root.width - 2 * Theme.space12)
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Results appear as you type. Searches that found something are kept here.")
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                }
             }
 
             ColumnLayout {
