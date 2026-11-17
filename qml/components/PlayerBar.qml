@@ -452,7 +452,7 @@ Rectangle {
                 icon: "chevron-up"
                 size: 18
                 iconColor: Theme.textSec
-                label: qsTr("Open Now Playing", "player bar button, opens the full-page player")
+                label: qsTr("Open now playing", "player bar button, opens the full-page player")
                 onClicked: root.showNowPlaying()
             }
 

@@ -43,6 +43,10 @@ QtObject {
     // The opaque fill of the selected thing: the page you are on, the chosen
     // row. Stronger than hoverFill, so hovering never looks like choosing.
     readonly property color selectedFill: p.surfaceHov
+    // Selected text in every field, the accent fill with its ink. Left
+    // unset, a field takes the platform's highlight instead.
+    readonly property color textSelection:    p.accent
+    readonly property color textSelectionInk: p.accentInk
 
     // ── semantic ─────────────────────────────────────────────────────────
     readonly property color red:     p.red

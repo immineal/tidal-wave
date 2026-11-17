@@ -54,11 +54,12 @@ QString show(const Entry &e, const QString &text) {
     return QStringLiteral("[%1] %2").arg(e.context, text.left(90));
 }
 
-// Proper names, and the names of the app's own pages and Settings sections
-// where a sentence refers to them. Removed before the case check.
+// Proper names, and the names of Settings sections where a sentence refers
+// to them. Removed before the case check. Pages are named in sentence case
+// ("Open now playing"), so they are not here.
 const QStringList kNames = {
     QStringLiteral("Tidal Wave"), QStringLiteral("TIDAL Music AS"), QStringLiteral("Tidal"),
-    QStringLiteral("Now Playing"), QStringLiteral("Dolby Atmos"),
+    QStringLiteral("Dolby Atmos"),
     QStringLiteral("NetEase Cloud Music"), QStringLiteral("China"),
     QStringLiteral("Home / Search / Collection"), QStringLiteral("Experimental"),
     QStringLiteral("Feedback"), QStringLiteral("Hi-Res"), QStringLiteral("Qt"),
