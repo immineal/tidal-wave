@@ -2566,7 +2566,7 @@ TestCase {
         verify(pill && content, "the sleep timer pill was not found")
         verify(pill.visible, "the sleep timer pill should be on screen")
 
-        // What the pill draws: Theme.radiusFull is a fully-round sentinel, and
+        // What the pill draws: Theme.radiusChip is a fully-round sentinel, and
         // Qt clamps it to half the shorter side.
         var r = Math.min(pill.radius, pill.height / 2, pill.width / 2)
         var lead  = content.mapToItem(pill, 0, 0).x

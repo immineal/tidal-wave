@@ -52,7 +52,7 @@ Rectangle {
         Rectangle {
             objectName: "loginAuthCard"
             Layout.fillWidth: true
-            radius: Theme.radiusLarge
+            radius: Theme.radiusCard
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
@@ -156,7 +156,7 @@ Rectangle {
                         id: verificationLink
                         Layout.fillWidth: true
                         height: 44
-                        radius: Theme.radiusMedium
+                        radius: Theme.radiusButton
                         color: Theme.surfaceHigh
                         border.width: activeFocus ? 2 : 0
                         border.color: Theme.accent
@@ -193,7 +193,7 @@ Rectangle {
                         // however wide the code and the font set it.
                         Layout.preferredWidth: Math.max(200, Math.ceil(codeText.contentWidth) + 2 * Theme.space6)
                         Layout.preferredHeight: Math.max(64, Math.ceil(codeText.contentHeight) + 2 * Theme.space3)
-                        radius: Theme.radiusLarge
+                        radius: Theme.radiusCard
                         color: Theme.surfaceHigh
                         border.color: Theme.accent
                         border.width: 1

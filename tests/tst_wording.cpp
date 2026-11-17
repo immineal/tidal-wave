@@ -90,7 +90,8 @@ private slots:
         QVERIFY2(bad.isEmpty(), qPrintable("not \"Sammlung\":\n  " + bad.join("\n  ")));
     }
 
-    // German lines the owner chose, so a later edit does not undo them.
+    // Chosen German lines, so a later edit does not undo them. Chosen values:
+    // do not change without asking.
     void germanKeepsTheChosenLines() {
         const QList<QPair<QString, QString>> chosen = {
             { QStringLiteral("I've allowed access"), QStringLiteral("Ich habe zugestimmt") },

@@ -420,7 +420,7 @@ Item {
         objectName: "trackRowGround"
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
-        radius: Theme.radiusMedium
+        radius: Theme.radiusRow
         // A dragged row is lifted: opaque, so the rows it passes stay under it.
         color: root.reordering ? Theme.surfaceHigh
                : root.isCurrent ? Theme.accentSoft

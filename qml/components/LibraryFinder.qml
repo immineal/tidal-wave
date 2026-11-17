@@ -22,17 +22,21 @@ Rectangle {
     readonly property int chipRowHeight: 32
 
     // ── how five icon chips are made to fit any sidebar ──────────────────
-    // SideBar gives this block a 12px margin each side. Five 32px targets
-    //     3 + 5*32 + 3 = 166px of block, a 190px sidebar,
-    // which is why Prefs::minSidebarWidth is 190. The pill drawn is smaller.
-    readonly property int chipSpacing: 0
-    readonly property int chipInset: 3
-    readonly property int chipHeight: 32
-    readonly property int chipWidth: 32
+    // SideBar gives this block a 12px margin each side. Five 30px chips
+    //     4 + 5*30 + 4*2 + 4 = 166px of block, a 190px sidebar,
+    // which is why Prefs::minSidebarWidth is 190.
+    readonly property int chipWidth: 30     // chosen value, fixed: do not change without asking
+    readonly property int chipHeight: 24
+    readonly property int chipGap: 2
+    readonly property int chipInset: 4
+    // Each chip takes presses over its pill plus half the gap on each side,
+    // so the targets meet with no dead pixel between them.
+    readonly property int chipTargetWidth: chipWidth + chipGap
+    readonly property int chipStripInset: chipInset - chipGap / 2
 
     implicitHeight: fieldHeight + 1 + chipRowHeight
     implicitWidth: 200
-    radius: Theme.radiusLarge
+    radius: Theme.radiusField
     color: Theme.surfaceHigh
     border.width: 1
     border.color: focused ? Theme.accent : Theme.border
@@ -144,7 +148,7 @@ Rectangle {
                 Accessible.onPressAction: input.text = ""
                 Rectangle {
                     anchors.centerIn: parent; width: 22; height: 22
-                    radius: Theme.radiusMedium; color: "transparent"
+                    radius: Theme.radiusButton; color: "transparent"
                     border.width: clearBtn.activeFocus ? 2 : 0
                     border.color: Theme.accent
                 }
@@ -177,11 +181,11 @@ Rectangle {
                 // same vertical as the magnifier above it, and the matching
                 // inset on the right is in the width budget at the top.
                 anchors.left: parent.left
-                anchors.leftMargin: root.chipInset
+                anchors.leftMargin: root.chipStripInset
                 anchors.right: parent.right
-                anchors.rightMargin: root.chipInset
+                anchors.rightMargin: root.chipStripInset
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: root.chipSpacing
+                spacing: 0
 
                 Repeater {
                     id: chipRepeater
@@ -202,24 +206,25 @@ Rectangle {
                         readonly property bool selected: root.kinds.indexOf(kind) >= 0
 
                         required property int index
-                        width: root.chipWidth
-                        height: root.chipHeight
+                        width: root.chipTargetWidth
+                        height: root.chipRowHeight
 
-                        // On is a solid fill and focus a ring outside it, so
-                        // the two never read as the same thing.
+                        // On is a solid fill and focus a ring outside it, in
+                        // the gap between chips, so the two never look alike.
                         Rectangle {
                             objectName: "finderChipFill"
                             anchors.centerIn: parent
-                            width: root.chipWidth - 6; height: 22
-                            radius: Theme.radiusFull
+                            width: root.chipWidth; height: root.chipHeight
+                            radius: Theme.radiusChip
                             color: chip.selected ? Theme.accent
                                                  : chipHov.hovered ? Theme.hoverFill : "transparent"
                         }
                         Rectangle {
                             objectName: "finderChipRing"
                             anchors.centerIn: parent
-                            width: root.chipWidth; height: 28
-                            radius: Theme.radiusFull
+                            width: root.chipWidth + 2 * root.chipGap
+                            height: root.chipHeight + 2 * root.chipGap
+                            radius: Theme.radiusChip
                             color: "transparent"
                             border.width: chip.activeFocus ? 2 : 0
                             border.color: Theme.accent

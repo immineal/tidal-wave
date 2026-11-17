@@ -40,7 +40,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: Theme.radiusFull
+        radius: Theme.radiusChip
         // An accent pill lifts toward its own brighter shade on hover; an
         // outlined one fills, since darkening its border alone is too quiet.
         color: root.solidDanger

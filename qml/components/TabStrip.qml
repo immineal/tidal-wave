@@ -85,7 +85,7 @@ Flow {
             // Sized off the bold label, so choosing a chip never moves the
             // ones after it.
             width: boldWidth.implicitWidth + Theme.space6
-            radius: Theme.radiusFull
+            radius: Theme.radiusChip
             // Every chip rests on the same surface. The current one takes no
             // hover: the pill already marks it.
             color: hov.hovered && !chip.current
@@ -123,7 +123,7 @@ Flow {
                     y: strip.markY - chip.y + Theme.spaceHalf
                     width:  strip.markW
                     height: strip.markH
-                    radius: Theme.radiusFull
+                    radius: Theme.radiusChip
                     color: Theme.accent
                 }
             }

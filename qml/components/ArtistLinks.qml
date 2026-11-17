@@ -77,7 +77,7 @@ Item {
             x: -4; y: -4
             width:  Math.min(parent.width, parent.contentWidth) + 8
             height: parent.height + 8
-            radius: Theme.radiusMedium; color: "transparent"
+            radius: Theme.radiusButton; color: "transparent"
             border.width: fallbackLine.activeFocus ? 2 : 0
             border.color: Theme.accent
         }
@@ -154,7 +154,7 @@ Item {
                         x: -4; y: -4
                         width:  parent.width + 8
                         height: parent.height + 8
-                        radius: Theme.radiusMedium; color: "transparent"
+                        radius: Theme.radiusButton; color: "transparent"
                         border.width: name.activeFocus ? 2 : 0
                         border.color: Theme.accent
                     }

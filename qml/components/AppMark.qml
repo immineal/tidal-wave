@@ -42,11 +42,10 @@ Item {
         // The fixed brand blue. The window, tray and launcher icons show
         // the same mark and cannot follow the in-app palette.
         color: root.brandTile
-        // The corner of assets/icon.svg at its 64-unit size, part of the drawn
-        // mark rather than of the UI's radius scale. Scaled with the tile, so
-        // a 26px mark and a 64px one are the same drawing.
-        readonly property real markCorner: 14
-        radius: markCorner * root._side / 64
+        // radiusMark is the radius at the 64-unit design size. Scaling it with
+        // the tile means a 26px mark and a 64px one are the same drawing,
+        // rather than a sharp tile small and a near-circle large.
+        radius: Theme.radiusMark * root._side / 64
 
         // The Shape is built anew each time the mark enters a scene. Qt 6.4's
         // software renderer crashes on one that left a scene and came back.
