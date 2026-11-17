@@ -1,6 +1,6 @@
 // What a track row says beside its title: the version that tells two
-// recordings of one title apart and the explicit mark. Every id and title is
-// invented.
+// recordings of one title apart and the explicit mark; and the heart that
+// says a track is liked. Every id and title is invented.
 
 import QtQuick
 import QtQuick.Window
@@ -19,6 +19,10 @@ TestCase {
 
     function init() {
         app.setReducedMotionForTest(true)
+        bridge.resetForTest()
+        bridge.setFavoriteOkForTest(true)
+        bridge.resetFavoriteCallsForTest()
+        bridge.setTrackFavoriteForTest(9301, false)
     }
 
     function findByName(item, name) {
@@ -93,5 +97,51 @@ TestCase {
         var row = makeRow({ explicit_: false })
         var badge = findByName(row, "trackExplicitBadge")
         verify(!badge || !badge.visible, "a clean track is marked explicit")
+    }
+
+    function test_a_liked_track_shows_its_heart() {
+        bridge.setTrackFavoriteForTest(9301, true)
+        var row = makeRow({})
+        var heart = findByName(row, "trackLikeButton")
+        verify(heart, "the row has no heart")
+        tryVerify(function () { return heart.opacity > 0.99 }, 2000,
+                  "a liked track shows no heart without the pointer on it")
+        compare(heart.liked, true)
+    }
+
+    function test_an_unliked_track_shows_no_heart_until_pointed_at() {
+        var row = makeRow({})
+        var heart = findByName(row, "trackLikeButton")
+        verify(heart, "the row has no heart")
+        compare(heart.opacity, 0, "an unliked track shows a heart at rest")
+        mouseMove(row, row.width / 2, row.height / 2)
+        tryVerify(function () { return heart.opacity > 0.99 }, 2000,
+                  "the heart does not come up on hover")
+    }
+
+    function test_the_heart_likes_and_unlikes() {
+        var row = makeRow({})
+        var heart = findByName(row, "trackLikeButton")
+        mouseMove(row, row.width / 2, row.height / 2)
+        tryVerify(function () { return heart.opacity > 0.99 }, 2000)
+        mouseClick(heart, heart.width / 2, heart.height / 2)
+        tryVerify(function () { return bridge.lastFavoriteCallForTest() === "addTrack:9301" }, 2000,
+                  "a click on the heart sent no like")
+        tryVerify(function () { return row.isLiked }, 2000, "the like did not land on the row")
+        mouseClick(heart, heart.width / 2, heart.height / 2)
+        tryVerify(function () { return bridge.lastFavoriteCallForTest() === "removeTrack:9301" }, 2000,
+                  "a click on a liked heart sent no unlike")
+    }
+
+    // The heart's click is its own: it does not play the row.
+    function test_the_heart_does_not_play_the_row() {
+        var row = makeRow({})
+        var played = 0
+        row.playRequested.connect(function () { ++played })
+        var heart = findByName(row, "trackLikeButton")
+        mouseMove(row, row.width / 2, row.height / 2)
+        tryVerify(function () { return heart.opacity > 0.99 }, 2000)
+        mouseClick(heart, heart.width / 2, heart.height / 2)
+        compare(played, 0, "a click on the heart played the track")
     }
 }
