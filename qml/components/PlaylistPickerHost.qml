@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import TidalWave
 
 // The window's own playlist picker, for everything that is not a single
@@ -46,6 +47,11 @@ Item {
             var uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
             if (uuid.length > 0) host.addTo(uuid, playlist.title || "")
             picker.close()
+            // Then to the new playlist, as from a track row.
+            var w = host.Window.window
+            if (uuid.length > 0 && w && typeof w.navigate === "function")
+                w.navigate("playlist", { playlistUuid: uuid, playlistTitle: playlist.title || "",
+                                         coverUrl: "", playlistType: "USER" })
         }
     }
 }
