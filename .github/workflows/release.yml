@@ -132,6 +132,26 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  # CI checks these files offline, as the screenshots point at the tag. Here
+  # the tag exists, so every URL is fetched. Not in publish's needs: a store
+  # listing problem does not hold back the downloads.
+  store-metadata:
+    name: The metadata stores read is valid, URLs included
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # ca-certificates: without a CA bundle each URL fails as not reachable.
+      - name: Install the validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            appstream desktop-file-utils ca-certificates
+
+      - name: Validate both files and fetch every URL in the metainfo
+        run: packaging/validate-store-metadata.sh
+
   # Qt 6.12 and FFmpeg bundled, built on Ubuntu 22.04 for its older glibc.
   appimage:
     name: tidal-wave-x86_64.AppImage
