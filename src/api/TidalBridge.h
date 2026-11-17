@@ -76,6 +76,16 @@ public:
     // page opened with nothing but an id.
     Q_INVOKABLE void fetchMixPage      (const QString &mixId, QJSValue cb);
 
+    // ── Tidal's own Home ────────────────────────────────────────────────
+    // A feed ("static" or "editorial") as {tabs, modules}, each module's
+    // items maps of their kind with `kind` beside them. The cached one is the
+    // last answer on disk; a fetch that lands is written there.
+    Q_INVOKABLE QVariantMap cachedHomeFeed(const QString &feed);
+    // function(feed, error), the feed worded in `language` ("en", "de").
+    Q_INVOKABLE void fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb);
+    static QString homeFeedLocale(const QString &language);
+    QString homeFeedCachePath(const QString &feed) const;
+
     bool favoritesLoading() const { return m_favoritesLoading; }
     bool albumsLoading()    const { return m_albumsLoading; }
     bool artistsLoading()   const { return m_artistsLoading; }
@@ -316,6 +326,7 @@ private:
     QVariantList artistsToList (const QList<Artist>   &v) const;
     QVariantList playlistsList (const QList<Playlist> &v) const;
     QVariantList mixesList     (const QList<Mix>      &v) const;
+    QVariantMap  homeFeedToMap (const HomeFeed &feed) const;
 
     TidalClient  *m_client;
     LyricsFinder *m_lyricsFinder = nullptr;
