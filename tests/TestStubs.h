@@ -28,6 +28,7 @@
 
 #include "api/RecordVersions.h"
 #include "api/TidalBridge.h"   // withRecentSearch / kRecentSearchCap
+#include "ui/I18n.h"
 #include "ui/Application.h"
 #include "ui/ThemePalette.h"
 
@@ -1088,8 +1089,11 @@ public:
         m_artistAlbums    = albums;
     }
     // The page in `language` through the catalogue the program ships, or in
-    // the source language for "". A test that switches switches back.
+    // the source language for "". A test that switches switches back. The
+    // locale moves first and the retranslate comes last, as in I18n::apply().
     Q_INVOKABLE bool useCatalogueForTest(const QString &language) {
+        const QString lang = language.isEmpty() ? QStringLiteral("en") : language;
+        QLocale::setDefault(I18n::numberLocale(lang, lang, QLocale::system()));
         QCoreApplication::removeTranslator(&m_catalogue);
         bool ok = true;
         if (!language.isEmpty()) {
@@ -1283,8 +1287,14 @@ public:
         m_favoriteArtistList = artists;
         emit favoriteArtistsChanged();
     }
+    // Every listed track is liked, as on the real bridge, which puts each row
+    // of the listing into its hearts.
     Q_INVOKABLE void setFavoriteTracksListForTest(const QVariantList &tracks) {
         m_favoriteTrackList = tracks;
+        for (const QVariant &v : tracks) {
+            const qlonglong id = v.toMap().value(QStringLiteral("id")).toLongLong();
+            if (id > 0) m_favoriteTracks[id] = true;
+        }
         emit favoriteTracksChanged();
     }
 

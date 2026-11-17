@@ -1,6 +1,7 @@
-// The sort pills over the collection's first four tabs. A to Z and Z to A
-// re-sort the tab's grid by title; Default is the order the bridge hands over,
-// and its tooltip says what that order is on each tab.
+// The sort pills over the collection's three card tabs. A to Z and Z to A
+// re-sort the tab's grid by title, albums also by artist and by year; Default
+// is the order the bridge hands over, and its tooltip says what that order is
+// on each tab. Liked tracks sort in their column headings instead.
 
 import QtQuick
 import QtQuick.Controls
@@ -86,7 +87,6 @@ TestCase {
 
     function test_default_says_what_order_it_is_data() {
         return [
-            { tag: "tracks",    tab: 0 },
             { tag: "albums",    tab: 1 },
             { tag: "artists",   tab: 2 },
             { tag: "playlists", tab: 3 }
@@ -99,7 +99,7 @@ TestCase {
         verify(pill, "there is no Default pill")
         verify(pill.hint.length > 0, "Default on the " + data.tag + " tab explains nothing")
         var others = []
-        for (var t = 0; t < 4; t++) {
+        for (var t = 1; t < 4; t++) {
             if (t === data.tab) continue
             page.activeTab = t
             others.push(pill.hint)
@@ -116,7 +116,8 @@ TestCase {
         var out = []
         function walk(it) {
             if (!it) return
-            if (it.objectName === "collectionSortDefault" || it.objectName === "collectionSortPill")
+            if ((it.objectName === "collectionSortDefault" || it.objectName === "collectionSortPill")
+                    && it.visible)
                 out.push(it)
             for (var i = 0; i < it.children.length; i++) walk(it.children[i])
         }
@@ -126,7 +127,7 @@ TestCase {
     }
 
     function test_the_sort_options_are_plain_text_with_an_underline() {
-        var page = makeCollection(1)
+        var page = makeCollection(2)
         var opts = sortOptions(page)
         compare(opts.length, 3, "there are not three sort options")
         var widths = opts.map(function (o) { return o.width })
@@ -149,5 +150,37 @@ TestCase {
             }
         }
         page.sortMode = 0
+    }
+
+    function albums() {
+        return [
+            { id: 1, title: "Mitte", artists: "Beta",  releaseDate: "2001-05-01", coverUrl: "" },
+            { id: 2, title: "Anfang", artists: "Gamma", releaseDate: "2019-01-01", coverUrl: "" },
+            { id: 3, title: "Ende",  artists: "alpha", releaseDate: "1987-03-01", coverUrl: "" },
+            { id: 4, title: "Zwei",  artists: "Beta",  releaseDate: "1999-09-09", coverUrl: "" }
+        ]
+    }
+
+    function test_albums_sort_by_artist_and_by_year() {
+        bridge.setFavoriteAlbumsForTest(albums())
+        var page = makeCollection(1)
+        var grid = findChild(page, "collectionAlbumsGrid")
+        var labels = sortOptions(page).map(function (o) { return findChild(o, "collectionSortLabel").text })
+        compare(labels.join(","), "Default,A→Z,Z→A,Artist,Year")
+        page.sortMode = 3
+        compare(titlesOf(grid), "Ende,Zwei,Mitte,Anfang", "Artist: by name, then oldest first")
+        page.sortMode = 4
+        compare(titlesOf(grid), "Anfang,Mitte,Zwei,Ende", "Year: newest first")
+        page.sortMode = 0
+        bridge.setFavoriteAlbumsForTest([])
+    }
+
+    // Artist and Year are album sorts: another tab never keeps one.
+    function test_an_album_sort_does_not_follow_to_another_tab() {
+        var page = makeCollection(1)
+        page.sortMode = 4
+        page.activeTab = 3
+        compare(page.sortMode, 0, "the playlists tab kept a sort it does not offer")
+        compare(sortOptions(page).length, 3)
     }
 }

@@ -40,10 +40,13 @@ QList<Track> TidalClient::parseTracks(const QJsonObject &root) {
     QJsonArray items = root.contains("items") ? root["items"].toArray()
                                               : root["data"].toArray();
     for (const auto &v : items) {
-        auto obj = v.toObject();
-        // Some endpoints wrap tracks in {item: {...}}
-        if (obj.contains("item")) obj = obj["item"].toObject();
-        if (obj.contains("id"))   out.append(Track::fromJson(obj));
+        const QJsonObject row = v.toObject();
+        QJsonObject obj = row;
+        QJsonObject wrapper;
+        // Some endpoints wrap tracks in {item: {...}}; the favourites row
+        // carries the date the track was liked.
+        if (row.contains("item")) { obj = row["item"].toObject(); wrapper = row; }
+        if (obj.contains("id"))   out.append(Track::fromJson(obj, wrapper));
     }
     return out;
 }

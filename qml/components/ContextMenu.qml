@@ -7,33 +7,14 @@ import TidalWave
 // cards and the page hero headers open on a right-click, with the two queue
 // actions above it. Only this file knows the labels and the player calls.
 // It also owns ContextMenu.Entry, the row every Menu in the app is built
-// from, and the fades and FavoriteAction that other hosts borrow.
-Menu {
+// from, and the FavoriteAction that other hosts borrow. The panel, fades and
+// insets are MenuBase's.
+MenuBase {
     id: root
 
-    // ── how a menu arrives and leaves, once ─────────────────────────────
-    // Opacity and nothing else. Qt 6.4 has a Popup/Layout polish loop when a
-    // popup's geometry feeds back into its contents, and animating height,
-    // scale or y would hand the positioner a moving target.
-    component OpenFade : Transition {
-        NumberAnimation {
-            property: "opacity"
-            from: 0; to: 1
-            duration: Theme.dur(Theme.motionFast)
-            easing.type: Easing.OutCubic
-        }
-    }
-    component CloseFade : Transition {
-        NumberAnimation {
-            property: "opacity"
-            from: 1; to: 0
-            duration: Theme.dur(Theme.motionFast)
-            easing.type: Easing.InCubic
-        }
-    }
-
-    enter: OpenFade { }
-    exit:  CloseFade { }
+    // MenuBase's fades under their old names, for menus not yet on MenuBase.
+    component OpenFade : MenuBase.OpenFade { }
+    component CloseFade : MenuBase.CloseFade { }
 
     // ── what a menu entry looks like, once ───────────────────────────────
     // Every entry carries an icon.
@@ -194,27 +175,6 @@ Menu {
         }
     }
 
-    // Insets reset, not inherited. A style sets them for its drop shadow (the
-    // native macOS style uses -32), and this menu draws its own background,
-    // so inherited insets lay the panel out past the popup and clip entries.
-    leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-
-    // popupType and Popup.Item are Qt 6.8. Declared, the property makes this
-    // type and every type using it unavailable on older Qt, so it is assigned
-    // where it exists. `this.` matters: a bare unknown name throws.
-    Component.onCompleted: {
-        if (this.popupType !== undefined) this.popupType = Popup.Item
-    }
-
-    // Sized to its longest item; see Theme.menuWidth for why a styled Menu
-    // does not do that by itself.
-    implicitWidth: Theme.menuWidth(root)
-
-    // Qt may let a menu hang `overlap` pixels past the window edge (Basic asks
-    // for 1, for submenus). This menu has no submenus.
-    overlap: 0
-    padding: Theme.menuPadding
-
     // ── the pin face ─────────────────────────────────────────────────────
 
     // What the menu is currently offering to pin, as PinStore wants it.
@@ -265,12 +225,6 @@ Menu {
     // can read the label without walking a popup's contents.
     readonly property alias pinItem:    pinEntry
     readonly property alias removeItem: removeEntry
-
-    background: Rectangle {
-        color: Theme.surfaceHigh
-        border.color: Theme.border
-        radius: Theme.radiusLarge
-    }
 
     // A hidden MenuItem still contributes its height to the menu, so every
     // item that can be absent zeroes its height too.

@@ -11,7 +11,7 @@ Item {
     // What the row needs before anything in it has to give way: the fixed
     // columns and gaps plus 120 for the title and artist line. Every list sets
     // an explicit width, so this is the floor.
-    implicitWidth: 368
+    implicitWidth: 404
 
     // The five text inputs are `var`, not `string`: pages feed them straight
     // off an API map, and a missing or wrongly typed key against a string
@@ -27,7 +27,61 @@ Item {
     property bool   isPlaying: false
     property bool   showAlbum: true
     property bool   showCover: true
+    // The date the track was liked or put on the list, where the list has it.
+    property bool   showAdded: false
     property var    trackData: null   // full track map (has albumId, id, etc.)
+
+    // ── the columns' widths, shared with TrackListHeader ────────────────
+    // The header builds its headings from the same numbers, so a heading
+    // stays over its column at every width.
+    component Columns : QtObject {
+        property real rowWidth: 0
+        property bool showAlbum: true
+        property bool showAdded: false
+        property bool showCover: true
+
+        // Measured against the row's own width, not the window's. The
+        // date goes first, then the album.
+        readonly property int albumBreakpoint: 640
+        readonly property int addedBreakpoint: 860
+
+        property TextMetrics numberRoom: TextMetrics { font.pixelSize: Theme.fontMeta; text: "0000" }
+        property TextMetrics lengthRoom: TextMetrics { font.pixelSize: Theme.fontMeta; text: "0:00:00" }
+        property TextMetrics dateRoom: TextMetrics {
+            font.pixelSize: Theme.fontMeta
+            text: {
+                var relocalise = qsTranslate("TrackListHeader", "Date added", "column heading")   // see addedText
+                return new Date(2000, 11, 28).toLocaleDateString(Qt.locale(), Locale.ShortFormat)
+            }
+        }
+
+        // Four digits, so a long collection's numbers stay in their gutter.
+        readonly property real numberWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
+        readonly property bool albumShown: showAlbum && rowWidth >= albumBreakpoint
+        // A share of a wide row, so a long album name is not cut short
+        // beside an empty title column.
+        readonly property real albumWidth: Math.round(Math.max(160, Math.min(320, rowWidth * 0.28)))
+        readonly property bool addedShown: showAdded && rowWidth >= addedBreakpoint
+        // Room for its heading too, set bold with the sort arrow when active.
+        property TextMetrics addedHeadingRoom: TextMetrics {
+            font.pixelSize: Theme.fontMeta
+            font.bold: true
+            text: qsTranslate("TrackListHeader", "Date added", "column heading")
+        }
+        readonly property real addedWidth: Math.max(96, Math.ceil(dateRoom.advanceWidth),
+                                                    Math.ceil(addedHeadingRoom.advanceWidth) + 16)
+        readonly property real heartWidth: 24
+        // Fixed, so the lengths line up and the heading can end where they do.
+        readonly property real durationWidth: Math.max(40, Math.ceil(lengthRoom.advanceWidth))
+        readonly property real buttonWidth: 24
+    }
+    Columns {
+        id: cols
+        rowWidth: root.width
+        showAlbum: root.showAlbum
+        showAdded: root.showAdded
+        showCover: root.showCover
+    }
 
     // ── what a partial payload degrades to ──────────────────────────────
     // Only a non-empty string counts; anything else is "we were not told".
@@ -50,6 +104,11 @@ Item {
         return Theme.clock(secs * 1000)
     }
     readonly property string coverText:   textOf(root.coverUrl)
+    // "Live", "Remastered 2011": what tells this recording from another of
+    // the same title. Most tracks have none.
+    readonly property string versionText: root.trackData ? textOf(root.trackData.version) : ""
+    // Only a real true marks a track; a payload without the key is clean.
+    readonly property bool isExplicit: root.trackData ? root.trackData.explicit_ === true : false
 
     // ── this track's radio, as a mix id ─────────────────────────────────
     // "" when the payload carried none, which is normal: not every listing
@@ -146,10 +205,20 @@ Item {
     property string savedFile: ""
     // A sentence to read, so it stays up as long as LoadErrorTip's.
     readonly property int dlErrorDwellMs: 6000
+    // The failure is up over the button until the error state ends.
+    property bool dlErrorShown: false
 
-    // The column breakpoint, measured against the row's own width, not the
-    // window's. The album column is the first to go.
-    readonly property int albumBreakpoint: 640
+    // For pages that gate a column against the sidebar; see Columns.
+    readonly property int albumBreakpoint: cols.albumBreakpoint
+    readonly property int addedBreakpoint: cols.addedBreakpoint
+    readonly property real addedAt: root.trackData ? (Number(root.trackData.addedAt) || 0) : 0
+    // In the app's locale, which I18n sets before it retranslates. Only a
+    // binding that translates is redone then, so this one reads a string.
+    readonly property string addedText: {
+        var relocalise = qsTranslate("TrackListHeader", "Date added", "column heading")
+        return root.addedAt > 0
+            ? new Date(root.addedAt).toLocaleDateString(Qt.locale(), Locale.ShortFormat) : ""
+    }
 
     // Reads the row's hover state from outside, e.g. so a layout test can
     // check the title does not move when the pointer enters.
@@ -160,6 +229,11 @@ Item {
         function onFavoriteTracksChanged() {
             root.isLiked = root.trackId > 0 ? bridge.isTrackFavorite(root.trackId) : false
         }
+    }
+
+    // The row's heart and the menu's Like entry. isLiked follows the bridge.
+    function toggleLike() {
+        if (root.trackId > 0) root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
     }
 
     // Like/Unlike in the row menu, and what it says when the server refuses.
@@ -197,13 +271,13 @@ Item {
         id: dlResetTimer
         interval: 3000
         onTriggered: {
-            if (root.dlState === "error") dlButton.ToolTip.hide()
+            root.dlErrorShown = false
             root.dlState = "idle"
             root.dlError = ""
         }
     }
     onTrackDataChanged: {
-        if (root.dlState === "error") dlButton.ToolTip.hide()
+        root.dlErrorShown = false
         root.dlState = (root.trackId > 0 && downloader.isDownloading(root.trackId)) ? "busy" : "idle"
         root.dlError = ""
         root.savedFile = root.trackId > 0 ? downloader.savedPath(root.trackId) : ""
@@ -213,7 +287,7 @@ Item {
     // player bar says why a track would not load. Not while the row is off screen.
     function showDownloadError() {
         if (root.dlError === "" || !root.visible || !Window.window || !Window.window.visible) return
-        dlButton.ToolTip.show(root.dlError, root.dlErrorDwellMs)
+        root.dlErrorShown = true
     }
 
     // Routing for the menu's artist rows. Asked from the row: a submenu is a
@@ -289,7 +363,9 @@ Item {
     // names. Press is what a click does.
     Accessible.role: Accessible.ListItem
     Accessible.name: qsTr("%1, %2", "track row for a screen reader: title, artists")
-                         .arg(root.titleText).arg(root.artistsText)
+                         .arg(root.versionText.length > 0 ? root.titleText + " " + versionLabel.text
+                                                          : root.titleText)
+                         .arg(root.artistsText)
     Accessible.description: root.albumText.length > 0
                             ? qsTr("%1, %2", "track row for a screen reader: album, length")
                                   .arg(root.albumText).arg(root.durationText)
@@ -353,11 +429,9 @@ Item {
             anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
             spacing: Theme.space3
 
-            // Track number / now playing indicator. Wide enough for four
-            // digits, so a long collection's numbers stay in their gutter.
-            TextMetrics { id: numberRoom; font.pixelSize: Theme.fontMeta; text: "0000" }
+            // Track number / now playing indicator.
             Item {
-                Layout.preferredWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
+                Layout.preferredWidth: cols.numberWidth
                 Layout.alignment: Qt.AlignVCenter
                 Text {
                     objectName: "trackRowNumber"
@@ -403,13 +477,50 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space1
-                Text {
-                    objectName: "trackTitle"
+                // The title, the version and the explicit mark. The title gives
+                // way last: past a short stub the version is cut first, and
+                // the mark always keeps its room.
+                Item {
+                    id: titleLine
                     Layout.fillWidth: true
-                    text: root.titleText
-                    color: root.isCurrent ? Theme.accentText : Theme.textPrimary
-                    font.pixelSize: Theme.fontBody
-                    elide: Text.ElideRight
+                    implicitHeight: titleLabel.implicitHeight
+                    readonly property real gap: Theme.space1
+                    readonly property real badgeRoom: explicitBadge.visible
+                        ? explicitBadge.width + Theme.space2 : 0
+                    readonly property real versionStub: versionLabel.visible
+                        ? Math.min(versionLabel.implicitWidth, Theme.space16) + gap : 0
+
+                    Text {
+                        id: titleLabel
+                        objectName: "trackTitle"
+                        width: Math.max(0, Math.min(implicitWidth, titleLine.width
+                                                    - titleLine.versionStub - titleLine.badgeRoom))
+                        text: root.titleText
+                        color: root.isCurrent ? Theme.accentText : Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        id: versionLabel
+                        objectName: "trackVersion"
+                        visible: root.versionText.length > 0
+                        x: titleLabel.width + titleLine.gap
+                        anchors.baseline: titleLabel.baseline
+                        width: Math.max(0, Math.min(implicitWidth, titleLine.width - x - titleLine.badgeRoom))
+                        text: qsTr("(%1)", "a track's version after its title, e.g. (Live)")
+                                  .arg(root.versionText)
+                        color: Theme.textSec
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
+                    ExplicitBadge {
+                        id: explicitBadge
+                        objectName: "trackExplicitBadge"
+                        visible: root.isExplicit
+                        x: (versionLabel.visible ? versionLabel.x + versionLabel.width
+                                                 : titleLabel.width) + Theme.space2
+                        anchors.verticalCenter: titleLabel.verticalCenter
+                    }
                 }
                 // One hover target and one tab stop per artist. The row's
                 // MouseArea is declared before the RowLayout holding this, so a
@@ -431,10 +542,8 @@ Item {
                 id: albumColumn
                 objectName: "trackAlbumColumn"
                 readonly property bool linkable: root.albumIdOf > 0
-                visible: showAlbum && root.width >= root.albumBreakpoint
-                // A share of a wide row, so a long album name is not cut
-                // short beside an empty title column.
-                Layout.preferredWidth: Math.round(Math.max(160, Math.min(320, root.width * 0.28)))
+                visible: cols.albumShown
+                Layout.preferredWidth: cols.albumWidth
                 text: root.albumText
                 color: albumHit.containsMouse ? Theme.textPrimary : Theme.textSec
                 font.pixelSize: Theme.fontMeta
@@ -459,11 +568,58 @@ Item {
             }
 
             Text {
+                objectName: "trackAddedColumn"
+                visible: cols.addedShown
+                Layout.preferredWidth: cols.addedWidth
+                text: root.addedText
+                color: Theme.textSec
+                font.pixelSize: Theme.fontMeta
+                elide: Text.ElideRight
+            }
+
+            // The heart: filled in the accent on a liked track at rest, the
+            // outline on hover to like one. A click is the like, not a play.
+            Item {
+                id: likeButton
+                objectName: "trackLikeButton"
+                readonly property bool liked: root.isLiked
+                readonly property bool shown: liked || hov.hovered
+                opacity: shown ? 1 : 0
+                Layout.preferredWidth: cols.heartWidth
+                Layout.fillHeight: true
+                Layout.alignment: Qt.AlignVCenter
+                Accessible.role: Accessible.Button
+                Accessible.name: liked ? qsTr("Unlike", "verb, remove from favourites")
+                                       : qsTr("Like", "verb, add to favourites")
+                Accessible.onPressAction: root.toggleLike()
+
+                VectorIcon {
+                    anchors.centerIn: parent
+                    name: likeButton.liked ? "heart-filled" : "heart"
+                    color: likeButton.liked ? Theme.accentText
+                         : likeHov.hovered ? Theme.textPrimary : Theme.textSec
+                    width: 16; height: 16
+                }
+                // A plain click area, as the download and menu buttons have.
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -Theme.space1
+                    enabled: likeButton.shown && root.trackId > 0
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleLike()
+                }
+                HoverHandler { id: likeHov }
+                ToolTip.visible: likeHov.hovered && likeButton.shown
+                ToolTip.text: likeButton.Accessible.name
+                ToolTip.delay: Theme.tooltipDelay
+            }
+
+            Text {
                 objectName: "trackDuration"
                 text: root.durationText
                 color: Theme.textDim
                 font.pixelSize: Theme.fontMeta
-                Layout.preferredWidth: Math.max(40, implicitWidth)
+                Layout.preferredWidth: cols.durationWidth
                 horizontalAlignment: Text.AlignRight
             }
 
@@ -532,6 +688,18 @@ Item {
                             downloader.downloadTrack(root.trackData)
                     }
                 }
+                HoverHandler { id: dlHov }
+                // One tip for both: what a click does, or why the save failed,
+                // which stays up for dlErrorDwellMs.
+                ToolTip.visible: root.dlErrorShown || (dlHov.hovered && dlButton.shown)
+                // On the error state, not on dlErrorShown: the text has to be
+                // in place before the tip is asked to show.
+                ToolTip.text: root.dlState === "error" && root.dlError !== "" ? root.dlError
+                            : root.dlState === "done" && root.savedFile !== ""
+                              ? qsTr("Show in folder", "opens the file manager at a downloaded track")
+                            : root.dlState === "busy" ? qsTr("Downloading…", "row download button, while saving")
+                            : qsTr("Download", "row download button")
+                ToolTip.delay: Theme.tooltipDelay
             }
 
             // Context menu button, same reserved slot as the download button
@@ -657,23 +825,9 @@ Item {
         active: false
         // Parented to the row rather than to this Loader, which is a zero
         // sized item at the row's origin.
-        sourceComponent: Menu {
+        // The panel, fades and insets every menu shares; see MenuBase.qml.
+        sourceComponent: MenuBase {
             parent: root
-            // The same arrival as every other menu in the app; see
-            // ContextMenu.qml for why it is opacity and nothing else.
-            enter: ContextMenu.OpenFade { }
-            exit:  ContextMenu.CloseFade { }
-            // Insets reset, not inherited; see ContextMenu.qml.
-            leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-
-            // Assigned where it exists (Qt 6.8); see ContextMenu.qml.
-            Component.onCompleted: {
-                if (this.popupType !== undefined) this.popupType = Popup.Item
-            }
-            implicitWidth: Theme.menuWidth(this)
-            overlap: 0
-            padding: Theme.menuPadding
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
             // So a test can read the two queue labels without walking a
             // popup's contents, the way ContextMenu exposes its pin item.
@@ -762,7 +916,7 @@ Item {
                 // Over the row, not the menu entry: the menu has closed by the
                 // time a refusal comes back, and a tool tip anchored to a
                 // destroyed popup item has nowhere to draw.
-                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
+                onTriggered: root.toggleLike()
             }
             ContextMenu.Entry {
                 text: qsTr("Add to playlist")
@@ -812,26 +966,13 @@ Item {
             // More than one, and the names go in a submenu rather than the one
             // row picking the lead for you. Its row in this menu comes from the
             // `delegate` above.
-            Menu {
+            MenuBase {
                 id: artistSubMenu
                 // A Popup is a QObject and not an Item, so it is in no item's
                 // children; the objectName is how a test reaches it, the way
                 // QueuePanel's per-row menu is reached.
                 objectName: "goToArtistSubMenu"
                 title: qsTr("Go to artist")
-
-                // The same treatment as the menu above: insets reset,
-                // popupType assigned where it exists, opacity-only fades.
-                // See ContextMenu.qml.
-                leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-                Component.onCompleted: {
-                    if (this.popupType !== undefined) this.popupType = Popup.Item
-                }
-                enter: ContextMenu.OpenFade { }
-                exit:  ContextMenu.CloseFade { }
-                implicitWidth: Theme.menuWidth(this)
-                padding: Theme.menuPadding
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
                 // Instantiator and not a Repeater: a Repeater is an Item, so a
                 // Menu would take it for an entry of its own. This is the shape
