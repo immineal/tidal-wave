@@ -356,14 +356,21 @@ HomeFeed TidalClient::parseHomeFeed(const QJsonObject &root) {
         m.id     = mod["moduleId"].toString();
         m.title  = tidalAsWord(mod["title"].toString());
         m.ownRow = ownRowFor(m.id);
-        if (!m.ownRow.isEmpty()) { feed.modules.append(m); continue; }
+        const auto readItems = [&] {
+            for (const auto &it : mod["items"].toArray()) {
+                HomeItem item;
+                if (feedItem(it.toObject(), &item)) m.items.append(item);
+            }
+        };
+        if (!m.ownRow.isEmpty()) {
+            if (m.ownRow == QLatin1String("recent")) readItems();
+            feed.modules.append(m);
+            continue;
+        }
         const QString type = mod["type"].toString();
         if (type != QLatin1String("HORIZONTAL_LIST")
             && type != QLatin1String("HORIZONTAL_LIST_WITH_CONTEXT")) continue;
-        for (const auto &it : mod["items"].toArray()) {
-            HomeItem item;
-            if (feedItem(it.toObject(), &item)) m.items.append(item);
-        }
+        readItems();
         if (m.items.isEmpty() || m.title.isEmpty()) continue;
         const QJsonObject header = mod["header"].toObject();
         const QJsonObject hd = header["data"].toObject();

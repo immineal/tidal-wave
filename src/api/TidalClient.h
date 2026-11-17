@@ -95,7 +95,8 @@ struct HomeModule {
     // The item a "Because you listened to" row is about; "" for most rows.
     QString context;
     // Where one of Home's own rows stands in for this one: "recent", "mixes",
-    // "artists" or "playlists". Such a row carries no items.
+    // "artists" or "playlists". Such a row carries no items, except "recent":
+    // the account's history from every device, which Home merges with its own.
     QString ownRow;
     QList<HomeItem> items;
 };
