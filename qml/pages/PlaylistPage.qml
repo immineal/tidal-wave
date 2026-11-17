@@ -721,7 +721,8 @@ Rectangle {
                     anchors.fill: parent; anchors.margins: Theme.space2
                     color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     selectByMouse: true
-                    selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                    selectionColor: Theme.textSelection
+                    selectedTextColor: Theme.textSelectionInk
                     // The same cap the create dialog applies, so a title the
                     // server would refuse cannot be typed in either place.
                     maximumLength: 100
@@ -747,7 +748,8 @@ Rectangle {
                     color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     wrapMode: TextEdit.WordWrap
                     selectByMouse: true
-                    selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                    selectionColor: Theme.textSelection
+                    selectedTextColor: Theme.textSelectionInk
                     readOnly: editPlaylistPopup.busy
                     onTextChanged: if (editPlaylistPopup.errorText.length > 0)
                                        editPlaylistPopup.errorText = ""

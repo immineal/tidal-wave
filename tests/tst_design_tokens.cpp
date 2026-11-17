@@ -306,6 +306,58 @@ private slots:
         QVERIFY2(hits.isEmpty(), describe(hits, "hoverFill for a hover").constData());
     }
 
+    // Every field selects in the theme's colours. One left unset takes the
+    // platform's highlight, which belongs to no theme.
+    void fieldsSelectInTheTheme() {
+        static const QRegularExpression opening(QStringLiteral(
+            "(?<![\\w.])(TextInput|TextEdit|TextField|TextArea)\\s*\\{"));
+        static const QRegularExpression fill(QStringLiteral(
+            "\\bselectionColor\\s*:\\s*Theme\\.textSelection\\s*$"));
+        static const QRegularExpression ink(QStringLiteral(
+            "\\bselectedTextColor\\s*:\\s*Theme\\.textSelectionInk\\s*$"));
+        QList<Hit> hits;
+        int fields = 0;
+        QDirIterator it(qmlDir(), {QStringLiteral("*.qml")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            const QString rel = QDir(qmlDir()).relativeFilePath(path);
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            int depth = 0, fieldDepth = -1, fieldLine = 0;
+            bool hasFill = false, hasInk = false;
+            for (int i = 0; i < lines.size(); ++i) {
+                const QString code = codeOf(lines.at(i));
+                if (fieldDepth >= 0 && depth == fieldDepth + 1) {
+                    hasFill = hasFill || fill.match(code.trimmed()).hasMatch();
+                    hasInk = hasInk || ink.match(code.trimmed()).hasMatch();
+                }
+                const auto open = opening.match(code);
+                for (int c = 0; c < code.size(); ++c) {
+                    if (fieldDepth < 0 && open.hasMatch() && c == open.capturedEnd() - 1) {
+                        fieldDepth = depth;
+                        fieldLine = i;
+                        hasFill = hasInk = false;
+                        ++fields;
+                    }
+                    if (code.at(c) == QLatin1Char('{')) ++depth;
+                    else if (code.at(c) == QLatin1Char('}') && --depth == fieldDepth) {
+                        fieldDepth = -1;
+                        if (!hasFill || !hasInk)
+                            hits.append({rel, fieldLine + 1, lines.at(fieldLine).trimmed()});
+                    }
+                }
+            }
+        }
+        QVERIFY2(fields > 0, "no text field was found under qml/");
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("open a field without selectionColor: "
+                                             "Theme.textSelection and selectedTextColor: "
+                                             "Theme.textSelectionInk"))
+                     .constData());
+    }
+
     // One version of each control, in qml/components. A page that grows its
     // own copy drifts from the shared one in size, hover and focus.
     void controlsAreDefinedOnce() {
