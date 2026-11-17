@@ -2418,6 +2418,24 @@
         <comment>settings section with the app&apos;s name and version</comment>
         <translation>Über</translation>
     </message>
+    <message>
+        <source>Version of records with explicit lyrics</source>
+        <translation>Version von Aufnahmen mit expliziten Texten</translation>
+    </message>
+    <message>
+        <source>Explicit</source>
+        <comment>the version of a record with its lyrics as recorded</comment>
+        <translation>Explizit</translation>
+    </message>
+    <message>
+        <source>Clean</source>
+        <comment>the version of a record with its lyrics edited</comment>
+        <translation>Clean</translation>
+    </message>
+    <message>
+        <source>Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.</source>
+        <translation>Suche und Künstlerseiten zeigen diese Version, wo es beide gibt. Die Albumseite führt die andere weiterhin auf, und was du gespeichert hast, wird immer gezeigt.</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
