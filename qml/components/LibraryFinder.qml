@@ -210,7 +210,7 @@ Rectangle {
                         height: root.chipRowHeight
 
                         // On is a solid fill and focus a ring outside it, in
-                        // the gap between chips, so the two never look alike.
+                        // the gap; on and focused, the ring sits inside in ink.
                         Rectangle {
                             objectName: "finderChipFill"
                             anchors.centerIn: parent
@@ -222,12 +222,13 @@ Rectangle {
                         Rectangle {
                             objectName: "finderChipRing"
                             anchors.centerIn: parent
-                            width: root.chipWidth + 2 * root.chipGap
-                            height: root.chipHeight + 2 * root.chipGap
+                            readonly property int inset: chip.selected ? -3 : root.chipGap
+                            width: root.chipWidth + 2 * inset
+                            height: root.chipHeight + 2 * inset
                             radius: Theme.radiusChip
                             color: "transparent"
                             border.width: chip.activeFocus ? 2 : 0
-                            border.color: Theme.accent
+                            border.color: chip.selected ? Theme.accentInk : Theme.accent
                         }
 
                         // The strip is one tab stop, as a toolbar is: Left and

@@ -87,7 +87,7 @@ QtObject {
     readonly property int radiusButton: r.button   // buttons, focus rings on links
     readonly property int radiusArt:    r.art      // covers, thumbnails
     readonly property int radiusCard:   r.card     // cards, the art box of a card
-    readonly property int radiusPopup:  r.popup    // dialogs, panels, menus, tips, toasts
+    readonly property int radiusPopup:  r.popup    // dialogs, panels, menus, toasts
     readonly property int radiusBadge:  r.badge    // the quality tag and friends
     readonly property int radiusMark:   r.mark     // the app icon tile
 

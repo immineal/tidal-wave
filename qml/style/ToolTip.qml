@@ -33,6 +33,6 @@ T.ToolTip {
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusPopup
+        radius: Theme.radiusButton
     }
 }
