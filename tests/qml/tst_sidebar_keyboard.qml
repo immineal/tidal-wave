@@ -114,5 +114,13 @@ TestCase {
         verify(focRing.border.width >= 2)
         verify(onFill.color.a > 0.9, "an on chip is not filled")
         compare(focFill.color.a, 0, "a focused chip that is off is filled like an on one")
+
+        // On and focused: the ring sits inside the fill, in its ink.
+        keyClick(Qt.Key_End)
+        verify(chips[4].activeFocus && chips[4].selected)
+        verify(onRing.border.width >= 2)
+        verify(onRing.width < onFill.width, "the ring of an on chip is not inside its fill")
+        verify(Qt.colorEqual(onRing.border.color, Theme.accentInk),
+               "the ring of an on chip is not in the ink colour")
     }
 }
