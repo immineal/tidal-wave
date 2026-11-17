@@ -1159,6 +1159,76 @@ private slots:
         QCOMPARE(opened.first().first().toString(), QStringLiteral("tidal://album/123"));
     }
 
+    // ── TrackList ──────────────────────────────────────────────────────────
+
+    QList<QDBusObjectPath> tracks() {
+        const QDBusMessage reply = desk().call(kProps, QStringLiteral("Get"),
+                                               { kTrackList, QStringLiteral("Tracks") });
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) return {};
+        const QVariant v = reply.arguments().constFirst().value<QDBusVariant>().variant();
+        if (v.userType() == qMetaTypeId<QDBusArgument>())
+            return qdbus_cast<QList<QDBusObjectPath>>(v.value<QDBusArgument>());
+        return v.value<QList<QDBusObjectPath>>();
+    }
+
+    static QList<QDBusObjectPath> pathsOf(const QList<qlonglong> &ids) {
+        QList<QDBusObjectPath> out;
+        for (qlonglong id : ids) out.append(QDBusObjectPath(trackPath(id)));
+        return out;
+    }
+
+    // What played just before and what plays next, the current track among
+    // them under the id Metadata gives it.
+    void theTrackListShowsTheQueueAroundTheCurrentTrack() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(desk().getOn(kRootIface, QStringLiteral("HasTrackList")).toBool());
+        QVERIFY(!desk().getOn(kTrackList, QStringLiteral("CanEditTracks")).toBool());
+
+        a.p().playTracks(contextOf(5000, 4), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(tracks(), pathsOf({5000, 5001, 5002, 5003}), 5000);
+
+        const QDBusMessage reply = desk().call(kTrackList, QStringLiteral("GetTracksMetadata"),
+            { QVariant::fromValue(pathsOf({5002})) });
+        QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+        const auto metas = qdbus_cast<QList<QVariantMap>>(
+            reply.arguments().value(0).value<QDBusArgument>());
+        QCOMPARE(metas.size(), 1);
+        QCOMPARE(metas.first().value(QStringLiteral("xesam:title")).toString(),
+                 QStringLiteral("T5002"));
+    }
+
+    void goToPlaysTheTrackItNames() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(6000, 4), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(tracks().size(), 4, 5000);
+        desk().forget();
+        desk().call(kTrackList, QStringLiteral("GoTo"),
+                    { QVariant::fromValue(QDBusObjectPath(trackPath(6002))) });
+        QTRY_COMPARE(currentId(a.p()), 6002LL);
+        QTRY_VERIFY_WITH_TIMEOUT(!desk().replacedAt.isEmpty(), 5000);
+        QCOMPARE(desk().replacedAt.last(), QDBusObjectPath(trackPath(6002)));
+
+        // A track no longer in the list is a stale call.
+        desk().call(kTrackList, QStringLiteral("GoTo"),
+                    { QVariant::fromValue(QDBusObjectPath(trackPath(9999))) });
+        QTest::qWait(100);
+        QCOMPARE(currentId(a.p()), 6002LL);
+    }
+
+    // The same song twice in the queue is two entries with two ids.
+    void aTrackQueuedTwiceHasTwoIds() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks({ trackOf(7100), trackOf(7100), trackOf(7101) }, 0);
+        QList<QDBusObjectPath> list;
+        QTRY_VERIFY_WITH_TIMEOUT((list = tracks()).size() == 3, 5000);
+        QCOMPARE(list.first(), QDBusObjectPath(trackPath(7100)));
+        QVERIFY(list.at(1) != list.at(0));
+        QCOMPARE(list.at(2), QDBusObjectPath(trackPath(7101)));
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
 

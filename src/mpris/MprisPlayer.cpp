@@ -3,6 +3,8 @@
 #include "MprisPlayer.h"
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusMetaType>
+#include <QSet>
 #include <QCoreApplication>
 
 MprisRoot::MprisRoot(MprisManager *manager)
@@ -152,13 +154,14 @@ static QStringList artistNames(const QVariantMap &track) {
     return names;
 }
 
-QVariantMap MprisPlayer::metadata() const {
-    QVariantMap m;
-    const auto track = m_player->currentTrackMap();
-    if (track.isEmpty()) return m;
+static QString trackPathOf(qlonglong id) {
+    return QStringLiteral("/org/tidalwave/track/") + QString::number(id);
+}
 
-    qlonglong id = track["id"].toLongLong();
-    m["mpris:trackid"]    = QVariant::fromValue(QDBusObjectPath("/org/tidalwave/track/" + QString::number(id)));
+static QVariantMap metadataOf(const QVariantMap &track, const QDBusObjectPath &path) {
+    QVariantMap m;
+    if (track.isEmpty()) return m;
+    m["mpris:trackid"]    = QVariant::fromValue(path);
     m["mpris:length"]     = (qlonglong)(track["duration"].toLongLong() * 1000000LL);
     // A URI, so a track with no cover goes without the key.
     const QString cover = track["coverUrl"].toString();
@@ -172,6 +175,11 @@ QVariantMap MprisPlayer::metadata() const {
     const int number = track["trackNumber"].toInt();
     if (number > 0) m["xesam:trackNumber"] = number;
     return m;
+}
+
+QVariantMap MprisPlayer::metadata() const {
+    const auto track = m_player->currentTrackMap();
+    return metadataOf(track, QDBusObjectPath(trackPathOf(track.value(QStringLiteral("id")).toLongLong())));
 }
 
 double MprisPlayer::volume() const { return m_player->volume(); }
@@ -210,9 +218,89 @@ void MprisPlayer::SetPosition(const QDBusObjectPath &trackId, qlonglong posMicro
     m_player->seek(posMicros / 1000);
 }
 
+MprisTrackList::MprisTrackList(Player *player, MprisManager *manager)
+    : QDBusAbstractAdaptor(manager), m_player(player)
+{
+    connect(m_player, &Player::queueChanged,        this, &MprisTrackList::scheduleReplace);
+    connect(m_player, &Player::currentIndexChanged, this, &MprisTrackList::scheduleReplace);
+    connect(m_player, &Player::currentTrackChanged, this, &MprisTrackList::scheduleReplace);
+}
+
+QList<MprisTrackList::Row> MprisTrackList::rows() const {
+    QList<Row> out;
+    const int current = m_player->queueIndex();
+    const int count   = m_player->queueCount();
+    if (current < 0 || current >= count) return out;
+    const auto idOf = [this](int i) {
+        return m_player->queueTrackAt(i).value(QStringLiteral("id")).toLongLong();
+    };
+    const qlonglong currentId = idOf(current);
+    QSet<qlonglong> named;
+    for (int i = qMax(0, current - kPlayedShown); i <= qMin(count - 1, current + kUpcomingShown); ++i) {
+        const qlonglong id = idOf(i);
+        const bool plain = i == current || (id != currentId && !named.contains(id));
+        if (plain) named.insert(id);
+        const QString path = plain ? trackPathOf(id)
+                                   : trackPathOf(id) + QLatin1Char('/') + QString::number(i);
+        out.append({ QDBusObjectPath(path), i });
+    }
+    return out;
+}
+
+QList<QDBusObjectPath> MprisTrackList::tracks() const {
+    QList<QDBusObjectPath> out;
+    for (const Row &row : rows()) out.append(row.path);
+    return out;
+}
+
+QList<QVariantMap> MprisTrackList::GetTracksMetadata(const QList<QDBusObjectPath> &trackIds) const {
+    const QList<Row> all = rows();
+    QList<QVariantMap> out;
+    for (const QDBusObjectPath &wanted : trackIds) {
+        for (const Row &row : all) {
+            if (row.path != wanted) continue;
+            out.append(metadataOf(m_player->queueTrackAt(row.index), row.path));
+            break;
+        }
+    }
+    return out;
+}
+
+void MprisTrackList::GoTo(const QDBusObjectPath &trackId) {
+    // "If the track is not part of this tracklist, this has no effect."
+    for (const Row &row : rows()) {
+        if (row.path != trackId) continue;
+        m_player->jumpToQueue(row.index);
+        return;
+    }
+}
+
+void MprisTrackList::scheduleReplace() {
+    if (m_queued) return;
+    m_queued = true;
+    QMetaObject::invokeMethod(this, &MprisTrackList::replace, Qt::QueuedConnection);
+}
+
+void MprisTrackList::replace() {
+    m_queued = false;
+    const QList<Row> all = rows();
+    QList<QDBusObjectPath> list;
+    QDBusObjectPath current(QStringLiteral("/org/mpris/MediaPlayer2/TrackList/NoTrack"));
+    for (const Row &row : all) {
+        list.append(row.path);
+        if (row.index == m_player->queueIndex()) current = row.path;
+    }
+    if (list == m_sent && current == m_sentCurrent) return;
+    m_sent = list;
+    m_sentCurrent = current;
+    emit TrackListReplaced(list, current);
+}
+
 MprisManager::MprisManager(Player *player, QObject *parent) : QObject(parent) {
+    qDBusRegisterMetaType<QList<QVariantMap>>();
     m_root        = new MprisRoot(this);
     m_mprisPlayer = new MprisPlayer(player, this);
+    m_trackList   = new MprisTrackList(player, this);
 
     QDBusConnection bus = QDBusConnection::sessionBus();
     bus.registerService("org.mpris.MediaPlayer2.tidalwave");
