@@ -1253,7 +1253,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Now Playing</source>
+        <source>Now playing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
