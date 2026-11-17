@@ -37,7 +37,7 @@ Rectangle {
     readonly property string shownCover: artSource.length > 0 ? artSource
                                        : distinctCovers.length > 0 && !showsMosaic ? distinctCovers[0] : ""
 
-    // A photo behind the whole hero, as on an artist or an album.
+    // A photo behind the whole hero, as on an artist page.
     property string backdropSource: ""
     property real   backdropOpacity: 0.18
     property string backdropObjectName: "heroBackdrop"
@@ -64,13 +64,40 @@ Rectangle {
         mipmap: true
     }
 
-    // accentTint, not artScrimStrong: the hero is a tint over the page, and
-    // the black scrim composites to a low-contrast grey on the light themes.
+    // The cover the hero takes its colour from: the tile's, else the
+    // mosaic's first, else the backdrop photo's.
+    readonly property string tintSource: shownCover.length > 0 ? shownCover
+                                       : distinctCovers.length > 0 ? distinctCovers[0]
+                                       : backdropSource
+
+    // Held between bg and surfaceHigh in C++, the band every text token is
+    // tested against, so the hero's lines stay readable on any cover.
+    CoverTint {
+        id: coverTint
+        objectName: "heroCoverTint"
+        active: hero.tintSource.length > 0
+        coverId: hero.tintSource
+        bg: Theme.bg
+        limit: Theme.surfaceHigh
+    }
+
+    // The accent wash until the cover's colour is known. Over a backdrop
+    // photo the tint keeps the wash's alpha, so the photo still shows.
+    property color tintTop: !coverTint.hasColor ? Theme.accentTint
+                          : backdropSource.length > 0
+                          ? Qt.rgba(coverTint.color.r, coverTint.color.g, coverTint.color.b,
+                                    Theme.accentTint.a)
+                          : coverTint.color
+    Behavior on tintTop { ColorAnimation { duration: Theme.dur(Theme.motionSlow) } }
+
+    // A tint, not artScrimStrong: the black scrim composites to a
+    // low-contrast grey on the light themes.
     Rectangle {
+        objectName: "heroGradient"
         anchors.fill: parent
         gradient: Gradient {
             orientation: Gradient.Vertical
-            GradientStop { position: 0; color: Theme.accentTint }
+            GradientStop { position: 0; color: hero.tintTop }
             GradientStop { position: 1; color: Theme.bg }
         }
     }
