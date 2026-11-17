@@ -117,8 +117,9 @@ class TestStreamTimeout : public QObject {
 
 private slots:
     // The two halves share one wait: both are governed by the same number and
-    // each takes most of twenty seconds. They are independent objects with
-    // independent servers.
+    // each takes twenty to thirty seconds. They are independent objects with
+    // independent servers. A silent segment is asked once more before the
+    // join gives up, so the dead one ends after two timeouts.
     void aSegmentThatNeverAnswersEndsTheJoinAndASlowOneDoesNot()
     {
         // A timeout this short would make the slow half below meaningless.
@@ -180,7 +181,8 @@ private slots:
                  "the dead segment was given up on within three seconds, so the "
                  "timeout is not what ended it");
 
-        const int ceiling = TidalApi::kTransferTimeoutMs + 25000;
+        const int deadAfterMs = (1 + DashFetcher::kTimeoutRetries) * TidalApi::kTransferTimeoutMs;
+        const int ceiling = deadAfterMs + 25000;
         QTRY_VERIFY_WITH_TIMEOUT(slowOut.settled && deadOut.settled, ceiling);
 
         // ── the stuck one ──────────────────────────────────────────────────
@@ -188,12 +190,12 @@ private slots:
         QVERIFY2(!deadOut.error.isEmpty(),
                  "the join gave up without saying why, so the user would be told "
                  "nothing");
-        QVERIFY2(deadOut.elapsedMs >= TidalApi::kTransferTimeoutMs - 1000,
+        QVERIFY2(deadOut.elapsedMs >= deadAfterMs - 1000,
                  qPrintable(QStringLiteral("the dead segment ended after %1 ms, "
-                                           "sooner than the %2 ms timeout")
+                                           "sooner than its %2 ms of timeouts")
                             .arg(deadOut.elapsedMs)
-                            .arg(TidalApi::kTransferTimeoutMs)));
-        QVERIFY2(deadOut.elapsedMs <= TidalApi::kTransferTimeoutMs + 10000,
+                            .arg(deadAfterMs)));
+        QVERIFY2(deadOut.elapsedMs <= deadAfterMs + 10000,
                  qPrintable(QStringLiteral("the dead segment took %1 ms to be "
                                            "given up on")
                             .arg(deadOut.elapsedMs)));

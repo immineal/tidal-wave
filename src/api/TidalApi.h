@@ -23,6 +23,15 @@ public:
     // error.
     using ArrayCallback = std::function<void(QJsonArray, QString /*error*/)>;
     using RawCallback  = std::function<void(QByteArray, QString /*error*/)>;
+    // What getRawWithStatus() hands a caller that retries.
+    struct RawAnswer {
+        QByteArray body;
+        QString    error;
+        int        httpStatus = 0;       // 0 when no answer came
+        int        retryAfterSecs = -1;  // a 429's Retry-After, -1 when none
+        bool       timedOut = false;     // silent for kTransferTimeoutMs
+    };
+    using RawStatusCallback = std::function<void(const RawAnswer &)>;
     // For a caller that acts on the HTTP status. It is 0 when no answer came.
     // Beside an error the object is the body of the refusal, if that was JSON.
     using StatusCallback = std::function<void(QJsonObject, QString /*error*/, int /*httpStatus*/)>;
@@ -86,6 +95,7 @@ public:
                                  const QString &etag, StatusCallback cb);
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
+    QNetworkReply* getRawWithStatus(const QUrl &url, RawStatusCallback cb);
 
     // The request every call above except post() sends. Public for
     // tst_request_headers.
