@@ -69,9 +69,15 @@ Rectangle {
     // newest saved first, playlists by the later of last played and added.
     // It is not persisted, so it is 0 on every visit.
     property int  sortMode: 0
+    // Liked tracks sort in their column headings instead; see TrackListHeader.
+    TrackListHeader.Sort {
+        id: trackSort
+        onKeyChanged: contentEntry.restart()
+        onDescendingChanged: contentEntry.restart()
+    }
     // What Default means on the current tab, for the pill's tooltip.
     readonly property string defaultOrderHint: [
-        qsTr("Default: most recently liked first"),
+        "",
         qsTr("Default: most recently saved first"),
         qsTr("Default: most recently followed first"),
         qsTr("Default: most recently played or added first")
@@ -222,9 +228,10 @@ Rectangle {
             }
 
             // Plain words with a line under the chosen one: the tab strip
-            // beside it already carries the row's one accent pill.
+            // beside it already carries the row's one accent pill. The card
+            // tabs only: Liked tracks sorts in its column headings.
             Row {
-                visible: root.activeTab < 4
+                visible: root.activeTab >= 1 && root.activeTab < 4
                 Layout.alignment: Qt.AlignVCenter
                 spacing: Theme.space1
                 Repeater {
@@ -355,6 +362,19 @@ Rectangle {
 
         Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
 
+        // Over the rows, inset as they are.
+        TrackListHeader {
+            id: tracksHeader
+            objectName: "collectionTracksHeader"
+            visible: root.activeTab === 0
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.space4
+            Layout.rightMargin: Theme.space4
+            sort: trackSort
+            showAdded: true
+            opacity: root.contentIn
+        }
+
         // Tracks Tab: virtualized ListView
         ListView {
             id: tracksList
@@ -364,7 +384,7 @@ Rectangle {
             visible: root.activeTab === 0
             opacity: root.contentIn
             clip: true
-            property var sortedTracks: root.sortItems(root.filteredTracks, root.sortMode)
+            property var sortedTracks: trackSort.sorted(root.filteredTracks)
             // Bound on every tab, so a tab switch keeps the rows and the scroll.
             model: sortedTracks
             boundsBehavior: Flickable.StopAtBounds
@@ -374,6 +394,7 @@ Rectangle {
             delegate: TrackRow {
                 width: tracksList.width - 32
                 x: 16
+                showAdded:   true
                 trackNum:    index + 1
                 title:       modelData.title
                 artists:     modelData.artists

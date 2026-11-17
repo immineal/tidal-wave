@@ -25,6 +25,11 @@ Rectangle {
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
+    // The order the column headings ask for: only what is shown and what
+    // plays from here. root.tracks keeps the order it came in.
+    TrackListHeader.Sort { id: trackSort }
+    readonly property var shownTracks: trackSort.sorted(root.tracks)
+
     // Records this radio station as the "playing from" source, then plays.
     function playFrom(list, i) {
         player.setPlaybackSource("radio", "" + root.trackId, root.radioTitle)
@@ -54,38 +59,50 @@ Rectangle {
         objectName: "radioTracksList"
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         // The radio has no artwork of its own, so the hero shows the covers
         // of the first four tracks in it.
-        header: DetailHero {
+        // The hero, then the column headings, which scroll away with it.
+        header: Column {
             width: trackList.width
-            kind: qsTr("Radio")
-            title: root.radioTitle || qsTr("Track radio")
-            artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
-            artIcon: "waves"
 
-            actions: [
-                PillButton {
-                    visible: root.tracks.length > 0
-                    text: qsTranslate("AlbumPage", "Play", "verb, button label")
-                    icon: "play"
-                    accent: true
-                    onClicked: root.playFrom(root.tracks, 0)
-                },
-                PillButton {
-                    visible: root.tracks.length > 0
-                    text: qsTranslate("AlbumPage", "Shuffle")
-                    icon: "shuffle"
-                    accent: false
-                    onClicked: {
-                        player.setShuffle(true)
-                        root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
+            DetailHero {
+                width: trackList.width
+                kind: qsTr("Radio")
+                title: root.radioTitle || qsTr("Track radio")
+                artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
+                artIcon: "waves"
+
+                actions: [
+                    PillButton {
+                        visible: root.tracks.length > 0
+                        text: qsTranslate("AlbumPage", "Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: root.playFrom(root.shownTracks, 0)
+                    },
+                    PillButton {
+                        visible: root.tracks.length > 0
+                        text: qsTranslate("AlbumPage", "Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            player.setShuffle(true)
+                            root.playFrom(root.shownTracks, Math.floor(Math.random() * root.tracks.length))
+                        }
                     }
-                }
-            ]
+                ]
+            }
+
+            TrackListHeader {
+                objectName: "radioTracksHeader"
+                x: 16
+                width: trackList.width - 32
+                sort: trackSort
+            }
         }
 
         delegate: TrackRow {
@@ -100,7 +117,7 @@ Rectangle {
             durationStr: modelData.durationStr
             coverUrl:    modelData.coverUrl80
             trackData:   modelData
-            onPlayRequested: root.playFrom(root.tracks, index)
+            onPlayRequested: root.playFrom(root.shownTracks, index)
         }
 
         // The footer, so with no tracks the message sits directly beneath
