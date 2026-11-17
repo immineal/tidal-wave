@@ -34,6 +34,9 @@ int printSystemLanguage(const QString &settingsDir) {
     Prefs prefs;
     I18n i18n(&prefs);
     std::fputs(qPrintable(i18n.effectiveLanguage()), stdout);
+    // What the system said, for the failure message.
+    std::fputs(qPrintable(QLocale::system().name() + QLatin1Char(' ')
+                          + QLocale::system().uiLanguages().join(QLatin1Char(','))), stderr);
     return 0;
 }
 
@@ -61,11 +64,38 @@ int printNumbers(const QString &settingsDir, const QString &language) {
         return 1;
     }
     prefs.setLanguage(language);
+    // First the system's own locale and how it writes the number.
+    std::fputs(qPrintable(QLocale::system().name() + QLatin1Char(' ')
+                          + QLocale::system().toString(4991) + QLatin1Char('\n')), stdout);
     const QString out = QLocale().toString(4991) + QLatin1Char('|')
         + probe->property("count").toString() + QLatin1Char('|')
         + QCoreApplication::translate("QueuePanel", "%Ln track(s)", nullptr, 4991);
     std::fputs(qPrintable(out), stdout);
     return 0;
+}
+
+// Starts the child with the system set as `system` says, "KEY=value" each.
+// Linux and the BSDs read the locale variables. macOS reads its preferences
+// instead, and a launch argument overrides one, as Xcode's scheme language does.
+void startChild(QProcess &child, const QStringList &system, QStringList args) {
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    const QStringList inherited = env.keys();
+    for (const QString &key : inherited) {
+        if (key == QLatin1String("LANG") || key == QLatin1String("LANGUAGE")
+            || key.startsWith(QLatin1String("LC_")))
+            env.remove(key);
+    }
+    for (const QString &assignment : system) {
+        const QString key = assignment.section(QLatin1Char('='), 0, 0);
+        const QString value = assignment.section(QLatin1Char('='), 1);
+#ifdef Q_OS_MACOS
+        args << QLatin1Char('-') + key << value;
+#else
+        env.insert(key, value);
+#endif
+    }
+    child.setProcessEnvironment(env);
+    child.start(QCoreApplication::applicationFilePath(), args);
 }
 
 } // namespace
@@ -164,7 +194,7 @@ private slots:
     }
 
     // What "system" comes to under a real environment. The child is this
-    // binary again: Qt reads the locale variables once per process.
+    // binary again: Qt reads the locale settings once per process.
     void systemFollowsTheEnvironment_data() {
         QTest::addColumn<QStringList>("environment");
         QTest::addColumn<QString>("expected");
@@ -174,6 +204,20 @@ private slots:
                 << QString::fromLatin1(environment).split(QLatin1Char(' '), Qt::SkipEmptyParts)
                 << QString::fromLatin1(expected);
         };
+#ifdef Q_OS_MACOS
+        // The preferred languages and the region, from Language & Region.
+        row("AppleLanguages=(de-DE) AppleLocale=de_DE", "de");
+        row("AppleLanguages=(de-AT) AppleLocale=de_AT", "de");
+        row("AppleLanguages=(en-US) AppleLocale=en_US", "en");
+        row("AppleLanguages=(fr-FR) AppleLocale=fr_FR", "en");
+        // The preferred languages are an ordered list.
+        row("AppleLanguages=(de,en) AppleLocale=en_US", "de");
+        row("AppleLanguages=(en,de) AppleLocale=de_DE", "en");
+        row("AppleLanguages=(fr,de,en) AppleLocale=en_US", "de");
+        // The region's formats alone do not change the language.
+        row("AppleLanguages=(en-US) AppleLocale=de_DE", "en");
+        row("AppleLanguages=(de-DE) AppleLocale=en_US", "de");
+#else
         row("LANG=de_DE.UTF-8", "de");
         row("LANG=de_AT.UTF-8", "de");
         row("LANG=en_US.UTF-8", "en");
@@ -193,6 +237,7 @@ private slots:
         row("LANG=C", "en");
         row("LANG=de_DE.UTF-8 LC_MESSAGES=C", "en");
         row("", "en");
+#endif
     }
 
     void systemFollowsTheEnvironment() {
@@ -202,68 +247,67 @@ private slots:
         QTemporaryDir settings;
         QVERIFY(settings.isValid());
 
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        const QStringList inherited = env.keys();
-        for (const QString &key : inherited) {
-            if (key == QLatin1String("LANG") || key == QLatin1String("LANGUAGE")
-                || key.startsWith(QLatin1String("LC_")))
-                env.remove(key);
-        }
-        for (const QString &assignment : std::as_const(environment))
-            env.insert(assignment.section(QLatin1Char('='), 0, 0),
-                       assignment.section(QLatin1Char('='), 1));
-
         QProcess child;
-        child.setProcessEnvironment(env);
-        child.start(QCoreApplication::applicationFilePath(),
-                    { QString::fromLatin1(kChildFlag), settings.path() });
+        startChild(child, environment, { QString::fromLatin1(kChildFlag), settings.path() });
         QVERIFY2(child.waitForFinished(30000), "the child did not finish");
         QCOMPARE(child.exitStatus(), QProcess::NormalExit);
         QCOMPARE(child.exitCode(), 0);
-        QCOMPARE(QString::fromLatin1(child.readAllStandardOutput()), expected);
+        const QString said = QString::fromLatin1(child.readAllStandardOutput());
+        if (said != expected)
+            qWarning("the child's system: %s", child.readAllStandardError().constData());
+        QCOMPARE(said, expected);
     }
 
     // ── numbers ──────────────────────────────────────────────────────────
     // A number follows the language picked in the app, not the system's:
     // German on an English system writes 4.991. "system" keeps the system's.
     void numbersFollowTheChosenLanguage_data() {
-        QTest::addColumn<QString>("lang");
+        QTest::addColumn<QStringList>("system");
+        QTest::addColumn<QString>("systemName");
         QTest::addColumn<QString>("language");
         QTest::addColumn<QString>("expected");
+#ifdef Q_OS_MACOS
+        const QStringList english{"AppleLanguages=(en-US)", "AppleLocale=en_US"};
+        const QStringList german{"AppleLanguages=(de-DE)", "AppleLocale=de_DE"};
+        const QStringList swiss{"AppleLanguages=(de-CH)", "AppleLocale=de_CH"};
+#else
+        const QStringList english{"LANG=en_US.UTF-8"};
+        const QStringList german{"LANG=de_DE.UTF-8"};
+        const QStringList swiss{"LANG=de_CH.UTF-8"};
+#endif
         QTest::newRow("German on an English system")
-            << "en_US.UTF-8" << "de" << "4.991|(4.991)|4.991 Titel";
+            << english << "en_US" << "de" << "4.991|(4.991)|4.991 Titel";
         QTest::newRow("English on a German system")
-            << "de_DE.UTF-8" << "en" << "4,991|(4,991)|4,991 tracks";
+            << german << "de_DE" << "en" << "4,991|(4,991)|4,991 tracks";
         // The system's own formats stay where they already speak the language.
+        // %s is how the system writes the number; macOS has its own data.
         QTest::newRow("German on a Swiss German system")
-            << "de_CH.UTF-8" << "de" << QLocale(QStringLiteral("de_CH")).toString(4991)
-                + "|(" + QLocale(QStringLiteral("de_CH")).toString(4991) + ")|"
-                + QLocale(QStringLiteral("de_CH")).toString(4991) + " Titel";
+            << swiss << "de_CH" << "de" << "%s|(%s)|%s Titel";
     }
 
     void numbersFollowTheChosenLanguage() {
-        QFETCH(QString, lang);
+        QFETCH(QStringList, system);
+        QFETCH(QString, systemName);
         QFETCH(QString, language);
         QFETCH(QString, expected);
 
         QTemporaryDir settings;
         QVERIFY(settings.isValid());
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        const QStringList inherited = env.keys();
-        for (const QString &key : inherited) {
-            if (key == QLatin1String("LANG") || key == QLatin1String("LANGUAGE")
-                || key.startsWith(QLatin1String("LC_")))
-                env.remove(key);
-        }
-        env.insert(QStringLiteral("LANG"), lang);
-
         QProcess child;
-        child.setProcessEnvironment(env);
-        child.start(QCoreApplication::applicationFilePath(),
-                    { QString::fromLatin1(kNumbersFlag), settings.path(), language });
+        startChild(child, system, { QString::fromLatin1(kNumbersFlag), settings.path(), language });
         QVERIFY2(child.waitForFinished(30000), "the child did not finish");
         QCOMPARE(child.exitCode(), 0);
-        QCOMPARE(QString::fromUtf8(child.readAllStandardOutput()), expected);
+        const QStringList lines = QString::fromUtf8(child.readAllStandardOutput()).split(QLatin1Char('\n'));
+        QCOMPARE(lines.size(), 2);
+        // The child's system is the one the row asked for.
+        QCOMPARE(lines.at(0).section(QLatin1Char(' '), 0, 0), systemName);
+        const QString systemWrites = lines.at(0).section(QLatin1Char(' '), 1);
+        if (expected.contains(QLatin1String("%s"))) {
+            // Else the row could not tell the system's formats from German's.
+            QVERIFY(systemWrites != QLocale(QLocale::German, QLocale::Germany).toString(4991));
+            expected.replace(QLatin1String("%s"), systemWrites);
+        }
+        QCOMPARE(lines.at(1), expected);
     }
 
     // ── the live object ──────────────────────────────────────────────────
@@ -402,9 +446,10 @@ private:
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
-    if (argc == 3 && qstrcmp(argv[1], kChildFlag) == 0)
+    // Anything after a child's own arguments is for the system (macOS).
+    if (argc >= 3 && qstrcmp(argv[1], kChildFlag) == 0)
         return printSystemLanguage(QString::fromLocal8Bit(argv[2]));
-    if (argc == 4 && qstrcmp(argv[1], kNumbersFlag) == 0)
+    if (argc >= 4 && qstrcmp(argv[1], kNumbersFlag) == 0)
         return printNumbers(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
 
     TestI18n tc;
