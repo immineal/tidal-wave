@@ -1208,6 +1208,8 @@ public:
     // Non-empty makes every later search fail with this reason, the way a lost
     // network does: errorString() reaches the callback and nothing else does.
     Q_INVOKABLE void setSearchErrorForTest(const QString &err) { m_searchError = err; }
+    // {kind, item}, as TidalBridge::search hands `topHit` over. Empty: none.
+    Q_INVOKABLE void setSearchTopHitForTest(const QVariantMap &hit) { m_searchTopHit = hit; }
     Q_INVOKABLE QString lastSearchQueryForTest() const { return m_lastSearchQuery; }
     Q_INVOKABLE int     lastSearchLimitForTest() const { return m_lastSearchLimit; }
     Q_INVOKABLE int     lastSearchOffsetForTest() const { return m_lastSearchOffset; }
@@ -1218,6 +1220,7 @@ public:
         m_searchArtists.clear();
         m_searchPlaylists.clear();
         m_searchMixes.clear();
+        m_searchTopHit.clear();
         m_searchError.clear();
         m_lastSearchQuery.clear();
         m_lastSearchLimit = 0;
@@ -1684,6 +1687,7 @@ private:
     QVariantList m_searchArtists;
     QVariantList m_searchPlaylists;
     QVariantList m_searchMixes;
+    QVariantMap  m_searchTopHit;
     QString      m_searchError;
     QString      m_lastSearchQuery;
     int          m_lastSearchLimit = 0;
@@ -1718,6 +1722,9 @@ private:
         res.setProperty(QStringLiteral("totalArtists"),   total(m_searchArtists));
         res.setProperty(QStringLiteral("totalPlaylists"), total(m_searchPlaylists));
         res.setProperty(QStringLiteral("totalMixes"),     total(m_searchMixes));
+        // Only on the first page, as the server answers it.
+        if (filled && offset == 0 && !m_searchTopHit.isEmpty())
+            res.setProperty(QStringLiteral("topHit"), e->toScriptValue(m_searchTopHit));
         return res;
     }
 };

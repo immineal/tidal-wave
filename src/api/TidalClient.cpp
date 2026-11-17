@@ -701,31 +701,54 @@ void TidalClient::search(const QString &query, SearchCb cb, int limit, int offse
     q.addQueryItem("limit", QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
     q.addQueryItem("types", "TRACKS,ALBUMS,ARTISTS,PLAYLISTS,MIXES");
-    m_api->get("search", q, [this, cb](QJsonObject root, QString err) {
+    m_api->get("search", q, [cb](QJsonObject root, QString err) {
         if (!err.isEmpty()) { cb({}, err); return; }
-        SearchResults r;
-        if (root.contains("tracks")) {
-            r.tracks       = parseTracks(root["tracks"].toObject());
-            r.totalTracks  = root["tracks"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("albums")) {
-            r.albums       = parseAlbums(root["albums"].toObject());
-            r.totalAlbums  = root["albums"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("artists")) {
-            r.artists      = parseArtists(root["artists"].toObject());
-            r.totalArtists = root["artists"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("playlists")) {
-            r.playlists      = parsePlaylists(root["playlists"].toObject());
-            r.totalPlaylists = root["playlists"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("mixes")) {
-            r.mixes      = parseSearchMixes(root["mixes"].toObject());
-            r.totalMixes = root["mixes"].toObject()["totalNumberOfItems"].toInt();
-        }
-        cb(r, {});
+        cb(parseSearch(root), {});
     });
+}
+
+SearchResults TidalClient::parseSearch(const QJsonObject &root) {
+    SearchResults r;
+    if (root.contains("tracks")) {
+        r.tracks       = parseTracks(root["tracks"].toObject());
+        r.totalTracks  = root["tracks"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("albums")) {
+        r.albums       = parseAlbums(root["albums"].toObject());
+        r.totalAlbums  = root["albums"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("artists")) {
+        r.artists      = parseArtists(root["artists"].toObject());
+        r.totalArtists = root["artists"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("playlists")) {
+        r.playlists      = parsePlaylists(root["playlists"].toObject());
+        r.totalPlaylists = root["playlists"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("mixes")) {
+        r.mixes      = parseSearchMixes(root["mixes"].toObject());
+        r.totalMixes = root["mixes"].toObject()["totalNumberOfItems"].toInt();
+    }
+
+    // {"type": "ARTISTS", "value": {…}}; the type is the plural of the list.
+    // A hit without an id is no hit: there would be nothing to open.
+    const QJsonObject hit   = root["topHit"].toObject();
+    const QString     type  = hit["type"].toString();
+    const QJsonObject value = hit["value"].toObject();
+    if (type == QLatin1String("TRACKS")) {
+        r.topTrack = Track::fromJson(value);
+        if (r.topTrack.id > 0) r.topHitKind = QStringLiteral("track");
+    } else if (type == QLatin1String("ALBUMS")) {
+        r.topAlbum = Album::fromJson(value);
+        if (r.topAlbum.id > 0) r.topHitKind = QStringLiteral("album");
+    } else if (type == QLatin1String("ARTISTS")) {
+        r.topArtist = Artist::fromJson(value);
+        if (r.topArtist.id > 0) r.topHitKind = QStringLiteral("artist");
+    } else if (type == QLatin1String("PLAYLISTS")) {
+        r.topPlaylist = Playlist::fromJson(value);
+        if (!r.topPlaylist.uuid.isEmpty()) r.topHitKind = QStringLiteral("playlist");
+    }
+    return r;
 }
 
 // ─── Favorites management ──────────────────────────
