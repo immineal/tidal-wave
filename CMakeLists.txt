@@ -235,6 +235,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/Toggle.qml
         qml/components/TabStrip.qml
         qml/components/DetailHero.qml
+        qml/components/ErrorState.qml
         qml/components/DetailBar.qml
         qml/components/CoverArt.qml
         qml/components/ToastHost.qml
