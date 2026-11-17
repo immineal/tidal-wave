@@ -98,24 +98,36 @@ Row {
             onClicked: root.activate()
         }
 
-        // How far the whole run has got, drawn round the button.
-        Shape {
+        // How far the whole run has got, drawn round the button. Painted as
+        // SVG under the software backend, as in BusyRing.
+        Item {
             objectName: "collectionDownloadProgress"
             anchors.fill: parent
             visible: root.phase === "running" && (root.st.progress || 0) > 0
-            antialiasing: true
-            ShapePath {
-                fillColor: "transparent"
-                strokeColor: Theme.accent
-                strokeWidth: waitRing.thickness
-                capStyle: ShapePath.RoundCap
-                PathAngleArc {
-                    centerX: button.width / 2
-                    centerY: button.height / 2
-                    radiusX: (button.width - waitRing.thickness) / 2
-                    radiusY: (button.height - waitRing.thickness) / 2
-                    startAngle: -90
-                    sweepAngle: 360 * Math.min(1, root.st.progress || 0)
+            readonly property bool software: GraphicsInfo.api === GraphicsInfo.Software
+            SvgGlyph {
+                anchors.fill: parent
+                visible: parent.software
+                svg: visible ? arc(width, height, waitRing.thickness, -90,
+                                   360 * Math.min(1, root.st.progress || 0), Theme.accent) : ""
+            }
+            Shape {
+                anchors.fill: parent
+                visible: !parent.software
+                antialiasing: true
+                ShapePath {
+                    fillColor: "transparent"
+                    strokeColor: Theme.accent
+                    strokeWidth: waitRing.thickness
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: button.width / 2
+                        centerY: button.height / 2
+                        radiusX: (button.width - waitRing.thickness) / 2
+                        radiusY: (button.height - waitRing.thickness) / 2
+                        startAngle: -90
+                        sweepAngle: 360 * Math.min(1, root.st.progress || 0)
+                    }
                 }
             }
         }

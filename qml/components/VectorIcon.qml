@@ -26,6 +26,11 @@ Item {
     // "track" is not drawn as a path; see trackStrip below for why.
     readonly property bool isSnappedBars: name === "track"
 
+    // The software backend draws a Shape scrolled wholly out of a clip without
+    // the clip, and never repaints where it drew. There the same paths are
+    // painted as SVG, which is clipped like an image.
+    readonly property bool _software: GraphicsInfo.api === GraphicsInfo.Software
+
     // The Shape is built anew each time the icon enters a scene. Qt 6.4's
     // software renderer crashes on one that left a scene and came back, as
     // every glyph in a menu does when the menu reopens.
@@ -35,7 +40,7 @@ Item {
         width: 24
         height: 24
         anchors.centerIn: parent
-        active: root.Window.window !== null
+        active: root.Window.window !== null && !root._software
 
         transform: Scale {
             origin.x: 12
@@ -78,6 +83,12 @@ Item {
                 PathSvg { path: root._overlayFor(root.name) }
             }
         }
+    }
+
+    Loader {
+        anchors.fill: parent
+        active: root._software && !root.isSnappedBars
+        sourceComponent: SvgGlyph { svg: root._svg() }
     }
 
     // The seven-bar "track" strip, snapped to whole device pixels. As a stroked
@@ -274,6 +285,32 @@ Item {
                  + " M 10 10.5 V 17.5 M 14 10.5 V 17.5"
         }
         return ""
+    }
+
+    // The three ShapePaths above as one SVG document. The viewBox puts the
+    // 24-unit box at 85 % of the item, centred and stretched, as the Scale does.
+    function _svg() {
+        var c = root.color
+        var rgb = "rgb(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + ","
+                + Math.round(c.b * 255) + ")"
+        var fill = ' fill="' + rgb + '" fill-opacity="' + c.a + '"'
+        var stroke = function (w) {
+            return ' fill="none" stroke="' + rgb + '" stroke-opacity="' + c.a + '" stroke-width="' + w
+                 + '" stroke-linecap="round" stroke-linejoin="round"'
+        }
+        var w = root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth
+        var out = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2.1176 -2.1176 28.2353 28.2353"'
+                + ' preserveAspectRatio="none">'
+        var main = root._pathFor(root.name)
+        if (main !== "")
+            out += '<path d="' + main + '"' + (root.isFilled ? fill : stroke(w)) + '/>'
+        var accent = root._accentFor(root.name)
+        if (accent !== "")
+            out += '<path d="' + accent + '"' + fill + '/>'
+        var overlay = root._overlayFor(root.name)
+        if (overlay !== "")
+            out += '<path d="' + overlay + '"' + stroke(root.strokeWidth) + '/>'
+        return out + '</svg>'
     }
 
     function _accentFor(n) {
