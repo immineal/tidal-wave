@@ -72,10 +72,14 @@ Rectangle {
         // The radio has no artwork of its own, so the hero shows the covers
         // of the first four tracks in it.
         // The hero, then the column headings, which scroll away with it.
-        header: Column {
+        header: Item {
             width: trackList.width
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
 
             DetailHero {
+                id: hero
                 width: trackList.width
                 kind: qsTr("Radio")
                 title: root.radioTitle || qsTr("Track radio")
@@ -104,7 +108,9 @@ Rectangle {
             }
 
             TrackListHeader {
+                id: headings
                 objectName: "radioTracksHeader"
+                y: hero.height
                 // At x 0 with the rows' width: a vertical ListView puts its
                 // rows at its left edge, whatever x they ask for.
                 width: trackList.width - 32
