@@ -219,6 +219,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/HorizontalSection.qml
         qml/components/Skeleton.qml
         qml/components/BusyLine.qml
+        qml/components/BusyRing.qml
         qml/components/ContextMenu.qml
         qml/components/SearchBar.qml
         qml/components/VolumeSlider.qml

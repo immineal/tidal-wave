@@ -2021,6 +2021,16 @@ Rectangle {
                                     color: Theme.bg
                                     width: 32
                                     height: 32
+                                    visible: !player.loading
+                                }
+                                BusyRing {
+                                    objectName: "nowPlayingLoadingRing"
+                                    anchors.centerIn: parent
+                                    width: 30; height: 30
+                                    thickness: 3
+                                    color: Theme.bg
+                                    visible: player.loading
+                                    running: player.loading
                                 }
                                 scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                                 HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
