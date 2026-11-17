@@ -19,6 +19,7 @@
 #include <QQuickImageProvider>
 #include <QSet>
 #include <QString>
+#include <algorithm>
 #include <functional>
 #include <utility>
 #include <QStringList>
@@ -800,6 +801,32 @@ public:
         if (m_removeFromPlaylistOk) refreshPlaylistMeta(uuid);
     }
 
+    // ── removeTracksFromPlaylist: several rows in one DELETE ─────────────
+    // Each index counts rows as they were before the write, as Tidal's comma
+    // list does. setRemoveAnswerForTest() picks "ok", "stale" or "fail";
+    // each call is noted as its indices joined by commas.
+    Q_INVOKABLE void removeTracksFromPlaylist(const QString &uuid, const QVariantList &itemIndices,
+                                              QJSValue cb) {
+        QList<int> at;
+        QStringList noted;
+        for (const QVariant &v : itemIndices) { at << v.toInt(); noted << QString::number(v.toInt()); }
+        m_removeWrites << noted.join(QLatin1Char(','));
+        const bool ok = m_removeAnswer == QLatin1String("ok");
+        if (ok) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            std::sort(at.begin(), at.end(), std::greater<int>());
+            at.erase(std::unique(at.begin(), at.end()), at.end());
+            for (int i : at)
+                if (i >= 0 && i < rows.size()) rows.removeAt(i);
+        }
+        if (cb.isCallable())
+            cb.call({ QJSValue(ok), QJSValue(m_removeAnswer == QLatin1String("stale")) });
+        if (ok) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QStringList removeWritesForTest() const { return m_removeWrites; }
+    Q_INVOKABLE void setRemoveAnswerForTest(const QString &a) { m_removeAnswer = a; }
+
     // ── moveTrackInPlaylist: toIndex is where the row ends ───────────────
     // Answers (ok, stale) as the real bridge; setMoveAnswerForTest() picks
     // "ok", "stale" or "fail", and deferMovesForTest() holds the answer
@@ -1114,6 +1141,8 @@ public:
         m_addWrites.clear();
         m_moves.clear();
         m_moveAnswer = QStringLiteral("ok");
+        m_removeWrites.clear();
+        m_removeAnswer = QStringLiteral("ok");
         m_deferMoves = false;
         m_pendingMoves.clear();
         m_lastRestored.clear();
@@ -1689,6 +1718,8 @@ private:
     }
     QStringList        m_moves;
     QString            m_moveAnswer = QStringLiteral("ok");
+    QStringList        m_removeWrites;
+    QString            m_removeAnswer = QStringLiteral("ok");
     bool               m_deferMoves = false;
     QList<PendingMove> m_pendingMoves;
 
