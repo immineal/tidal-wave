@@ -614,7 +614,7 @@
     </message>
     <message>
         <source>Downloading %1 of %2</source>
-        <translation>%1 von %2 wird heruntergeladen</translation>
+        <translation>Titel %1 von %2 wird heruntergeladen</translation>
     </message>
     <message>
         <source>Download cancelled. %1 of %2 saved.</source>
