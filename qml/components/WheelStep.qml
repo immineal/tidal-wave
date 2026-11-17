@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import TidalWave
 
 // A wheel notch moves a long list by the system's lines per notch, as
@@ -21,5 +22,12 @@ WheelHandler {
         var top = f.originY - f.topMargin
         var end = f.originY + Math.max(0, f.contentHeight + f.bottomMargin - f.height)
         f.contentY = Math.max(top, Math.min(end, f.contentY - dy))
+        // Setting contentY is no move, so the bar is flashed as
+        // ScrollBar.increase() does: shown, then left to fade unless held.
+        var bar = f.ScrollBar.vertical
+        if (bar) {
+            bar.active = true
+            bar.active = bar.pressed || (bar.interactive && bar.hovered)
+        }
     }
 }
