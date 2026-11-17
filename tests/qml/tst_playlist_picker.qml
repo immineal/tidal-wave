@@ -46,9 +46,12 @@ TestCase {
         bridge.setServerPlaylistForTest("pl-cafe", [12])
         bridge.setServerPlaylistForTest("pl-rain", [])
         // The tick reads are kept per playlist; each test starts from none.
+        // Emitted through a reference: Qt 6.5 crashes on a direct call of a
+        // QML singleton's signal from outside it.
+        var changed = Edits.playlistChanged
         var touched = ["pl-road", "pl-cafe", "pl-rain", "uuid-created-1"]
         touched.forEach(function (u) {
-            Edits.playlistChanged(u)
+            changed.call(Edits, u)
         })
     }
 
