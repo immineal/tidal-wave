@@ -300,6 +300,7 @@ qt_add_qml_module(tidalwave_style
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave/Style
     IMPORTS QtQuick.Controls.${TIDALWAVE_FALLBACK_STYLE}/auto
     QML_FILES
+        qml/style/ScrollBar.qml
         qml/style/ToolTip.qml
 )
 target_link_libraries(tidalwave_style PRIVATE Qt6::Quick Qt6::QuickControls2)
