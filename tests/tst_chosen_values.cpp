@@ -112,7 +112,7 @@ QColor fromOkLch(double L, double C, double hDeg) {
 
 } // namespace
 
-class TestOwnerPicks : public QObject {
+class TestChosenValues : public QObject {
     Q_OBJECT
 
     QList<Entry> m_catalogue;
@@ -142,7 +142,7 @@ private slots:
         QVERIFY2(m_catalogue.size() > 300, "the German catalogue reads as nearly empty");
         // Prefs reads a settings file; give it an empty one of its own.
         QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
-        QCoreApplication::setApplicationName(QStringLiteral("tst_owner_picks"));
+        QCoreApplication::setApplicationName(QStringLiteral("tst_chosen_values"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QVERIFY(m_dir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
@@ -351,5 +351,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestOwnerPicks)
-#include "tst_owner_picks.moc"
+QTEST_GUILESS_MAIN(TestChosenValues)
+#include "tst_chosen_values.moc"
