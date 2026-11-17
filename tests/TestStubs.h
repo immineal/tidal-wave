@@ -156,6 +156,7 @@ class StubBridge : public StubCallbackObject {
 public:
     explicit StubBridge(QObject *parent = nullptr) : StubCallbackObject(parent) {}
 
+    Q_PROPERTY(bool preferExplicit MEMBER m_preferExplicit NOTIFY preferExplicitChanged)
     QString preferredQuality() const { return m_preferredQuality; }
     void setPreferredQuality(const QString &q) {
         if (m_preferredQuality == q) return;
@@ -1212,6 +1213,8 @@ public:
     // Non-empty makes every later search fail with this reason, the way a lost
     // network does: errorString() reaches the callback and nothing else does.
     Q_INVOKABLE void setSearchErrorForTest(const QString &err) { m_searchError = err; }
+    // {kind, item}, as TidalBridge::search hands `topHit` over. Empty: none.
+    Q_INVOKABLE void setSearchTopHitForTest(const QVariantMap &hit) { m_searchTopHit = hit; }
     Q_INVOKABLE QString lastSearchQueryForTest() const { return m_lastSearchQuery; }
     Q_INVOKABLE int     lastSearchLimitForTest() const { return m_lastSearchLimit; }
     Q_INVOKABLE int     lastSearchOffsetForTest() const { return m_lastSearchOffset; }
@@ -1222,6 +1225,7 @@ public:
         m_searchArtists.clear();
         m_searchPlaylists.clear();
         m_searchMixes.clear();
+        m_searchTopHit.clear();
         m_searchError.clear();
         m_lastSearchQuery.clear();
         m_lastSearchLimit = 0;
@@ -1300,6 +1304,7 @@ public:
 
 signals:
     void preferredQualityChanged();
+    void preferExplicitChanged();
     void favoriteTracksChanged();
     void favoriteMixesChanged();
     void favoriteAlbumsChanged();
@@ -1342,6 +1347,7 @@ private:
     bool         m_libraryFromCache = false;
     int          m_retryCalls = 0;
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
+    bool    m_preferExplicit = true;
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
     // how many times it was asked: once per accepted mutation, never otherwise.
@@ -1694,6 +1700,7 @@ private:
     QVariantList m_searchArtists;
     QVariantList m_searchPlaylists;
     QVariantList m_searchMixes;
+    QVariantMap  m_searchTopHit;
     QString      m_searchError;
     QString      m_lastSearchQuery;
     int          m_lastSearchLimit = 0;
@@ -1728,6 +1735,9 @@ private:
         res.setProperty(QStringLiteral("totalArtists"),   total(m_searchArtists));
         res.setProperty(QStringLiteral("totalPlaylists"), total(m_searchPlaylists));
         res.setProperty(QStringLiteral("totalMixes"),     total(m_searchMixes));
+        // Only on the first page, as the server answers it.
+        if (filled && offset == 0 && !m_searchTopHit.isEmpty())
+            res.setProperty(QStringLiteral("topHit"), e->toScriptValue(m_searchTopHit));
         return res;
     }
 };

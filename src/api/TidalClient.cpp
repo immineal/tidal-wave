@@ -526,6 +526,7 @@ void TidalClient::fetchArtistDetail(qint64 artistId,
             d.id      = root["id"].toVariant().toLongLong();
             d.name    = root["name"].toString();
             d.picture = root["picture"].toString();
+            d.artistMixId = root["mixes"].toObject()[MixTypes::ArtistMix].toString();
             // Bio comes from a separate endpoint
             m_api->get(QStringLiteral("artists/%1/bio").arg(artistId), {},
                 [d, cb](QJsonObject bio, QString) mutable {
@@ -593,8 +594,9 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
         QString      err;
     };
     const auto pending = std::make_shared<Pending>();
+    const bool preferExplicit = m_preferExplicit;
 
-    const auto finish = [cb, pending]() {
+    const auto finish = [cb, pending, preferExplicit]() {
         if (--pending->outstanding > 0) return;
         // The three responses carry the same fields, so the guest appearances
         // are marked while their list is still apart from the other two.
@@ -604,7 +606,7 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
         // Then one entry per record, which reads the mark for the row and
         // marks the titles a row shows more than once.
         const QList<Album> all = oneEntryPerRecord(mergeAlbumLists(
-            {pending->albums, pending->epsAndSingles, pending->appearsOn}));
+            {pending->albums, pending->epsAndSingles, pending->appearsOn}), preferExplicit);
         // One filter failing must not empty the page. The error is reported
         // only when none of the three yielded anything.
         if (all.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
@@ -657,10 +659,49 @@ void TidalClient::fetchAlbumOtherVersions(qint64 albumId, AlbumsCallback cb) {
     q.addQueryItem("albumId", QString::number(albumId));
     q.addQueryItem("deviceType", "BROWSER");
     q.addQueryItem("locale", QString::fromLatin1(kAlbumPageLocale));
-    m_api->get(QStringLiteral("pages/album"), q, [cb, albumId](QJsonObject root, QString err) {
+    m_api->get(QStringLiteral("pages/album"), q, [this, cb, albumId](QJsonObject root, QString err) {
         if (!err.isEmpty()) { cb({}, err); return; }
-        cb(parseAlbumOtherVersions(root, albumId), {});
+        QList<Album> versions = parseAlbumOtherVersions(root, albumId);
+        const Album self = parseAlbumPageHeader(root);
+        const bool named = std::any_of(versions.cbegin(), versions.cend(),
+            [&self](const Album &a) { return a.explicit_ != self.explicit_; });
+        if (named || self.id != albumId || self.artists.isEmpty()) { cb(versions, {}); return; }
+        findVersionCounterparts(self, std::move(versions), cb);
     });
+}
+
+Album TidalClient::parseAlbumPageHeader(const QJsonObject &root) {
+    for (const auto &row : root["rows"].toArray())
+        for (const auto &module : row.toObject()["modules"].toArray()) {
+            const QJsonObject mod = module.toObject();
+            if (mod["type"].toString() == QLatin1String("ALBUM_HEADER"))
+                return Album::fromJson(mod["album"].toObject());
+        }
+    return {};
+}
+
+// The artist's albums and EPs, the two lists a release of their own is on.
+// Whatever fails or finds nothing leaves `versions` as the page named them.
+void TidalClient::findVersionCounterparts(const Album &self, QList<Album> versions,
+                                          AlbumsCallback cb) {
+    struct Pending { QList<Album> found; int outstanding = 2; };
+    const auto pending = std::make_shared<Pending>();
+    const auto collect = [self, versions, cb, pending](QList<Album> albums, QString) {
+        pending->found.append(albums);
+        if (--pending->outstanding > 0) return;
+        QList<Album> out = versions;
+        QSet<qint64> seen{self.id};
+        for (const Album &a : out) seen.insert(a.id);
+        for (const Album &a : versionCounterparts(self, pending->found)) {
+            if (seen.contains(a.id)) continue;
+            seen.insert(a.id);
+            out.append(a);
+        }
+        cb(out, {});
+    };
+    const qint64 artistId = self.artists.first().id;
+    fetchArtistAlbumPage(artistId, QString(), AlbumPages::All, collect);
+    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterEpsAndSingles), AlbumPages::All, collect);
 }
 
 void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {
@@ -703,31 +744,54 @@ void TidalClient::search(const QString &query, SearchCb cb, int limit, int offse
     q.addQueryItem("limit", QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
     q.addQueryItem("types", "TRACKS,ALBUMS,ARTISTS,PLAYLISTS,MIXES");
-    m_api->get("search", q, [this, cb](QJsonObject root, QString err) {
+    m_api->get("search", q, [cb](QJsonObject root, QString err) {
         if (!err.isEmpty()) { cb({}, err); return; }
-        SearchResults r;
-        if (root.contains("tracks")) {
-            r.tracks       = parseTracks(root["tracks"].toObject());
-            r.totalTracks  = root["tracks"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("albums")) {
-            r.albums       = parseAlbums(root["albums"].toObject());
-            r.totalAlbums  = root["albums"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("artists")) {
-            r.artists      = parseArtists(root["artists"].toObject());
-            r.totalArtists = root["artists"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("playlists")) {
-            r.playlists      = parsePlaylists(root["playlists"].toObject());
-            r.totalPlaylists = root["playlists"].toObject()["totalNumberOfItems"].toInt();
-        }
-        if (root.contains("mixes")) {
-            r.mixes      = parseSearchMixes(root["mixes"].toObject());
-            r.totalMixes = root["mixes"].toObject()["totalNumberOfItems"].toInt();
-        }
-        cb(r, {});
+        cb(parseSearch(root), {});
     });
+}
+
+SearchResults TidalClient::parseSearch(const QJsonObject &root) {
+    SearchResults r;
+    if (root.contains("tracks")) {
+        r.tracks       = parseTracks(root["tracks"].toObject());
+        r.totalTracks  = root["tracks"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("albums")) {
+        r.albums       = parseAlbums(root["albums"].toObject());
+        r.totalAlbums  = root["albums"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("artists")) {
+        r.artists      = parseArtists(root["artists"].toObject());
+        r.totalArtists = root["artists"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("playlists")) {
+        r.playlists      = parsePlaylists(root["playlists"].toObject());
+        r.totalPlaylists = root["playlists"].toObject()["totalNumberOfItems"].toInt();
+    }
+    if (root.contains("mixes")) {
+        r.mixes      = parseSearchMixes(root["mixes"].toObject());
+        r.totalMixes = root["mixes"].toObject()["totalNumberOfItems"].toInt();
+    }
+
+    // {"type": "ARTISTS", "value": {…}}; the type is the plural of the list.
+    // A hit without an id is no hit: there would be nothing to open.
+    const QJsonObject hit   = root["topHit"].toObject();
+    const QString     type  = hit["type"].toString();
+    const QJsonObject value = hit["value"].toObject();
+    if (type == QLatin1String("TRACKS")) {
+        r.topTrack = Track::fromJson(value);
+        if (r.topTrack.id > 0) r.topHitKind = QStringLiteral("track");
+    } else if (type == QLatin1String("ALBUMS")) {
+        r.topAlbum = Album::fromJson(value);
+        if (r.topAlbum.id > 0) r.topHitKind = QStringLiteral("album");
+    } else if (type == QLatin1String("ARTISTS")) {
+        r.topArtist = Artist::fromJson(value);
+        if (r.topArtist.id > 0) r.topHitKind = QStringLiteral("artist");
+    } else if (type == QLatin1String("PLAYLISTS")) {
+        r.topPlaylist = Playlist::fromJson(value);
+        if (!r.topPlaylist.uuid.isEmpty()) r.topHitKind = QStringLiteral("playlist");
+    }
+    return r;
 }
 
 // ─── Favorites management ──────────────────────────

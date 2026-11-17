@@ -1349,10 +1349,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Find tracks, albums, artists and more</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>No results for &quot;%1&quot;</source>
         <translation type="unfinished"></translation>
     </message>

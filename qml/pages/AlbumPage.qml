@@ -23,6 +23,24 @@ Rectangle {
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0 && !albumData.title
 
+    // The failure came with Tidal out of reach, read when it landed: the
+    // bridge marks itself offline before it answers.
+    property bool loadOffline: false
+
+    function noteLoadError(err) {
+        if (root.loadError.length > 0) return
+        root.loadError = err
+        root.loadOffline = bridge.offline === true
+    }
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (!(root.albumId > 0)) return
+        if (bridge.offline) bridge.retryConnection()
+        loadAlbum()
+        loadOtherVersions()
+    }
+
     // The title the favourites list still holds for this album, which is the
     // one endpoint that names a delisted edition. The failure panel searches
     // for it. Read once, since unsaveDeadAlbum() deletes the row it is in.
@@ -180,6 +198,9 @@ Rectangle {
 
     Connections {
         target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
         function onFavoriteAlbumsChanged() {
             root.updateSavedState()
             // The favourites list arrives after the window does. Only ever
@@ -205,9 +226,10 @@ Rectangle {
         var requested = root.albumId
         loading = true
         loadError = ""
+        loadOffline = false
         bridge.fetchAlbum(requested, function(album, err) {
             if (requested !== root.albumId) return
-            if (err) { root.loadError = err; return }
+            if (err) { root.noteLoadError(err); return }
             root.albumData = album
         })
         bridge.fetchAlbumTracks(requested, function(t, err) {
@@ -215,10 +237,7 @@ Rectangle {
             root.loading = false
             // The header's reason first where there is one: both calls fail
             // together on a dead album, and the two strings say the same thing.
-            if (err) {
-                if (root.loadError.length === 0) root.loadError = err
-                return
-            }
+            if (err) { root.noteLoadError(err); return }
             root.tracks = t
         })
     }
@@ -331,6 +350,20 @@ Rectangle {
                         // above it.
                         onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
                                                                   hero.actionRow)
+                    },
+                    // The hero's menu, which right-click also opens: the queue
+                    // actions, Pin and Copy link.
+                    IconButton {
+                        objectName: "heroMoreButton"
+                        icon: "more"
+                        label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                        size: 20
+                        pad: Theme.space5
+                        backed: true
+                        onClicked: {
+                            var p = mapToItem(root, 0, height)
+                            root.showHeroPinMenu(p.x, p.y)
+                        }
                     }
                 ]
             }
@@ -429,54 +462,26 @@ Rectangle {
             width: Math.min(parent.width - 96, 420)
             spacing: Theme.space3
 
-            VectorIcon {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
-                name: "album"
-                color: Theme.textDim
-            }
-
-            Text {
-                objectName: "albumLoadErrorText"
+            ErrorState {
                 Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("This album is not available")
-                color: Theme.textPrimary
-                font.pixelSize: Theme.fontSection
-                font.bold: true
-                wrapMode: Text.WordWrap
-            }
-
-            // Not the server's own string, which is a Qt network error with the
-            // request URL in it.
-            Text {
-                objectName: "albumLoadErrorDetail"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
+                namePrefix: "albumLoadError"
+                icon: "album"
+                offline: root.loadOffline
+                title: qsTr("This album is not available")
                 // One long literal: lupdate cannot read a concatenation. No
                 // example of the bad form here, because tst_shortcuts counts a
                 // call site in a comment.
-                text: qsTr("Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.")
-                color: Theme.textSec
-                font.pixelSize: Theme.fontMeta
-                wrapMode: Text.WordWrap
-            }
+                detail: qsTr("Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.")
+                onRetry: root.retryLoad()
 
-            // What can still be done about a record the API will not serve.
-            // Each button is hidden when it has nothing to act on: no title to
-            // search for, nothing saved to remove.
-            RowLayout {
-                objectName: "albumLoadErrorActions"
-                Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: Theme.space2
-                spacing: Theme.space3
-
+                // What can still be done about a record the API will not
+                // serve. Hidden with nothing to act on, and while offline,
+                // where neither could reach Tidal.
                 PillButton {
                     objectName: "albumLoadErrorFind"
                     text: qsTr("Find album", "verb, look for another release of this album")
                     icon: "search"
-                    visible: root.savedTitle.length > 0
+                    visible: root.savedTitle.length > 0 && !root.loadOffline
                     // The title, since the id is what is dead. `requestedQuery`
                     // hands Search a term to run.
                     onClicked: root.navigateTo("search", { requestedQuery: root.savedTitle })
@@ -491,7 +496,7 @@ Rectangle {
                     // isSaved alone: the bridge emits favoriteAlbumsChanged
                     // before it answers the callback, so the flag is already
                     // false when the removal lands.
-                    visible: root.isSaved
+                    visible: root.isSaved && !root.loadOffline
                     enabled: !root.unsaving
                     onClicked: root.unsaveDeadAlbum()
                 }

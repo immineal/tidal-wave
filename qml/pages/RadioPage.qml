@@ -30,6 +30,23 @@ Rectangle {
     TrackListHeader.Sort { id: trackSort }
     readonly property var shownTracks: trackSort.sorted(root.tracks)
 
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (!(root.trackId > 0)) return
+        if (bridge.offline) bridge.retryConnection()
+        loadRadio()
+    }
+
+    Connections {
+        target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
+    }
+
     // Records this radio station as the "playing from" source, then plays.
     function playFrom(list, i) {
         player.setPlaybackSource("radio", "" + root.trackId, root.radioTitle)
@@ -41,6 +58,7 @@ Rectangle {
     function loadRadio() {
         loading = true
         loadError = ""
+        loadOffline = false
         tracks  = []
         // Which track this reply is about. trackId can change while it is in
         // flight, and a reply for a station already left must not touch the
@@ -49,7 +67,7 @@ Rectangle {
         bridge.fetchTrackRadio(trackId, function(t, err) {
             if (requested !== root.trackId) return
             root.loading = false
-            if (err) { root.loadError = err; return }
+            if (err) { root.loadError = err; root.loadOffline = bridge.offline === true; return }
             root.tracks = t
         })
     }
@@ -142,46 +160,21 @@ Rectangle {
         // the hero and scrolls with it, as on MixPage.
         footer: Item {
             width: trackList.width
-            height: root.loadFailed ? 200 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
 
-            ColumnLayout {
+            ErrorState {
+                id: loadErrorState
                 objectName: "radioLoadError"
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: Theme.space3
-
-                VectorIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    // A Layout needs it asked for, or the implicit 24 draws.
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    name: "waves"
-                    color: Theme.textDim
-                }
-
-                Text {
-                    objectName: "radioLoadErrorText"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("No radio for this track")
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSection
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Not the server's own string; see AlbumPage's panel for why.
+                namePrefix: "radioLoadError"
+                icon: "waves"
+                offline: root.loadOffline
+                title: qsTr("No radio for this track")
                 // One long literal, since lupdate cannot read a concatenation.
-                Text {
-                    objectName: "radioLoadErrorDetail"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not build a station from it. The track may have been taken down, or it may not be available where you are.")
-                    color: Theme.textSec
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.WordWrap
-                }
+                detail: qsTr("Tidal would not build a station from it. The track may have been taken down, or it may not be available where you are.")
+                onRetry: root.retryLoad()
             }
         }
     }
