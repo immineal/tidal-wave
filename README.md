@@ -26,7 +26,8 @@ you happen to use.
 </details>
 
 The screenshots are drawn by `tests/visual/run.sh store` on a library of real
-records whose sleeves and artist photos are under Creative Commons licences.
+records whose sleeves and artist photos are under Creative Commons licences
+or in the public domain.
 [`tests/visual/store/CREDITS.md`](tests/visual/store/CREDITS.md) names the
 author, source and licence of each image.
 
