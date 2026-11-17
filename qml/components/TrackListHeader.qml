@@ -226,11 +226,11 @@ Item {
     }
 
     // The row's own insets: its ground is inset by spaceHalf and its columns
-    // by space3 and space8 inside that. See TrackRow.
+    // by cols.leftInset and cols.rightInset inside that. See TrackRow.
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin:  Theme.spaceHalf + Theme.space3
-        anchors.rightMargin: Theme.spaceHalf + Theme.space8
+        anchors.leftMargin:  Theme.spaceHalf + cols.leftInset
+        anchors.rightMargin: Theme.spaceHalf + cols.rightInset
         spacing: Theme.space3
 
         Heading {
@@ -262,8 +262,10 @@ Item {
             label: qsTr("Date added", "column heading")
             key: "added"
         }
-        // The heart's slot has no heading.
+        // The heart's, download's and menu's slots have no heading.
         Item { Layout.preferredWidth: cols.heartWidth }
+        Item { Layout.preferredWidth: cols.buttonWidth }
+        Item { Layout.preferredWidth: cols.buttonWidth }
         Heading {
             objectName: "trackListHeadingLength"
             Layout.preferredWidth: cols.durationWidth
@@ -272,12 +274,10 @@ Item {
             alignRight: true
             key: "duration"
         }
-        // The download and menu buttons' slots.
-        Item { Layout.preferredWidth: cols.buttonWidth }
-        Item { Layout.preferredWidth: cols.buttonWidth }
     }
 
     Rectangle {
+        objectName: "trackListHeaderRule"
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right

@@ -311,10 +311,25 @@ Item {
         implicitWidth: 16
         implicitHeight: 14
 
-        // Derived from the width, so the bars never reach past their own box.
-        // Five bars and four gaps of three quarters of a bar are 8 bar widths.
-        readonly property real barWidth: width / 8
-        readonly property real gap: barWidth * 0.75
+        // Bars, gaps and heights in whole device pixels, unantialiased, so
+        // every bar comes out the same width with the same gap at any scale.
+        // A test sets dpr to check 1.5x and 2x.
+        property real dpr: Math.max(1, Screen.devicePixelRatio)
+        readonly property int boxWDev: Math.max(5, Math.floor(width * dpr + 0.001))
+        readonly property int floorDev: Math.max(1, Math.floor(height * dpr + 0.001))
+        // About eight bar widths across, gaps three quarters of a bar, and
+        // the gap gives way first where five bars and four gaps do not fit.
+        readonly property int barDev: {
+            var b = Math.max(1, Math.round(boxWDev / 8))
+            while (b > 1 && 5 * b + 4 > boxWDev) --b
+            return b
+        }
+        readonly property int gapDev: {
+            var g = Math.max(1, Math.round(barDev * 0.75))
+            while (g > 1 && 5 * barDev + 4 * g > boxWDev) --g
+            return g
+        }
+        readonly property int stripXDev: Math.round((boxWDev - (5 * barDev + 4 * gapDev)) / 2)
 
         // ── live levels ──────────────────────────────────────────────────
         // True only while the preference is on and audio is arriving. A paused
@@ -337,11 +352,13 @@ Item {
         opacity: animate ? 1 : 0.45
         Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
 
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            height: ind.height
-            spacing: ind.gap
+        // The bars are laid out in device pixels, scaled down by dpr. In
+        // logical units a bar's y and height are fractions, and the software
+        // renderer rounds each on its own, a device pixel apart at 2x.
+        Item {
+            width: ind.boxWDev
+            height: ind.floorDev
+            transform: Scale { xScale: 1 / ind.dpr; yScale: 1 / ind.dpr }
 
             Repeater {
                 // Heights as fractions of the box, so the figure is the same
@@ -372,38 +389,43 @@ Item {
                         ind.height * (ind.minFrac
                                       + (1 - ind.minFrac) * ind.levelAt(bar.index))
 
-                    // A Row places its children only horizontally, so the
-                    // floor is set here. Not an anchor: `parent` is null while
-                    // a Repeater builds its delegate, and that warns.
-                    y: ind.height - bar.height
-                    width: ind.barWidth
-                    height: bar.restH
-                    radius: width / 2
+                    // `level` is the smooth height the animations write; the
+                    // drawn height is that, rounded to whole device pixels.
+                    property real level: bar.restH
+                    readonly property int hDev:
+                        Math.min(ind.floorDev, Math.max(1, Math.round(bar.level * ind.dpr)))
+                    // Not anchors: `parent` is null while a Repeater builds
+                    // its delegate, and that warns.
+                    x: ind.stripXDev + bar.index * (ind.barDev + ind.gapDev)
+                    y: ind.floorDev - bar.hDev
+                    width: ind.barDev
+                    height: bar.hDev
+                    antialiasing: false
                     color: ind.color
 
-                    // The animation below writes `height` directly, which
+                    // The animation below writes `level` directly, which
                     // drops the binding above; this puts the resting height
                     // back if the box is resized while the bars are still.
-                    onRestHChanged: if (!seq.running && !ind.useSpectrum) bar.height = bar.restH
+                    onRestHChanged: if (!seq.running && !ind.useSpectrum) bar.level = bar.restH
 
-                    // Spectrum mode assigns the height, like the animation. A
-                    // conditional binding on `height` would be dropped by the
+                    // Spectrum mode assigns the level, like the animation. A
+                    // conditional binding on `level` would be dropped by the
                     // animation's first write and never come back.
-                    onSpecHChanged: if (ind.useSpectrum) bar.height = bar.specH
+                    onSpecHChanged: if (ind.useSpectrum) bar.level = bar.specH
 
                     // Leaving the live path: the animation restarts by itself
                     // if it is allowed to, but a paused row has no animation
                     // to put the bar back, so it is put back here.
                     readonly property bool live: ind.useSpectrum
                     onLiveChanged: {
-                        if (bar.live) bar.height = bar.specH
-                        else if (!seq.running) bar.height = bar.restH
+                        if (bar.live) bar.level = bar.specH
+                        else if (!seq.running) bar.level = bar.restH
                     }
 
                     // Enabled only on the live path. The analyser publishes at
                     // 25 Hz and the screen draws at 60; without this the bars
                     // step where they should move.
-                    Behavior on height {
+                    Behavior on level {
                         enabled: ind.useSpectrum
                         NumberAnimation {
                             duration: Theme.dur(Theme.motionFast)
@@ -416,21 +438,21 @@ Item {
                         running: ind.animate && ind.visible && !ind.useSpectrum
                         loops: Theme.reduceMotion ? 1 : Animation.Infinite
                         NumberAnimation {
-                            target: bar; property: "height"; to: bar.peakH
+                            target: bar; property: "level"; to: bar.peakH
                             duration: Theme.dur(bar.modelData.ms)
                             easing.type: Easing.InOutSine
                         }
                         NumberAnimation {
-                            target: bar; property: "height"; to: bar.troughH
+                            target: bar; property: "level"; to: bar.troughH
                             duration: Theme.dur(bar.modelData.ms)
                             easing.type: Easing.InOutSine
                         }
                         NumberAnimation {
-                            target: bar; property: "height"; to: bar.restH
+                            target: bar; property: "level"; to: bar.restH
                             duration: Theme.dur(Math.round(bar.modelData.ms * 0.6))
                             easing.type: Easing.InOutSine
                         }
-                        onStopped: if (!ind.useSpectrum) bar.height = bar.restH
+                        onStopped: if (!ind.useSpectrum) bar.level = bar.restH
                     }
                 }
             }

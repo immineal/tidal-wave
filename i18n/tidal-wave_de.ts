@@ -1710,7 +1710,7 @@
         <translation>Als Nächstes von: %1</translation>
     </message>
     <message>
-        <source>Now Playing</source>
+        <source>Now playing</source>
         <translation>Jetzt läuft</translation>
     </message>
     <message>

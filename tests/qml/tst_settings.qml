@@ -2095,6 +2095,32 @@ TestCase {
         h.panel.close()
     }
 
+    // Groups read as groups when the space between them is clearly more than
+    // the space between rows, as in GNOME's and macOS's settings: at least
+    // twice the row gap above each heading, and the heading nearer its rows.
+    function test_sections_stand_apart_more_than_rows() {
+        var h = openPanel(1280, 1200)
+        var sections = collectByName(h.panel.contentItem, "settingsSection", [])
+        var groups = collectByName(h.panel.contentItem, "settingsGroup", [])
+        verify(groups.length > 0, "no settings group")
+        var rowGap = groups[0].children[0].spacing
+        verify(rowGap > 0, "the rows have no gap to compare with")
+        var placed = []
+        for (var i = 0; i < sections.length; ++i)
+            if (sections[i].visible)
+                placed.push({ s: sections[i], y: sections[i].mapToItem(h.panel.contentItem, 0, 0).y })
+        placed.sort(function (a, b) { return a.y - b.y })
+        for (i = 1; i < placed.length; ++i) {
+            var gap = placed[i].y - (placed[i - 1].y + placed[i - 1].s.height)
+            verify(gap >= 2 * rowGap,
+                   placed[i].s.key + ": " + gap + " px above the heading against "
+                   + rowGap + " px between rows")
+            verify(placed[i].s.spacing < rowGap,
+                   placed[i].s.key + ": the heading is no nearer its rows than the rows are to each other")
+        }
+        h.panel.close()
+    }
+
     // ── the two ways out ─────────────────────────────────────────────────
     // The panel can open a prefilled GitHub issue and a prefilled email. What
     // is asserted is the URL each button hands to app.openUrl(). Nothing in
