@@ -236,18 +236,21 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
 
         // LibraryIndex caches album tracklists under AppDataLocation, and a run
-        // must not touch the real cache. Test mode works on every platform and
-        // roots the paths at QDir::homePath() + "/.qttest", so HOME moves too.
+        // must not touch the real cache. Test mode roots the paths at
+        // QDir::homePath() + "/.qttest", so HOME moves too.
         QStandardPaths::setTestModeEnabled(true);
         qputenv("HOME", m_dir.path().toUtf8());
+#ifdef Q_OS_MACOS
+        // macOS finds ~/Library from the account, not from HOME.
+        qputenv("CFFIXED_USER_HOME", m_dir.path().toUtf8());
+#endif
         const QString appData =
             QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
         QVERIFY2(appData.contains(QLatin1String("qttest")),
                  qPrintable(QStringLiteral("standard paths are not in test mode: %1")
                                 .arg(appData)));
 #if defined(Q_OS_UNIX)
-        // Wherever HOME governs QDir::homePath(), which is Linux and macOS both,
-        // the cache is inside the temporary directory and is thrown away with it.
+        // The cache is inside the temporary directory and is thrown away with it.
         QVERIFY2(appData.startsWith(m_dir.path()),
                  qPrintable(QStringLiteral("the tracklist cache would land outside %1: %2")
                                 .arg(m_dir.path(), appData)));
