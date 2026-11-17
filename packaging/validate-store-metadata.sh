@@ -2,23 +2,27 @@
 # Validate the desktop entry and the AppStream metainfo that Linux stores read,
 # and check they still agree with the project.
 #
-#     packaging/validate-store-metadata.sh [--no-net]
+#     packaging/validate-store-metadata.sh [--no-net] [--tag vX.Y.Z]
 #
 # Without --no-net, appstreamcli fetches every <url> and screenshot and fails
 # on a missing one. The screenshots point at the release tag, so before the
-# tag exists only --no-net can pass. Needs appstreamcli and desktop-file-validate.
+# tag exists only --no-net can pass. --tag also checks that every screenshot
+# names that tag. Needs appstreamcli and desktop-file-validate.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SELF/.."
 
 NET=1
-for arg in "$@"; do
-    case "$arg" in
-        -h|--help) sed -n '2,9p' "${BASH_SOURCE[0]}"; exit 0 ;;
+TAG=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help) sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
         --no-net) NET=0 ;;
-        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+        --tag) TAG="${2:?--tag needs a tag name}"; shift ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
+    shift
 done
 
 id=io.github.immineal.TidalWave
@@ -71,5 +75,17 @@ grep -q 'version="@PROJECT_VERSION@"' "$template" \
 pkgver=$(sed -n 's/^pkgver=//p' packaging/PKGBUILD)
 test "$pkgver" = "$ver" \
     || { echo "packaging/PKGBUILD says pkgver=$pkgver, project() says $ver"; exit 1; }
+
+# 4. A store shows the screenshots of the tag they name, so a release whose
+#    URLs still name an older tag would show an older app.
+if [ -n "$TAG" ]; then
+    stale=$(grep -o '<image>[^<]*</image>' "$metainfo" | grep -v "/$TAG/" || true)
+    if [ -n "$stale" ]; then
+        echo "screenshots that do not name $TAG:"
+        echo "$stale"
+        exit 1
+    fi
+    echo "every screenshot names $TAG"
+fi
 
 echo "id, launchable and version all agree"
