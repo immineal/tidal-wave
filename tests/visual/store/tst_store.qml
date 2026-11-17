@@ -118,15 +118,15 @@ TestCase {
     }
 
     // These pages show their scrollbar on arrival, and Qt hides it for good
-    // the first time the view has moved and stopped. One wheel notch down and
-    // back is that state: the page as it rests once it has been used.
+    // the first time the view has moved and stopped. A wheel notch is not a
+    // move since WheelStep sets contentY itself; a flick down and back is.
     function scrollOnce(view) {
         var bar = view.ScrollBar.vertical
         var top = view.contentY
-        mouseWheel(view, view.width / 2, view.height / 2, 0, -120)
-        tryVerify(function () { return view.contentY > top }, 4000,
-                  "the wheel did not move the page")
-        mouseWheel(view, view.width / 2, view.height / 2, 0, 1200)
+        view.flick(0, -1500)
+        tryVerify(function () { return view.contentY > top && !view.movingVertically }, 4000,
+                  "the flick did not move the page")
+        view.flick(0, 8000)
         tryVerify(function () {
             return !view.movingVertically && view.contentY === top
                    && !bar.active && bar.contentItem.opacity === 0
