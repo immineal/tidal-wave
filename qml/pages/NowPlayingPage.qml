@@ -324,8 +324,7 @@ Rectangle {
         var item = lyricsView.itemAtIndex(line)
         if (!item) return
         var was = lyricsView.contentY
-        lyricsView.positionViewAtIndex(line, ListView.Center)
-        var want = lyricsView.contentY
+        var want = root.lyricCentreY(line)
         lyricsView.contentY = was
         if (Math.abs(want - was) > 2) return
         root.userScrolled = false
@@ -341,15 +340,31 @@ Rectangle {
         property: "contentY"
         duration: Theme.dur(Theme.motionMedium)
         easing.type: Easing.OutCubic
+        // Lines built on the way can move the target on Qt 6.4; land on it.
+        onFinished: if (!root.userScrolled) lyricsView.contentY = root.lyricCentreY(root.followLine())
+    }
+
+    // positionViewAtIndex finds the line; Qt 6.4 then leaves it a few px off
+    // the middle, so the offset is worked out from the line itself.
+    function lyricCentreY(line) {
+        lyricsView.positionViewAtIndex(line, ListView.Center)
+        var item = lyricsView.itemAtIndex(line)
+        if (!item) return lyricsView.contentY
+        var top = lyricsView.originY - lyricsView.topMargin
+        var bottom = Math.max(top, lyricsView.originY + lyricsView.contentHeight
+                                   + lyricsView.bottomMargin - lyricsView.height)
+        return Math.max(top, Math.min(bottom, item.y + item.height / 2 - lyricsView.height / 2))
     }
 
     function centreLyricLine(line, animated) {
         if (line < 0 || line >= root.lyricsData.length) return
         lyricsScroll.stop()
         var was = lyricsView.contentY
-        lyricsView.positionViewAtIndex(line, ListView.Center)
-        if (!animated) return
-        var want = lyricsView.contentY
+        var want = root.lyricCentreY(line)
+        if (!animated) {
+            lyricsView.contentY = want
+            return
+        }
         if (want === was) return
         lyricsView.contentY = was
         lyricsScroll.from = was
