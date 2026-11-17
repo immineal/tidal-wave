@@ -224,4 +224,87 @@ TestCase {
         frame(s.host.contentItem)
         verify(!findByName(s.page, "heroMoreButton"), "the radio list offers a menu with nothing in it")
     }
+
+    // ── the filter inside a playlist ────────────────────────────────────
+
+    function playlistRows(p) {
+        var out = []
+        function walk(item) {
+            if (!item) return
+            if (item.objectName === "playlistTrackRow" && item.visible) out.push(item)
+            for (var i = 0; i < item.children.length; ++i) walk(item.children[i])
+        }
+        walk(p)
+        out.sort(function (a, b) { return a.y - b.y })
+        return out
+    }
+
+    function filteredPlaylist() {
+        var list = tracks(4)
+        list[1].title = "Café am Hafen"
+        list[3].artists = "Jürgen Beispiel"
+        // The same track a second time, as a playlist may hold it.
+        var again = track(1)
+        again.title = "Café am Hafen"
+        list.push(again)
+        // Loaded the way the app loads it, so the rows are the bridge's own
+        // copies and no row can be found by identity.
+        bridge.setPlaylistTracksForTest(list)
+        var s = page(playlistC, { playlistUuid: "0c1d2e3f-aaaa-bbbb-cccc-000000000002",
+                                  playlistTitle: "Liste", playlistEditable: true })
+        tryCompare(s.page, "loading", false)
+        compare(s.page.tracks.length, 5)
+        frame(s.host.contentItem)
+        return s
+    }
+
+    function test_the_filter_narrows_the_rows() {
+        var s = filteredPlaylist()
+        var field = findByName(s.page, "playlistFilter")
+        verify(field && field.visible, "a playlist with tracks has no filter field")
+        compare(playlistRows(s.page).length, 5)
+        field.text = "cafe"
+        field.textEdited("cafe")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 2, "case and accents must not count")
+        field.text = "jurgen"
+        field.textEdited("jurgen")
+        frame(s.host.contentItem)
+        var rows = playlistRows(s.page)
+        compare(rows.length, 1, "the artist is not searched")
+        compare(rows[0].trackNum, 4, "a filtered row lost its number in the playlist")
+        field.text = ""
+        field.textEdited("")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 5)
+    }
+
+    // The second copy is its own row: removal and play hit that one.
+    function test_a_track_twice_keeps_each_row_its_own_place() {
+        var s = filteredPlaylist()
+        var field = findByName(s.page, "playlistFilter")
+        field.text = "hafen"
+        field.textEdited("hafen")
+        frame(s.host.contentItem)
+        var rows = playlistRows(s.page)
+        compare(rows.length, 2)
+        compare(rows[0].trackItemIndex, 1)
+        compare(rows[1].trackItemIndex, 4, "the second copy points at the first")
+        rows[1].playRequested()
+        compare(player.queueCount, 2, "the filtered list did not play as shown")
+        compare(player.queueIndex, 1)
+
+        // Removing the second copy sends its own place and takes that row.
+        rows[1].removeFromPlaylistRequested(rows[1].trackItemIndex)
+        tryCompare(s.page.tracks, "length", 4)
+        compare(bridge.lastRemovedIndexForTest(), 4, "the removal was sent for the first copy")
+        compare(s.page.tracks[1].title, "Café am Hafen", "the first copy was taken")
+        compare(s.page.tracks[3].artists, "Jürgen Beispiel")
+    }
+
+    function test_an_empty_playlist_has_no_filter() {
+        var s = page(playlistC, { playlistUuid: "", playlistTitle: "Liste" })
+        var field = findByName(s.page, "playlistFilter")
+        verify(!field || !field.visible, "a filter over no tracks")
+    }
 }
