@@ -1562,6 +1562,14 @@
         <source>Find in this playlist…</source>
         <translation>In dieser Playlist suchen…</translation>
     </message>
+    <message>
+        <source>No tracks match &quot;%1&quot;</source>
+        <translation>Keine Titel passen zu „%1“</translation>
+    </message>
+    <message>
+        <source>Clear the field above to see every track again.</source>
+        <translation>Leere das Feld oben, um wieder alle Titel zu sehen.</translation>
+    </message>
 </context>
 <context>
     <name>QueuePanel</name>

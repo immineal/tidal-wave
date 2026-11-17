@@ -386,7 +386,36 @@ Rectangle {
         // scrolls with it, as on MixPage.
         footer: Item {
             width: tracksList.width
-            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12
+                  : noMatches.visible ? noMatches.implicitHeight + 2 * Theme.space12 : 32
+
+            // The filter left no rows: said in the list, as the collection
+            // says it, with the way back.
+            ColumnLayout {
+                id: noMatches
+                objectName: "playlistNoMatches"
+                visible: !root.loadFailed && root.tracks.length > 0
+                         && root.trackFilter.trim().length > 0 && root.shownTracks.length === 0
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 96, 420)
+                spacing: Theme.space2
+                Text {
+                    objectName: "playlistNoMatchesText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("No tracks match \"%1\"").arg(root.trackFilter.trim())
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                }
+                Text {
+                    objectName: "playlistNoMatchesHint"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Clear the field above to see every track again.")
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                }
+            }
 
             ErrorState {
                 id: loadErrorState

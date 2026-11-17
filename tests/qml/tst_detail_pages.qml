@@ -302,6 +302,30 @@ TestCase {
         compare(s.page.tracks[3].artists, "Jürgen Beispiel")
     }
 
+    // A filter that matches nothing says so and how to get the list back,
+    // and clearing the field brings the rows and no line.
+    function test_a_filter_that_matches_nothing_says_so() {
+        var s = filteredPlaylist()
+        var none = findByName(s.page, "playlistNoMatches")
+        verify(!none || !none.visible, "a no-match line over a full list")
+        var field = findByName(s.page, "playlistFilter")
+        field.text = "zzz"
+        field.textEdited("zzz")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 0)
+        none = findByName(s.page, "playlistNoMatches")
+        verify(none && none.visible, "a filter that matches nothing leaves a blank list")
+        var head = findByName(none, "playlistNoMatchesText")
+        compare(head.text, "No tracks match \"zzz\"")
+        verify(findByName(none, "playlistNoMatchesHint").text.indexOf("Clear the field") >= 0,
+               "the line does not say how to get the tracks back")
+        field.text = ""
+        field.textEdited("")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 5)
+        verify(!none.visible, "the no-match line stayed after the field was cleared")
+    }
+
     function test_an_empty_playlist_has_no_filter() {
         var s = page(playlistC, { playlistUuid: "", playlistTitle: "Liste" })
         var field = findByName(s.page, "playlistFilter")
