@@ -218,66 +218,149 @@ QtObject {
         }
     }
 
+    // Asked when a track to add is in the playlist already; DuplicateAddDialog
+    // draws it. { title, dupes, total, all(), fresh() or null }; null when
+    // nothing is asked. answerDuplicates() takes the answer.
+    property var duplicateQuestion: null
+
+    function answerDuplicates(choice) {
+        var q = edits.duplicateQuestion
+        if (!q) return
+        edits.duplicateQuestion = null
+        if (choice === "all") q.all()
+        else if (choice === "new" && q.fresh) q.fresh()
+        else if (q.cancel) q.cancel()
+    }
+
     // Adds a track at the end. cb(ok, message): message is what was said.
-    // Tidal skips a track the playlist already holds, so that is said
-    // instead and there is nothing to undo.
     function addToPlaylist(uuid, title, trackId, cb) {
+        edits.addTracksToPlaylist(uuid, title, [trackId], cb)
+    }
+
+    // Adds tracks at the end, in order. One the playlist holds already is
+    // asked about first: added anyway, or left out. cb(ok, message) as above;
+    // a question turned down calls it with (true, "").
+    function addTracksToPlaylist(uuid, title, trackIds, cb) {
+        var ids = (trackIds || []).map(Number)
+        if (ids.length === 0) return
         bridge.readPlaylistTrackIds(uuid, function (readOk, before) {
-            var refused = qsTranslate("TrackRow", "Could not add the track to “%1”",
-                                      "shown when adding a track to a playlist failed").arg(title)
-            if (readOk !== true) { Toasts.show(refused); if (cb) cb(false, refused); return }
-            var had = edits._count(before, trackId)
-            if (had > 0) {
-                var already = qsTr("Already in “%1”",
-                                   "the track is in the playlist already; nothing was added").arg(title)
-                Toasts.show(already)
-                if (cb) cb(true, already)
-                return
-            }
-            bridge.addTracksToPlaylist(uuid, trackId, function (ok) {
-                if (ok !== true) { Toasts.show(refused); if (cb) cb(false, refused); return }
-                var added = qsTranslate("TrackRow", "Added to “%1”",
-                                        "confirmation after adding a track to a playlist").arg(title)
-                if (cb) cb(true, added)
-                edits._confirm(edits._playlistCheck(uuid, function (ids) {
-                    return edits._count(ids, trackId) > had
-                }), function (shown) {
-                    edits.playlistChanged(uuid)
-                    if (!shown) { Toasts.show(edits.unconfirmedText); return }
-                    edits._offer(added, function (done) {
-                        edits._takeLastOut(uuid, title, trackId, done)
+            if (readOk !== true) { edits._addRefused(title, ids.length, cb); return }
+            var fresh = ids.filter(function (id) { return edits._count(before, id) === 0 })
+            if (fresh.length === ids.length) { edits._addTracks(uuid, title, ids, before, cb); return }
+            // Asked again with the answer: the playlist can change meanwhile.
+            var reread = function (list) {
+                return function () {
+                    bridge.readPlaylistTrackIds(uuid, function (ok, now) {
+                        if (ok !== true) { edits._addRefused(title, list.length, cb); return }
+                        edits._addTracks(uuid, title, list, now, cb)
                     })
-                })
+                }
+            }
+            if (edits.duplicateQuestion) edits.answerDuplicates("cancel")
+            edits.duplicateQuestion = {
+                title: title, dupes: ids.length - fresh.length, total: ids.length,
+                all: reread(ids),
+                fresh: fresh.length > 0 ? reread(fresh) : null,
+                cancel: function () { if (cb) cb(true, "") }
+            }
+        })
+    }
+
+    function _addRefused(title, n, cb) {
+        var refused = n === 1
+            ? qsTranslate("TrackRow", "Could not add the track to “%1”",
+                          "shown when adding a track to a playlist failed").arg(title)
+            : qsTr("Could not add the tracks to “%1”",
+                   "shown when adding several tracks to a playlist failed").arg(title)
+        Toasts.show(refused)
+        if (cb) cb(false, refused)
+    }
+
+    // One write per track, a new one with SKIP and one it holds with ADD, so
+    // each lands as one more row. `before` is the playlist as it was read.
+    function _addTracks(uuid, title, ids, before, cb) {
+        var had = ids.map(function (id) { return edits._count(before, id) })
+        var i = 0
+        function next() {
+            if (i === ids.length) { edits._added(uuid, title, ids, had, cb); return }
+            var id = ids[i], dupe = had[i] > 0
+            i++
+            var written = function (ok) {
+                if (ok !== true) {
+                    edits._addRefused(title, ids.length, cb)
+                    if (i > 1) edits.playlistChanged(uuid)
+                    return
+                }
+                next()
+            }
+            if (dupe) bridge.restoreTrackToPlaylist(uuid, id, -1, written)
+            else      bridge.addTracksToPlaylist(uuid, id, written)
+        }
+        next()
+    }
+
+    function _added(uuid, title, ids, had, cb) {
+        var added = ids.length === 1
+            ? qsTranslate("TrackRow", "Added to “%1”",
+                          "confirmation after adding a track to a playlist").arg(title)
+            : qsTr("%Ln track(s) added to “%1”",
+                   "confirmation after adding several tracks to a playlist", ids.length).arg(title)
+        if (cb) cb(true, added)
+        edits._confirm(edits._playlistCheck(uuid, function (now) {
+            for (var k = 0; k < ids.length; k++)
+                if (edits._count(now, ids[k]) <= had[k]) return false
+            return true
+        }), function (shown) {
+            edits.playlistChanged(uuid)
+            if (!shown) { Toasts.show(edits.unconfirmedText); return }
+            edits._offer(added, function (done) {
+                edits._takeLastOut(uuid, title, ids.slice(), done)
             })
         })
     }
 
-    // Undoes an add: the last row holding the track, as Tidal has it now.
-    function _takeLastOut(uuid, title, trackId, done) {
-        bridge.readPlaylistTrackIds(uuid, function (readOk, ids) {
-            if (readOk !== true) { Toasts.show(edits.undoFailedText); done(false); return }
-            var at = -1
-            for (var i = ids.length - 1; i >= 0; i--)
-                if (Number(ids[i]) === Number(trackId)) { at = i; break }
-            var gone = qsTr("Taken out of “%1” again", "after undoing an add to a playlist").arg(title)
-            if (at < 0) { Toasts.show(gone); done(true); return }
-            var had = edits._count(ids, trackId)
-            bridge.removeTrackFromPlaylist(uuid, at, function (ok, stale) {
-                if (ok !== true || stale === true) {
-                    Toasts.show(edits.undoFailedText)
-                    edits.playlistChanged(uuid)
-                    done(false)
-                    return
-                }
-                edits._confirm(edits._playlistCheck(uuid, function (now) {
-                    return edits._count(now, trackId) < had
-                }), function (shown) {
-                    edits.playlistChanged(uuid)
-                    Toasts.show(shown ? gone : edits.unconfirmedText)
-                    done(shown)
+    // Undoes an add: for each track the last row holding it, as Tidal has
+    // it now, newest first.
+    function _takeLastOut(uuid, title, ids, done) {
+        var gone = qsTr("Taken out of “%1” again", "after undoing an add to a playlist").arg(title)
+        var left = ids.slice()
+        function next(changed) {
+            if (left.length === 0) {
+                if (changed) edits.playlistChanged(uuid)
+                Toasts.show(gone)
+                done(true)
+                return
+            }
+            var trackId = left.pop()
+            bridge.readPlaylistTrackIds(uuid, function (readOk, rows) {
+                if (readOk !== true) { Toasts.show(edits.undoFailedText); done(false); return }
+                var at = -1
+                for (var i = rows.length - 1; i >= 0; i--)
+                    if (Number(rows[i]) === Number(trackId)) { at = i; break }
+                if (at < 0) { next(changed); return }
+                var had = edits._count(rows, trackId)
+                bridge.removeTrackFromPlaylist(uuid, at, function (ok, stale) {
+                    if (ok !== true || stale === true) {
+                        Toasts.show(edits.undoFailedText)
+                        edits.playlistChanged(uuid)
+                        done(false)
+                        return
+                    }
+                    edits._confirm(edits._playlistCheck(uuid, function (now) {
+                        return edits._count(now, trackId) < had
+                    }), function (shown) {
+                        if (!shown) {
+                            edits.playlistChanged(uuid)
+                            Toasts.show(edits.unconfirmedText)
+                            done(false)
+                            return
+                        }
+                        next(true)
+                    })
                 })
             })
-        })
+        }
+        next(false)
     }
 
     // Takes the row at itemIndex out. written(ok, stale, index) is the

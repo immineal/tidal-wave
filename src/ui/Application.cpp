@@ -546,14 +546,11 @@ QStringList Application::uiFontFamilies() {
 }
 
 void Application::applyQuickControlsStyle() {
-    // Fusion is what Qt picks on Linux and what the visual baselines are drawn
-    // against. Basic on Qt 6.4, where Fusion's Popup can hang in a polish loop.
+    // The app's ToolTip over Fusion, or Basic on Qt 6.4 (Fusion's Popup can
+    // hang there). Named as the fallback, or Qt leaves its palette unset.
     // Has to run before the first Controls type is created.
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
-#else
-    QQuickStyle::setStyle(QStringLiteral("Fusion"));
-#endif
+    QQuickStyle::setStyle(QStringLiteral("TidalWave.Style"));
+    QQuickStyle::setFallbackStyle(QStringLiteral(TIDALWAVE_FALLBACK_STYLE));
 }
 
 void Application::addEmbeddedQmlImportPath(QQmlEngine *engine) {

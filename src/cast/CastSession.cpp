@@ -119,6 +119,7 @@ void CastSession::endedByDevice() {
         m_socket = nullptr;
     }
     reset();
+    emit endedOnDevice();
     emit disconnected();
 }
 

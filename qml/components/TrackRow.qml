@@ -224,6 +224,15 @@ Item {
             Window.window.navigate("artist", { artistId: artistId })
     }
 
+    // The album column and the menu's "Go to album". A real, not an int: an
+    // id is a qint64, as trackId is.
+    readonly property real albumIdOf: (root.trackData && Number(root.trackData.albumId) > 0)
+                                      ? Number(root.trackData.albumId) : 0
+    function openAlbum() {
+        if (root.albumIdOf > 0 && Window.window)
+            Window.window.navigate("album", { albumId: root.albumIdOf })
+    }
+
     signal playRequested()
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
@@ -417,17 +426,36 @@ Item {
             }
 
             // Album, the widest fixed column and the first to go when the row
-            // gets narrow
+            // gets narrow. A link to the album, as the artists are to theirs.
             Text {
+                id: albumColumn
                 objectName: "trackAlbumColumn"
+                readonly property bool linkable: root.albumIdOf > 0
                 visible: showAlbum && root.width >= root.albumBreakpoint
                 // A share of a wide row, so a long album name is not cut
                 // short beside an empty title column.
                 Layout.preferredWidth: Math.round(Math.max(160, Math.min(320, root.width * 0.28)))
                 text: root.albumText
-                color: Theme.textSec
+                color: albumHit.containsMouse ? Theme.textPrimary : Theme.textSec
                 font.pixelSize: Theme.fontMeta
+                font.underline: albumHit.containsMouse
                 elide: Text.ElideRight
+                Accessible.role: linkable ? Accessible.Link : Accessible.StaticText
+                Accessible.name: text
+                Accessible.onPressAction: root.openAlbum()
+
+                // Over the words only, so the rest of the column plays the
+                // row; disabled without an id, so a click falls through.
+                MouseArea {
+                    id: albumHit
+                    objectName: "trackAlbumLink"
+                    width: Math.min(parent.width, parent.contentWidth)
+                    height: parent.height
+                    enabled: albumColumn.linkable
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openAlbum()
+                }
             }
 
             Text {
@@ -776,11 +804,8 @@ Item {
             ContextMenu.Entry {
                 text: qsTr("Go to album")
                 iconName: "album"
-                enabled: root.trackData && Number(root.trackData.albumId) > 0
-                onTriggered: {
-                    if (root.trackData && Number(root.trackData.albumId) > 0)
-                        Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
-                }
+                enabled: root.albumIdOf > 0
+                onTriggered: root.openAlbum()
             }
             // One credited artist, one action. Still shown but disabled when
             // the map carries no usable artist id at all.
