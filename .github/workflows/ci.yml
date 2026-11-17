@@ -129,6 +129,30 @@ jobs:
         if: always()
         run: tests/list-skipped.sh build-tests | tee skipped.txt
 
+      # TEMPORARY probe: the stream start case as the first in a fresh process.
+      - name: Probe stream start
+        if: always()
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+          CFFIXED_USER_HOME: ${{ runner.temp }}/home
+        run: |
+          mkdir -p "$CFFIXED_USER_HOME"
+          for i in 1 2 3 4 5 6 7 8; do
+            echo "== run $i"
+            build-tests/tests/tst_stream_start aLosslessTrackSoundsBeforeItsJoinHasLanded 2>&1 \
+              | grep -E 'dash|first sound|FAIL|PASS   : TestStreamStart::aL|ffmpeg' || true
+          done
+
+      # Every case's output, the passing ones too: no one can run this on a Mac.
+      - name: Keep the test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-test-log
+          path: build-tests/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
   # The declared Qt floor: Debian 12 has Qt 6.4.2 and GCC 12.2. Tests run too,
   # because QML that 6.4 rejects fails at load time, which a build cannot see.
   # Qt comes from apt, as in packaging/Dockerfile, so the version cannot drift.
