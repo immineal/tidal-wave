@@ -446,8 +446,8 @@ TestCase {
         var page = createTemporaryObject(collectionC, host.pane)
         verify(page, "CollectionPage was not created")
         page.activeTab = tab
-        if (tab === 1) page.filteredAlbums  = items
-        else           page.filteredArtists = items
+        if (tab === 1) page.savedAlbums  = items
+        else           page.savedArtists = items
         settle(host.contentItem)
         return page
     }

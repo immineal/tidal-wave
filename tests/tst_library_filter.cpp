@@ -28,6 +28,7 @@
 #include "api/LibraryIndex.h"
 #include "api/TidalBridge.h"
 #include "api/TidalClient.h"
+#include "ui/Application.h"
 #include "ui/PinStore.h"
 
 using namespace Tidal;
@@ -604,6 +605,8 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!m_library->loading() && !m_library->indexing(), 60000);
         QCOMPARE(m_library->indexedAlbumCount(), int(L.albums.size()));
 
+        // As the app collects: whole-heap, so a collection's pause is in the timings.
+        Application::useWholeHeapQmlCollector();
         m_engine = std::make_unique<QQmlEngine>();
         TestStubs stubs = installTestStubs(m_engine.get(), this);
         stubs.auth->setStateForTest(StubAuth::State::LoggedIn);
@@ -759,6 +762,32 @@ private slots:
         filterTo(QString());
     }
 
+    // Typed on one tab, every tab's count follows at once, and a tab opened
+    // afterwards shows those rows.
+    void other_tabs_follow_the_field() {
+        static const char *const rows[] = {"trackRows", "albumRows", "artistRows", "playlistRows", "mixRows"};
+        static const char *const views[] = {"collectionTracksList", "collectionAlbumsGrid", "collectionArtistsGrid",
+                                            "collectionPlaylistsGrid", "collectionMixesGrid"};
+        const QString q = QStringLiteral("the bl");
+        const int want[] = {int(m_bridge->searchFavoriteTracks(q).size()), int(m_bridge->searchFavoriteAlbums(q).size()),
+                            int(m_bridge->searchFavoriteArtists(q).size()),
+                            int(m_bridge->searchFavoritePlaylists(q).size()), int(expectedIds(4, q, nullptr).size())};
+        QObject *trackSort = named(m_page, QStringLiteral("collectionTracksHeader"))
+                                 ->property("sort").value<QObject *>();
+        m_page->setProperty("sortMode", 0);
+        QVERIFY(openTab(1, views[1]));
+        filterTo(q);
+        for (int t = 0; t < 5; ++t)
+            QCOMPARE(m_page->property(rows[t]).value<QObject *>()->property("count").toInt(), want[t]);
+        for (int t : {0, 2, 3, 4}) {
+            QQuickItem *view = openTab(t, views[t]);
+            QVERIFY(view);
+            QCOMPARE(view->property("count").toInt(), want[t]);
+            QCOMPARE(shownIds(t), expectedIds(t, q, trackSort));
+        }
+        filterTo(QString());
+    }
+
     // Where a keystroke's time goes before any QML runs: the bridge's own
     // searches, and handing their answer to JS. Printed only.
     void bridge_costs() {
@@ -802,9 +831,21 @@ private slots:
         QVERIFY(v);
         QQuickItem *input = textInputIn(named(m_page, QStringLiteral("collectionSearch")));
         QVERIFY(input);
-        bench(QStringLiteral("Collection page, %1 tab").arg(QString::fromLatin1(QTest::currentDataTag())),
-              input, v, QStringLiteral("the blue"), [this, tab] { return shownIds(tab); });
+        const QList<Sample> keys =
+            bench(QStringLiteral("Collection page, %1 tab").arg(QString::fromLatin1(QTest::currentDataTag())),
+                  input, v, QStringLiteral("the blue"), [this, tab] { return shownIds(tab); });
         setText(input, QString());
+        // A key narrows what is there; the cards and rows that stay are not made again.
+        for (const Sample &s : keys)
+            QVERIFY2(s.rebuilt == 0, qPrintable(QStringLiteral("\"%1\" made %2 delegates again for rows that stayed")
+                                                     .arg(s.text).arg(s.rebuilt)));
+        // The targets, for a quiet machine: 16 ms a key on a grid, 50 ms on the liked songs.
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT")) {
+            const double ceiling = tab == 0 ? 50 : 16;
+            for (const Sample &s : keys)
+                QVERIFY2(s.total() < ceiling, qPrintable(QStringLiteral("\"%1\" took %2 ms")
+                                                             .arg(s.text).arg(s.total(), 0, 'f', 1)));
+        }
     }
 
     void sidebar() {

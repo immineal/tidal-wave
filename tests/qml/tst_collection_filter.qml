@@ -107,9 +107,9 @@ TestCase {
             { id: "m2", title: "Abendmix",  subtitle: "Andere",    coverUrl: "", mixType: "" },
         ])
         var page = makeCollection(4)
-        compare(page.filteredMixes.length, 2)
+        compare(page.mixRows.count, 2)
         typeFilter(page, "abend")
-        compare(page.filteredMixes.length, 1, "the field did nothing on the Mixes tab")
+        compare(page.mixRows.count, 1, "the field did nothing on the Mixes tab")
         compare(findChild(page, "collectionMixesGrid").count, 1, "the grid was not filtered")
         var labels = []
         var row = findChild(page, "collectionTabsRow")

@@ -385,7 +385,7 @@ TestCase {
         verify(col, "CollectionPage did not load")
         col.activeTab = 3
         settle(host.contentItem)
-        compare(col.filteredPlaylists.length, 3, "the grid fixture did not load")
+        compare(col.playlistRows.count, 3, "the grid fixture did not load")
 
         // Opened directly rather than through the hero's button: the grid is
         // in the same pane and a synthesized click would have two pages
@@ -403,20 +403,20 @@ TestCase {
         settle(host.contentItem)
 
         // The grid redrew itself off favoritePlaylistsChanged, with no refetch.
-        compare(col.filteredPlaylists.length, 3,
+        compare(col.playlistRows.count, 3,
                 "the rename changed how many playlists there are")
         // The order first, so it has a failure of its own: a cache that removed
         // and re-appended the row would shuffle the grid on every rename.
         compare(cacheUuids().join(","), "p-first,p-mid,p-end",
                 "the renamed playlist moved in the grid; it holds "
                 + cacheTitles().join(", "))
-        compare(col.filteredPlaylists[1].title, "Abends am Fluss",
+        compare(col.playlistRows.get(1).title, "Abends am Fluss",
                 "the grid still shows the old name; it holds " + cacheTitles().join(", "))
         // Nothing else about the row moves with the name. The reply carries no
         // body, so a bridge that rebuilt the row would blank both of these.
-        compare(col.filteredPlaylists[1].numTracks, 31,
+        compare(col.playlistRows.get(1).numTracks, 31,
                 "the rename lost the playlist's track count")
-        compare(col.filteredPlaylists[1].coverUrl, "cdn/c2.jpg",
+        compare(col.playlistRows.get(1).coverUrl, "cdn/c2.jpg",
                 "the rename lost the playlist's artwork")
     }
 

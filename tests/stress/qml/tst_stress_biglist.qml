@@ -120,7 +120,7 @@ TestCase {
     function test_collection_tracks_5000() {
         exercise(collectionC, "CollectionPage", function (page, data) {
             S.fill(page, { activeTab: 0 })
-            S.fill(page, { filteredTracks: data })
+            S.fill(page, { savedTracks: data })
         })
     }
 

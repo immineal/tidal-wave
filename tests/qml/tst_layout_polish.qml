@@ -639,8 +639,8 @@ TestCase {
         var host = showHost(plainHost, row.w, 700)
         var page = createTemporaryObject(collectionC, host.pane)
         page.activeTab = row.tab
-        page.filteredAlbums = albums(9)
-        page.filteredPlaylists = albums(9)
+        page.savedAlbums = albums(9)
+        page.savedPlaylists = albums(9)
         settle(host)
         var title = findByName(page, "collectionTitle")
         var search = findByName(page, "collectionSearch")
@@ -727,7 +727,7 @@ TestCase {
         var host = showHost(plainHost, 900, 700)
         var page = createTemporaryObject(collectionC, host.pane)
         page.activeTab = 0
-        page.filteredTracks = tracks(5000)
+        page.savedTracks = tracks(5000)
         settle(host)
         var bar = findByName(page, "collectionTracksScrollBar")
         verify(bar, "the tracks list has no named scroll bar")

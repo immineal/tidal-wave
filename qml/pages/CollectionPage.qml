@@ -10,20 +10,58 @@ Rectangle {
 
     property int activeTab: 0
     property string searchPattern: ""
-    property var filteredTracks:    []
-    property var filteredAlbums:    []
-    property var filteredArtists:   []
-    property var filteredPlaylists: []
+    // Each tab's whole list, in the bridge's order. The views show it sorted
+    // and narrowed by the field through the RowFilters below.
+    property var savedTracks:    []
+    property var savedAlbums:    []
+    property var savedArtists:   []
+    property var savedPlaylists: []
     property var mixes: []
-    // The mixes the field lets through. Tidal has no search over them, so the
-    // page filters its own list.
-    readonly property var filteredMixes: {
-        var q = searchPattern.toLowerCase()
-        if (q.length === 0) return mixes
-        return mixes.filter(function (m) {
-            return (m.title || "").toLowerCase().indexOf(q) !== -1
-                || (m.subtitle || "").toLowerCase().indexOf(q) !== -1
-        })
+
+    // What the field lets through: the fields the bridge's search matched,
+    // lower-cased, as a plain substring. A key only removes and inserts rows,
+    // so the cards that stay keep their delegates and covers. Every tab's count
+    // follows each key; only the open tab's view does, the rest catch up when opened.
+    readonly property alias trackRows:    trackFilter
+    readonly property alias albumRows:    albumFilter
+    readonly property alias artistRows:   artistFilter
+    readonly property alias playlistRows: playlistFilter
+    readonly property alias mixRows:      mixFilter
+    RowFilter {
+        id: trackFilter
+        source: trackSort.sorted(root.savedTracks)
+        fields: ["title", "artists", "albumTitle"]
+        pattern: root.searchPattern
+        live: root.activeTab === 0
+    }
+    RowFilter {
+        id: albumFilter
+        source: root.sortItems(root.savedAlbums, root.sortMode)
+        fields: ["title", "artists"]
+        pattern: root.searchPattern
+        live: root.activeTab === 1
+    }
+    RowFilter {
+        id: artistFilter
+        source: root.sortItems(root.savedArtists, root.sortMode)
+        fields: ["name"]
+        pattern: root.searchPattern
+        live: root.activeTab === 2
+    }
+    RowFilter {
+        id: playlistFilter
+        source: root.sortItems(root.savedPlaylists, root.sortMode)
+        fields: ["title"]
+        pattern: root.searchPattern
+        live: root.activeTab === 3
+    }
+    // Tidal has no search over mixes, so the page filters its own list.
+    RowFilter {
+        id: mixFilter
+        source: root.mixes
+        fields: ["title", "subtitle"]
+        pattern: root.searchPattern
+        live: root.activeTab === 4
     }
     property bool loading: bridge.favoritesLoading
     // The page asks for the mixes itself; an empty list before an answer is
@@ -34,9 +72,9 @@ Rectangle {
 
     // How many rows the open tab shows, and whether its list could be read at
     // all. A list that failed to load is not an empty library.
-    readonly property int tabCount: [filteredTracks.length, filteredAlbums.length,
-                                     filteredArtists.length, filteredPlaylists.length,
-                                     filteredMixes.length][activeTab] || 0
+    readonly property int tabCount: [trackFilter.count, albumFilter.count,
+                                     artistFilter.count, playlistFilter.count,
+                                     mixFilter.count][activeTab] || 0
     readonly property var kindNames: ["tracks", "albums", "artists", "playlists", "mixes"]
     readonly property bool tabUnavailable: activeTab === 4
         ? (mixesFailed && mixes.length === 0)
@@ -58,9 +96,9 @@ Rectangle {
     // The open tab's list is still on its way and none of it is here yet.
     readonly property bool tabWaiting: {
         switch (activeTab) {
-        case 1: return bridge.albumsLoading && filteredAlbums.length === 0
-        case 2: return bridge.artistsLoading && filteredArtists.length === 0
-        case 3: return bridge.playlistsLoading && filteredPlaylists.length === 0
+        case 1: return bridge.albumsLoading && albumFilter.count === 0
+        case 2: return bridge.artistsLoading && artistFilter.count === 0
+        case 3: return bridge.playlistsLoading && playlistFilter.count === 0
         case 4: return mixesLoading && mixes.length === 0
         }
         return false
@@ -119,8 +157,8 @@ Rectangle {
 
     // ── the content area changing under the tabs and the sort pills ──────
     // A tab switch and a re-sort both replace the content outright, so it fades
-    // in. Every view is modelled on a JS array, which a view can only read as a
-    // model reset, so there is no reorder to animate.
+    // in. A re-sort hands the RowFilter a new array, which is a model reset, so
+    // there is no reorder to animate.
     property real contentIn: 1
     NumberAnimation {
         id: contentEntry
@@ -134,7 +172,6 @@ Rectangle {
     onActiveTabChanged: {
         // Artist and Year are the albums' alone.
         if (sortMode >= sortCountOn(activeTab)) sortMode = 0
-        updateFilteredContent()
         if (activeTab === 4 && mixes.length === 0) loadMixes()
         contentEntry.restart()
     }
@@ -150,8 +187,7 @@ Rectangle {
         if (mode === 0) return items
         function name(x) { return (x.title || x.name || "").toLowerCase() }
         function year(x) { return String(x.releaseDate || "") }
-        var copy = items.slice()
-        copy.sort(function(a, b) {
+        function compare(a, b) {
             switch (mode) {
             case 1: return name(a).localeCompare(name(b))
             case 2: return name(b).localeCompare(name(a))
@@ -163,17 +199,23 @@ Rectangle {
                            || name(a).localeCompare(name(b))
             }
             return 0
-        })
-        return copy
+        }
+        // Ties keep the list's order. The engine's sort is not stable, and the
+        // whole list is sorted before the field narrows it.
+        var rows = []
+        for (var i = 0; i < items.length; ++i) rows.push({ item: items[i], at: i })
+        rows.sort(function (p, q) { return compare(p.item, q.item) || p.at - q.at })
+        return rows.map(function (r) { return r.item })
     }
 
     Connections {
         target: bridge
         function onOfflineChanged() { if (!bridge.offline && root.mixesFailed) root.loadMixes() }
-        function onFavoriteTracksChanged() { root.updateFilteredContent() }
-        function onFavoriteAlbumsChanged() { root.updateFilteredContent() }
-        function onFavoriteArtistsChanged() { root.updateFilteredContent() }
-        function onFavoritePlaylistsChanged() { root.updateFilteredContent() }
+        // Only the list that changed, so a like does not reset the other tabs.
+        function onFavoriteTracksChanged() { root.savedTracks = bridge.searchFavoriteTracks("") }
+        function onFavoriteAlbumsChanged() { root.savedAlbums = bridge.searchFavoriteAlbums("") }
+        function onFavoriteArtistsChanged() { root.savedArtists = bridge.searchFavoriteArtists("") }
+        function onFavoritePlaylistsChanged() { root.savedPlaylists = bridge.searchFavoritePlaylists("") }
     }
 
     // The two grids' Remove rows, and what they say when the server refuses.
@@ -182,11 +224,13 @@ Rectangle {
     readonly property alias favoriteAction: collectionFav
     ContextMenu.FavoriteAction { id: collectionFav }
 
+    // The whole lists, read again when the bridge says one changed. Typing
+    // never comes here: the RowFilters narrow what is already loaded.
     function updateFilteredContent() {
-        filteredTracks    = bridge.searchFavoriteTracks(searchPattern)
-        filteredAlbums    = bridge.searchFavoriteAlbums(searchPattern)
-        filteredArtists   = bridge.searchFavoriteArtists(searchPattern)
-        filteredPlaylists = bridge.searchFavoritePlaylists(searchPattern)
+        savedTracks    = bridge.searchFavoriteTracks("")
+        savedAlbums    = bridge.searchFavoriteAlbums("")
+        savedArtists   = bridge.searchFavoriteArtists("")
+        savedPlaylists = bridge.searchFavoritePlaylists("")
     }
 
     function loadMixes() {
@@ -235,7 +279,8 @@ Rectangle {
                 Layout.alignment: Qt.AlignVCenter
                 model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
                 labelFor: function (index, name) {
-                    var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
+                    var counts = [trackFilter.count, albumFilter.count, artistFilter.count,
+                                  playlistFilter.count, mixFilter.count]
                     var waiting = [root.loading, bridge.albumsLoading, bridge.artistsLoading,
                                    bridge.playlistsLoading, root.mixesLoading || !root.mixesLoaded && !root.mixesFailed]
                     // A list on its way has no count yet; "(0)" would read as empty.
@@ -346,10 +391,7 @@ Rectangle {
                               qsTr("Search mixes…")
                              ][root.activeTab] || qsTr("Search saved items…")
                 Layout.fillWidth: true
-                onTextEdited: (txt) => {
-                    root.searchPattern = txt
-                    root.updateFilteredContent()
-                }
+                onTextEdited: (txt) => { root.searchPattern = txt }
             }
 
             // A pick from what the tab shows now, field filter included.
@@ -406,9 +448,11 @@ Rectangle {
             visible: root.activeTab === 0
             opacity: root.contentIn
             clip: true
-            property var sortedTracks: trackSort.sorted(root.filteredTracks)
             // Bound on every tab, so a tab switch keeps the rows and the scroll.
-            model: sortedTracks
+            model: trackFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             boundsBehavior: Flickable.StopAtBounds
             // The rows' inset: a vertical ListView puts its delegates at x 0
             // whatever x they ask for, so the view's margins inset them.
@@ -436,7 +480,7 @@ Rectangle {
                     // Recorded after the source so it is the newer of the two.
                     if (Number(modelData.albumId) > 0)
                         library.markPlayed("album", "" + modelData.albumId)
-                    player.playTracks(tracksList.sortedTracks, index)
+                    player.playTracks(trackFilter.rows(), index)
                 }
             }
 
@@ -460,8 +504,11 @@ Rectangle {
             visible: root.activeTab === 1
             opacity: root.contentIn
             clip: true
-            property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
-            model: sortedAlbums
+            model: albumFilter
+            reuseItems: true
+            // The model is set once, so nothing else hands the keyboard a card
+            // again when rows come back after none matched.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -535,8 +582,10 @@ Rectangle {
             visible: root.activeTab === 2
             opacity: root.contentIn
             clip: true
-            property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
-            model: sortedArtists
+            model: artistFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -593,11 +642,13 @@ Rectangle {
             objectName: "collectionPlaylistsGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
+            visible: root.activeTab === 3 && playlistFilter.count > 0
             opacity: root.contentIn
             clip: true
-            property var sortedPlaylists: root.sortItems(root.filteredPlaylists, root.sortMode)
-            model: sortedPlaylists
+            model: playlistFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -680,10 +731,13 @@ Rectangle {
             objectName: "collectionMixesGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.activeTab === 4 && root.filteredMixes.length > 0
+            visible: root.activeTab === 4 && mixFilter.count > 0
             opacity: root.contentIn
             clip: true
-            model: root.filteredMixes
+            model: mixFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -890,11 +944,11 @@ Rectangle {
     // The tab's rows as shown: the field's filter and the chosen order.
     function shownItems() {
         switch (root.activeTab) {
-        case 0: return tracksList.sortedTracks
-        case 1: return albumsGrid.sortedAlbums
-        case 2: return artistsGrid.sortedArtists
-        case 3: return playlistsGrid.sortedPlaylists
-        case 4: return root.filteredMixes
+        case 0: return trackFilter.rows()
+        case 1: return albumFilter.rows()
+        case 2: return artistFilter.rows()
+        case 3: return playlistFilter.rows()
+        case 4: return mixFilter.rows()
         }
         return []
     }
