@@ -35,6 +35,7 @@ class Scrobbler;
 class ScrobbleSink;
 
 class QWindow;
+class MediaSession;
 
 class Application : public QObject {
     Q_OBJECT
@@ -246,6 +247,8 @@ private:
     PinStore    *m_pins   = nullptr;
     LibraryIndex *m_library = nullptr;
     MprisManager*m_mpris  = nullptr;
+    // Windows' and macOS's media controls; null on Linux, where MPRIS is.
+    MediaSession *m_mediaSession = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     TrayMenu    *m_trayMenu = nullptr;
     RemoteControl *m_remote = nullptr;

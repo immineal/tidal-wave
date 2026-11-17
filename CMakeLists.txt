@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(tidal-wave VERSION 0.4.3 LANGUAGES CXX)
 
+# The macOS media controls are Objective-C++.
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -58,6 +63,7 @@ set(SOURCES
     src/player/Downloader.cpp
     src/player/GrowingFileServer.cpp
     src/mpris/MprisPlayer.cpp
+    src/mediasession/MediaSession.cpp
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
     src/ui/CoverColor.cpp
@@ -97,6 +103,7 @@ set(HEADERS
     src/player/Downloader.h
     src/player/GrowingFileServer.h
     src/mpris/MprisPlayer.h
+    src/mediasession/MediaSession.h
     src/ui/Application.h
     src/ui/ImageProvider.h
     src/ui/CoverColor.h
@@ -142,6 +149,16 @@ if(UNIX AND NOT APPLE)
         src/cast/CastMediaPrep.h
         src/cast/CastManager.h
     )
+endif()
+
+# The media controls of Windows and macOS. Linux has MPRIS above. The SMTC
+# code is C++/WinRT, whose headers ship with the Windows SDK, so MSVC only.
+if(WIN32 AND MSVC)
+    list(APPEND SOURCES src/mediasession/MediaSessionWindows.cpp)
+elseif(APPLE)
+    list(APPEND SOURCES src/mediasession/MediaSessionMac.mm)
+    set_source_files_properties(src/mediasession/MediaSessionMac.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
 # ── Lyrics aligner ───────────────────────────────────────────────────────────
@@ -328,6 +345,14 @@ endif()
 # ReducedMotion asks NSWorkspace through the Objective-C runtime.
 if(APPLE)
     target_link_libraries(tidalwave_qml PUBLIC objc "-framework AppKit")
+endif()
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(tidalwave_qml PRIVATE TIDALWAVE_PLATFORM_MEDIA_SESSION)
+    target_link_libraries(tidalwave_qml PUBLIC windowsapp)
+elseif(APPLE)
+    target_compile_definitions(tidalwave_qml PRIVATE TIDALWAVE_PLATFORM_MEDIA_SESSION)
+    target_link_libraries(tidalwave_qml PUBLIC "-framework MediaPlayer" "-framework Foundation")
 endif()
 
 # ── Application ──────────────────────────────────────────────────────────────
