@@ -138,7 +138,7 @@ Popup {
     background: Rectangle {
         color: Theme.surface
         border.color: Theme.border
-        radius: Theme.radiusLarge
+        radius: Theme.radiusPopup
     }
 
     // Margins every section shares, so a section is one ColumnLayout and not a
@@ -190,7 +190,7 @@ Popup {
                 Accessible.onPressAction: root.close()
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusMedium
+                    radius: Theme.radiusButton
                     color: "transparent"
                     border.width: settingsClose.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -239,7 +239,7 @@ Popup {
             // ScrollView's rectangular clip does not follow. The top needs
             // none: it is the straight edge under the fixed header.
             y: scroller.topPadding
-            height: scroller.availableHeight - Theme.radiusLarge
+            height: scroller.availableHeight - Theme.radiusPopup
             policy: ScrollBar.AlwaysOn
             padding: Theme.space1
 
@@ -907,7 +907,7 @@ Popup {
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 32
-                            radius: Theme.radiusLarge
+                            radius: Theme.radiusField
                             color: Theme.surface
                             border.width: 1
                             border.color: tokenField.activeFocus ? Theme.accent : Theme.border
@@ -1378,7 +1378,7 @@ Popup {
                             Rectangle {
                                 id: keyCap
                                 objectName: "settingsShortcutKey"
-                                color: Theme.surface; radius: Theme.radiusSmall
+                                color: Theme.surface; radius: Theme.radiusBadge
                                 border.color: Theme.border
                                 implicitWidth: shortcutLabel.implicitWidth + 14
                                 implicitHeight: 22
@@ -1740,7 +1740,7 @@ Popup {
 
         Rectangle {
             anchors.fill: parent
-            radius: Theme.radiusMedium
+            radius: Theme.radiusButton
             color: dtHov.hovered ? Theme.hoverFill : "transparent"
             border.width: dt.activeFocus ? 2 : 0
             border.color: Theme.accent
@@ -1858,7 +1858,7 @@ Popup {
 
         Rectangle {
             anchors.fill: parent
-            radius: Theme.radiusMedium
+            radius: Theme.radiusRow
             color: tile.selected   ? Theme.accentSoft
                  : tileHov.hovered ? Theme.hoverFill
                                    : "transparent"
@@ -1879,7 +1879,7 @@ Popup {
                 objectName: "settingsThemeSwatch"
                 Layout.preferredWidth: 34
                 Layout.preferredHeight: 20
-                radius: Theme.radiusSmall
+                radius: Theme.radiusArt
                 color: tile.swatch.bg
                 border.width: 1
                 border.color: tile.swatch.border
@@ -1890,7 +1890,7 @@ Popup {
                     // to see that it differs while the grounds match.
                     objectName: "settingsThemeSwatchAccent"
                     width: 10; height: 10
-                    radius: Theme.radiusFull
+                    radius: Theme.radiusChip
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.space1
@@ -1898,7 +1898,7 @@ Popup {
                 }
                 Rectangle {
                     width: 10; height: 3
-                    radius: Theme.radiusSmall
+                    radius: Theme.radiusBadge
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.space1
@@ -2031,7 +2031,7 @@ Popup {
             border.color: sel.pressed ? Theme.accent : Theme.border
             border.width: 1
             color: Theme.surfaceHigh
-            radius: Theme.radiusMedium
+            radius: Theme.radiusButton
         }
 
         popup: Popup {
@@ -2043,7 +2043,7 @@ Popup {
                 border.color: Theme.border
                 border.width: 1
                 color: Theme.surfaceHigh
-                radius: Theme.radiusLarge
+                radius: Theme.radiusPopup
             }
             contentItem: ListView {
                 clip: true

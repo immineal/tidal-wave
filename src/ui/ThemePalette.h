@@ -48,7 +48,7 @@ bool migrated(const QString &stored, QString *theme, bool *oledBlack);
 QVariantMap palette(const QString &name, bool oledBlack = false,
                     bool tintedGreys = false);
 
-// The radius scale, keyed small/medium/large/full.
+// The radius scale, keyed chip/field/row/button/art/card/popup/badge/mark.
 QVariantMap radii();
 
 } // namespace theme

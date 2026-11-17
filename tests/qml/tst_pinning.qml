@@ -433,7 +433,7 @@ TestCase {
         // Dressed like the app's menus and notices, not the style's pale tip.
         compare(String(tip.background.color), String(Theme.surfaceHigh), "the tip's ground")
         compare(String(tip.background.border.color), String(Theme.border), "the tip's border")
-        compare(tip.background.radius, Theme.radiusMedium, "the tip's corners")
+        compare(tip.background.radius, Theme.radiusPopup, "the tip's corners")
         compare(String(tip.contentItem.color), String(Theme.textPrimary), "the tip's text")
         mouseMove(host.contentItem, host.width - 8, host.height - 8)
     }

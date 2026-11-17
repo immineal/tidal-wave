@@ -15,7 +15,7 @@ Rectangle {
     visible: quality.length > 0
     implicitWidth: label.implicitWidth + 2 * Theme.space2
     implicitHeight: label.implicitHeight + 2 * Theme.space1
-    radius: Theme.radiusSmall
+    radius: Theme.radiusBadge
     color: quality === "HI_RES_LOSSLESS" ? Theme.accentWash
          : quality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
 

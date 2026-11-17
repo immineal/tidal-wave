@@ -654,7 +654,7 @@ Item {
                         Accessible.onPressAction: root.clearQueue()
                         Rectangle {
                             anchors.fill: parent
-                            radius: Theme.radiusMedium
+                            radius: Theme.radiusButton
                             color: clearHov.hovered ? Theme.hoverFill : "transparent"
                             border.width: clearBtn.activeFocus ? 2 : 0
                             border.color: Theme.accent
@@ -687,7 +687,7 @@ Item {
                         Accessible.onPressAction: root.dismissed()
                         Rectangle {
                             anchors.fill: parent
-                            radius: Theme.radiusMedium
+                            radius: Theme.radiusButton
                             color: closeHov.hovered ? Theme.hoverFill : "transparent"
                             border.width: closeBtn.activeFocus ? 2 : 0
                             border.color: Theme.accent
@@ -803,7 +803,7 @@ Item {
 
                     width: jumpRow.implicitWidth + 24
                     height: 28
-                    radius: Theme.radiusFull
+                    radius: Theme.radiusChip
                     color: jumpHov.hovered ? Theme.accentDim : Theme.accent
 
                     RowLayout {
@@ -981,7 +981,7 @@ Item {
             anchors.topMargin: Theme.spaceHalf
             anchors.bottomMargin: Theme.spaceHalf
             visible: !entry.isHeader
-            radius: Theme.radiusMedium
+            radius: Theme.radiusRow
             // A dragged row is lifted: opaque, so the rows it passes stay under it.
             color: entry.dragging ? Theme.surfaceHigh
                  : entry.isCurrent ? Theme.accentSoft

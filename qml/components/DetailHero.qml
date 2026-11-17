@@ -117,7 +117,7 @@ Rectangle {
             Layout.preferredWidth: hero.artSize
             Layout.preferredHeight: hero.artSize
             Layout.alignment: Qt.AlignVCenter
-            radius: Theme.radiusSmall
+            radius: Theme.radiusArt
             color: Theme.accentWash
             clip: true
             Image {

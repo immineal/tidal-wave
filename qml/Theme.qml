@@ -78,12 +78,18 @@ QtObject {
     readonly property int fontMicro:   11   // overlines, captions, tiny print
 
     // ── corner radii ─────────────────────────────────────────────────────
-    // Four steps: the rounder something is, the more it reads as a control
-    // floating above the surface.
-    readonly property int radiusSmall:  r.small    // covers, thumbnails, tags
-    readonly property int radiusMedium: r.medium   // rows, buttons, menu entries
-    readonly property int radiusLarge:  r.large    // cards, fields, dialogs, menus
-    readonly property int radiusFull:   r.full     // pills, chips, toggles
+    // One radius per role: pick by what a thing is, not by the size you want.
+    // The rounder something is, the more it reads as a control floating above
+    // the surface. Chosen values (ThemePalette.cpp), do not change without asking.
+    readonly property int radiusChip:   r.chip     // pills, chips, toggles
+    readonly property int radiusField:  r.field    // search and text fields
+    readonly property int radiusRow:    r.row      // nav rows, list rows, hover fills
+    readonly property int radiusButton: r.button   // buttons, focus rings on links
+    readonly property int radiusArt:    r.art      // covers, thumbnails
+    readonly property int radiusCard:   r.card     // cards, the art box of a card
+    readonly property int radiusPopup:  r.popup    // dialogs, panels, menus, tips, toasts
+    readonly property int radiusBadge:  r.badge    // the quality tag and friends
+    readonly property int radiusMark:   r.mark     // the app icon tile
 
     // ── spacing ──────────────────────────────────────────────────────────
     // A 4 px scale, named by its multiple of 4, plus the half step for text

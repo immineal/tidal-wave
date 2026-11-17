@@ -986,7 +986,7 @@ TestCase {
         // rounded container.
         var field = findByName(finder, "finderField")
         verify(field, "the finder has no input field")
-        compare(finder.radius, Theme.radiusLarge, "the field wants the generous rounding")
+        compare(finder.radius, Theme.radiusField, "the field wants the generous rounding")
         for (i = 0; i < chips.length; ++i) {
             var topLeft = chips[i].mapToItem(finder, 0, 0)
             verify(topLeft.x >= -0.5 && topLeft.x + chips[i].width <= finder.width + 0.5,

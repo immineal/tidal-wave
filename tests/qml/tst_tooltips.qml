@@ -100,7 +100,7 @@ TestCase {
         verify(bg && label, what + ": the tip has no background or no label")
         compare(String(bg.color), String(Theme.surfaceHigh), what + ": the tip's ground is the style's")
         compare(String(bg.border.color), String(Theme.border), what + ": the tip's border")
-        compare(bg.radius, Theme.radiusMedium, what + ": the tip's corners")
+        compare(bg.radius, Theme.radiusPopup, what + ": the tip's corners")
         compare(String(label.color), String(Theme.textPrimary), what + ": the tip's text colour")
         compare(label.font.pixelSize, Theme.fontMeta, what + ": the tip's text size")
         compare(tip.leftPadding, Theme.space2, what + ": the tip's padding")

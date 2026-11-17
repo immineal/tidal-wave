@@ -690,7 +690,7 @@ Rectangle {
                      ? Popup.NoAutoClose
                      : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
         padding: Theme.space5
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
         // Mirrors NewPlaylistDialog: the field goes read-only and both buttons
         // go quiet while the request is out.
@@ -710,7 +710,7 @@ Rectangle {
 
             Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
-                width: parent.width; height: 36; radius: Theme.radiusLarge
+                width: parent.width; height: 36; radius: Theme.radiusField
                 // The field's own activeFocus: a FocusScope that is a child of
                 // the TextInput never gains activeFocus with it.
                 color: Theme.surface
@@ -737,7 +737,7 @@ Rectangle {
 
             Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
-                width: parent.width; height: 72; radius: Theme.radiusLarge
+                width: parent.width; height: 72; radius: Theme.radiusField
                 // See the title field for why this is not a FocusScope.
                 color: Theme.surface
                 border.color: editDescField.activeFocus ? Theme.accent : Theme.border

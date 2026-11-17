@@ -30,8 +30,8 @@ struct Exemption {
 };
 
 const Exemption kExempt[] = {
-    {"components/AppMark.qml", "markCorner",
-     "the app icon's corner is part of the drawn mark, at its 64-unit size"},
+    {"components/AppMark.qml", "Theme.radiusMark",
+     "the mark's corner is radiusMark at the icon's 64-unit size, scaled with the tile"},
     {"components/VectorIcon.qml", "_fat.indexOf",
      "dot glyphs draw their dots with the stroke, scaled from the one width"},
     {"components/VectorIcon.qml", "modelData.ms",
@@ -181,7 +181,32 @@ private slots:
                 if (hasLiteral(v, true, false)) return true;
             return false;
         });
-        QVERIFY2(hits.isEmpty(), describe(hits, "radiusSmall … radiusFull").constData());
+        QVERIFY2(hits.isEmpty(), describe(hits, "radiusChip … radiusMark").constData());
+    }
+
+    // A corner is named by its role, so a menu and a dialog cannot drift
+    // apart. Any other Theme.radius name (a size scale, say) fails here.
+    void radiiNameTheirRole() {
+        static const QRegularExpression use(QStringLiteral("\\bTheme\\.(radius\\w*)"));
+        static const QStringList roles = {
+            QStringLiteral("radiusChip"), QStringLiteral("radiusField"), QStringLiteral("radiusRow"),
+            QStringLiteral("radiusButton"), QStringLiteral("radiusArt"), QStringLiteral("radiusCard"),
+            QStringLiteral("radiusPopup"), QStringLiteral("radiusBadge"), QStringLiteral("radiusMark"),
+        };
+        int uses = 0;
+        const auto hits = scanAll([&](const QString &line) {
+            bool bad = false;
+            auto it = use.globalMatch(codeOf(line));
+            while (it.hasNext()) {
+                ++uses;
+                if (!roles.contains(it.next().captured(1))) bad = true;
+            }
+            return bad;
+        });
+        QVERIFY2(uses > 0, "no Theme.radius token was found under qml/");
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("use a radius that is not one of the nine roles "
+                                             "in qml/Theme.qml")).constData());
     }
 
     void spacingIsOnTheScale() {

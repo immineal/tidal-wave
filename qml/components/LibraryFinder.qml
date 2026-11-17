@@ -32,7 +32,7 @@ Rectangle {
 
     implicitHeight: fieldHeight + 1 + chipRowHeight
     implicitWidth: 200
-    radius: Theme.radiusLarge
+    radius: Theme.radiusField
     color: Theme.surfaceHigh
     border.width: 1
     border.color: focused ? Theme.accent : Theme.border
@@ -144,7 +144,7 @@ Rectangle {
                 Accessible.onPressAction: input.text = ""
                 Rectangle {
                     anchors.centerIn: parent; width: 22; height: 22
-                    radius: Theme.radiusMedium; color: "transparent"
+                    radius: Theme.radiusButton; color: "transparent"
                     border.width: clearBtn.activeFocus ? 2 : 0
                     border.color: Theme.accent
                 }
@@ -211,7 +211,7 @@ Rectangle {
                             objectName: "finderChipFill"
                             anchors.centerIn: parent
                             width: root.chipWidth - 6; height: 22
-                            radius: Theme.radiusFull
+                            radius: Theme.radiusChip
                             color: chip.selected ? Theme.accent
                                                  : chipHov.hovered ? Theme.hoverFill : "transparent"
                         }
@@ -219,7 +219,7 @@ Rectangle {
                             objectName: "finderChipRing"
                             anchors.centerIn: parent
                             width: root.chipWidth; height: 28
-                            radius: Theme.radiusFull
+                            radius: Theme.radiusChip
                             color: "transparent"
                             border.width: chip.activeFocus ? 2 : 0
                             border.color: Theme.accent

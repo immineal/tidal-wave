@@ -338,7 +338,7 @@ Rectangle {
                 Layout.leftMargin: Theme.space2
                 implicitWidth: sleepRow.implicitWidth + 2 * Theme.space2
                 implicitHeight: 24
-                radius: Theme.radiusFull
+                radius: Theme.radiusChip
                 color: sleepHov.hovered ? Qt.tint(Theme.accentTint, Theme.hoverFill) : Theme.accentTint
                 border.width: activeFocus ? 2 : 0
                 border.color: Theme.accent
@@ -547,7 +547,7 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge
+            color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup
         }
 
         contentItem: VolumeSlider {
@@ -713,7 +713,7 @@ Rectangle {
             height: menuHeight
             y: -menuHeight - 10
             background: Rectangle {
-                color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge
+                color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup
             }
             contentItem: ColumnLayout {
                 id: menuContent
@@ -789,7 +789,7 @@ Rectangle {
         // As wide as the whole name: glyph, label, tick and the gaps between.
         implicitWidth: Math.max(240, orowLabel.implicitWidth + 16 + 14 + 4 * Theme.space2)
         implicitHeight: 36
-        radius: Theme.radiusMedium
+        radius: Theme.radiusRow
         color: orowHov.hovered ? Theme.hoverFill : "transparent"
         border.width: orow.activeFocus ? 2 : 0
         border.color: Theme.accent

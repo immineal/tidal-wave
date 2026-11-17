@@ -331,7 +331,7 @@ Rectangle {
                         required property string modelData
                         Layout.fillWidth: true
                         height: 34
-                        radius: Theme.radiusFull
+                        radius: Theme.radiusChip
                         color: rowMA.containsMouse ? Theme.hoverFill : "transparent"
                         Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
 
@@ -374,7 +374,7 @@ Rectangle {
                                 Accessible.onPressAction: bridge.removeRecentSearch(recentRow.modelData)
                                 Rectangle {
                                     anchors.fill: parent; anchors.margins: -Theme.space1
-                                    radius: Theme.radiusMedium; color: "transparent"
+                                    radius: Theme.radiusButton; color: "transparent"
                                     border.width: dropRecent.activeFocus ? 2 : 0
                                     border.color: Theme.accent
                                 }
@@ -513,7 +513,7 @@ Rectangle {
                         x: Theme.space6
                         width: Math.min(520, parent.width - 2 * Theme.space6)
                         height: topHitRow.implicitHeight + 2 * Theme.space4
-                        radius: Theme.radiusLarge
+                        radius: Theme.radiusCard
                         color: topHitHov.hovered || activeFocus ? Theme.hoverFill : Theme.surface
                         border.width: activeFocus ? 2 : 0
                         border.color: Theme.accent
@@ -543,7 +543,7 @@ Rectangle {
                                 Layout.preferredWidth: 96
                                 Layout.preferredHeight: 96
                                 // An artist is a face, round as on its card.
-                                radius: topHitBlock.kind === "artist" ? width / 2 : Theme.radiusSmall
+                                radius: topHitBlock.kind === "artist" ? width / 2 : Theme.radiusArt
                                 source: topHitBlock.hit ? (topHitBlock.hit.coverUrl || "") : ""
                                 glyph: topHitBlock.kind === "artist" ? "artist"
                                      : topHitBlock.kind === "playlist" ? "playlist"
