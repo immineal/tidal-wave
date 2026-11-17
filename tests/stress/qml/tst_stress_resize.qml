@@ -55,8 +55,8 @@ TestCase {
                                         albums: S.albums(20), artists: S.artists(20),
                                         playlists: S.playlists(20) }); break
         case 2: S.fill(page, { activeTab: 0 })
-                missed = S.fill(page, { filteredTracks: S.tracks(40), filteredAlbums: S.albums(30),
-                                        filteredArtists: S.artists(30), filteredPlaylists: S.playlists(30),
+                missed = S.fill(page, { savedTracks: S.tracks(40), savedAlbums: S.albums(30),
+                                        savedArtists: S.artists(30), savedPlaylists: S.playlists(30),
                                         mixes: S.mixes(12) }); break
         case 3: S.fill(page, { albumId: 42 })
                 missed = S.fill(page, { albumData: { title: "Ein langer Albumtitel (Deluxe Edition)",

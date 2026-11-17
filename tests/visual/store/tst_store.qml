@@ -184,10 +184,10 @@ TestCase {
     function test_collection() {
         var win = open(65000)
         win.navigate("collection", { activeTab: 1 })
-        var page = findWith(win.contentItem, "filteredAlbums")
+        var page = findWith(win.contentItem, "savedAlbums")
         verify(page, "no collection page in the window")
         page.mixes = D.mixes()
-        compare(page.filteredAlbums.length, D.albums().length)
+        compare(page.savedAlbums.length, D.albums().length)
         var grid = findNamed(page, "collectionAlbumsGrid")
         verify(grid, "no album grid on the collection page")
         shoot(win, fileName("store_collection"), grid)
