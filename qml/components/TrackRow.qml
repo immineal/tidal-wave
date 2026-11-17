@@ -11,7 +11,7 @@ Item {
     // What the row needs before anything in it has to give way: the fixed
     // columns and gaps plus 120 for the title and artist line. Every list sets
     // an explicit width, so this is the floor.
-    implicitWidth: 368
+    implicitWidth: 404
 
     // The five text inputs are `var`, not `string`: pages feed them straight
     // off an API map, and a missing or wrongly typed key against a string
@@ -165,6 +165,11 @@ Item {
         function onFavoriteTracksChanged() {
             root.isLiked = root.trackId > 0 ? bridge.isTrackFavorite(root.trackId) : false
         }
+    }
+
+    // The row's heart and the menu's Like entry. isLiked follows the bridge.
+    function toggleLike() {
+        if (root.trackId > 0) root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
     }
 
     // Like/Unlike in the row menu, and what it says when the server refuses.
@@ -502,6 +507,43 @@ Item {
                 }
             }
 
+            // The heart: filled in the accent on a liked track at rest, the
+            // outline on hover to like one. A click is the like, not a play.
+            Item {
+                id: likeButton
+                objectName: "trackLikeButton"
+                readonly property bool liked: root.isLiked
+                readonly property bool shown: liked || hov.hovered
+                opacity: shown ? 1 : 0
+                Layout.preferredWidth: 24
+                Layout.fillHeight: true
+                Layout.alignment: Qt.AlignVCenter
+                Accessible.role: Accessible.Button
+                Accessible.name: liked ? qsTr("Unlike", "verb, remove from favourites")
+                                       : qsTr("Like", "verb, add to favourites")
+                Accessible.onPressAction: root.toggleLike()
+
+                VectorIcon {
+                    anchors.centerIn: parent
+                    name: likeButton.liked ? "heart-filled" : "heart"
+                    color: likeButton.liked ? Theme.accentText
+                         : likeHov.hovered ? Theme.textPrimary : Theme.textSec
+                    width: 16; height: 16
+                }
+                // A plain click area, as the download and menu buttons have.
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -Theme.space1
+                    enabled: likeButton.shown && root.trackId > 0
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleLike()
+                }
+                HoverHandler { id: likeHov }
+                ToolTip.visible: likeHov.hovered && likeButton.shown
+                ToolTip.text: likeButton.Accessible.name
+                ToolTip.delay: Theme.tooltipDelay
+            }
+
             Text {
                 objectName: "trackDuration"
                 text: root.durationText
@@ -806,7 +848,7 @@ Item {
                 // Over the row, not the menu entry: the menu has closed by the
                 // time a refusal comes back, and a tool tip anchored to a
                 // destroyed popup item has nowhere to draw.
-                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
+                onTriggered: root.toggleLike()
             }
             ContextMenu.Entry {
                 text: qsTr("Add to playlist")
