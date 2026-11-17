@@ -208,7 +208,7 @@ Item {
         switch (kind) {
         // Rows behind the cursor: played, or jumped over to get here.
         case "playedHeader":  return qsTr("Earlier in queue")
-        case "nowHeader":     return qsTr("Now Playing")
+        case "nowHeader":     return qsTr("Now playing")
         case "manualHeader":  return qsTr("Next in queue")
         case "contextHeader": return contextHeading
         }
