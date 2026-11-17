@@ -319,6 +319,7 @@ void TidalBridge::fetchArtistDetail(qlonglong artistId, QJSValue cb) {
         m["id"]      = d.id;
         m["name"]    = d.name;
         m["bio"]     = d.bio;
+        m["artistMixId"] = d.artistMixId;
         if (!d.picture.isEmpty()) {
             QString u = d.picture; u.replace('-', '/');
             m["coverUrl"]    = QStringLiteral("https://resources.tidal.com/images/%1/480x480.jpg").arg(u);

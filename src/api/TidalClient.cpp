@@ -523,6 +523,7 @@ void TidalClient::fetchArtistDetail(qint64 artistId,
             d.id      = root["id"].toVariant().toLongLong();
             d.name    = root["name"].toString();
             d.picture = root["picture"].toString();
+            d.artistMixId = root["mixes"].toObject()[MixTypes::ArtistMix].toString();
             // Bio comes from a separate endpoint
             m_api->get(QStringLiteral("artists/%1/bio").arg(artistId), {},
                 [d, cb](QJsonObject bio, QString) mutable {

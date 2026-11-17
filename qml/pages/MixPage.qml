@@ -34,9 +34,10 @@ Rectangle {
     // this machine: the pill is this, the right-click menu is PinStore.
     property bool isSaved: false
 
-    // The heading over the title: "Radio" for a track's radio station, "Mix"
-    // for everything else.
+    // The heading over the title: "Radio" for a track's or an artist's radio
+    // station, "Mix" for everything else.
     readonly property bool isTrackRadio: root.mixType === "TRACK_MIX"
+                                         || root.mixType === "ARTIST_MIX"
 
     function updateSavedState() {
         isSaved = mixId.length > 0 ? bridge.isMixFavorite(mixId) : false
