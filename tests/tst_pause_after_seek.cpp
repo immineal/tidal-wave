@@ -515,6 +515,7 @@ private slots:
         QFETCH(int, rows);
         QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle(streamFirst)) QSKIP(why);
         Launch l;
         QVERIFY(sounding(l, rows, streamFirst));
 
@@ -554,6 +555,7 @@ private slots:
     {
         QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle(streamFirst)) QSKIP(why);
         Launch l;
         QVERIFY(sounding(l, 1, streamFirst));
 
@@ -613,6 +615,14 @@ private:
         if (QMediaDevices::audioOutputs().isEmpty())
             return "Qt 6.4 needs an audio device to play a track at its own pace";
 #endif
+        return nullptr;
+    }
+
+    // Rows that stream the track before its file lands need the join streamed.
+    static const char *streamObstacle(bool streamFirst)
+    {
+        if (streamFirst && !Player::kStreamsJoins)
+            return "below Qt 6.6 the Player does not stream a join (Player::kStreamsJoins)";
         return nullptr;
     }
 
