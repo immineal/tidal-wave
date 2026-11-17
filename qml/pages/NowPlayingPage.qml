@@ -1536,6 +1536,7 @@ Rectangle {
                                 Text {
                                     id: sleepLabel
                                     objectName: "nowPlayingSleepTimerLabel"
+                                    Component.onCompleted: Theme.tabularFigures(sleepLabel)
                                     text: root.sleepTimerActive ?
                                           (root.sleepStopAtEndOfTrack ? qsTr("End of track") : root.formatSleepTime(root.sleepTimeLeft)) :
                                           qsTr("Sleep timer")
@@ -2220,6 +2221,7 @@ Rectangle {
                 id: volPctText
                 objectName: vol.visible ? "nowPlayingVolumePercent"
                                         : "nowPlayingVolumePercentOffstage"
+                Component.onCompleted: Theme.tabularFigures(volPctText)
                 // Fixed, so a label running from "0%" to "100%" cannot move the
                 // buttons or the speaker. Layout.preferredWidth: a layout
                 // overwrites a plain width with the Text's implicit one.

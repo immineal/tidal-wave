@@ -140,6 +140,12 @@ QtObject {
         return Math.max(Math.min(menuMinWidth, maxW), Math.min(maxW, w))
     }
 
+    // Figures of one width, so a counting clock does not jiggle. font.features
+    // is Qt 6.6; on older Qt the proportional figures stay.
+    function tabularFigures(text) {
+        if (text && ("features" in text.font)) text.font.features = { "tnum": 1 }
+    }
+
     // ── motion ───────────────────────────────────────────────────────────
     // One switch for the whole app. `typeof` because this singleton is
     // reachable from hosts that install no `app` context property, and an

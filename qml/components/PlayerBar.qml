@@ -363,6 +363,7 @@ Rectangle {
                     Text {
                         id: sleepLabel
                         objectName: "playerBarSleepLabel"
+                        Component.onCompleted: Theme.tabularFigures(sleepLabel)
                         anchors.verticalCenter: parent.verticalCenter
                         text: !sleepIndicator.active ? ""
                               : sleepIndicator.host.sleepStopAtEndOfTrack === true
@@ -411,6 +412,7 @@ Rectangle {
                 Text {
                     id: volPct
                     objectName: "playerBarVolumePercent"
+                    Component.onCompleted: Theme.tabularFigures(volPct)
                     Layout.preferredWidth: root.volumePercentWidth
                     Layout.alignment: Qt.AlignHCenter
                     // Up over the empty bottom of the speaker's tap target, and
