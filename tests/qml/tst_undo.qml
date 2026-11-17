@@ -273,8 +273,13 @@ TestCase {
         compare(bridge.addWritesForTest().join(","), "100,100,50",
                 "the add did not go out in writes of a hundred")
         compare(bridge.serverPlaylistForTest("pl-1"), ids, "the tracks landed out of order")
+        // The undo reads the playlist once per track. Answered in place, 250
+        // reads nest 250 deep, past Qt 6.4's script stack; the app's answers
+        // come from the network, each on a fresh stack, and so do these.
+        bridge.answerReadsLaterForTest(true)
         Edits.undoLast()
-        settleEdits()
+        verify(Edits.undoing, "the undo did not start")
+        tryVerify(function () { return !Edits.undoing }, 10000, "the undo never finished")
         compare(bridge.serverPlaylistForTest("pl-1"), [], "the undo left some behind")
     }
 
