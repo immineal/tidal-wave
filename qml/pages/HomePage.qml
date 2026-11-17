@@ -334,29 +334,43 @@ Rectangle {
             // empty hides with it.
             Item { Layout.preferredHeight: Theme.space6 }
 
-            Text {
-                objectName: "homeTitle"
-                Layout.leftMargin: Theme.space6
-                text: root.greeting
-                color: Theme.textPrimary
-                font.pixelSize: Theme.fontDisplay
-                font.bold: true
-            }
-
-            // Tidal's feeds, as its apps offer them over Home.
-            Item { Layout.preferredHeight: Theme.space4; visible: homeTabs.visible }
-
-            TabStrip {
-                id: homeTabs
-                namePrefix: "home"
-                visible: root.feedTabs.length > 1
-                animate: visible
+            // The greeting, and Tidal's feeds as tabs at the end of its line,
+            // on its baseline. Where the line cannot hold both, under it.
+            Item {
+                id: homeHeader
+                objectName: "homeHeader"
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.space6
                 Layout.rightMargin: Theme.space6
-                model: root.feedTabs.map(function (t) { return root.tabTitle(t.name, root.feedLanguage) })
-                currentIndex: Math.max(0, root.feedTabs.findIndex(function (t) { return t.feed === root.feedTab }))
-                onActivated: (index) => root.showFeedTab(index)
+                Layout.preferredHeight: homeTabs.visible
+                    ? Math.max(greetingText.height, homeTabs.y + homeTabs.height) : greetingText.height
+
+                readonly property bool tabsBelow: homeTabs.visible
+                    && greetingText.implicitWidth + Theme.space6 + homeTabs.lineWidth > width
+
+                Text {
+                    id: greetingText
+                    objectName: "homeTitle"
+                    text: root.greeting
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontDisplay
+                    font.bold: true
+                }
+
+                TabStrip {
+                    id: homeTabs
+                    namePrefix: "home"
+                    visible: root.feedTabs.length > 1
+                    animate: visible
+                    x: homeHeader.tabsBelow ? 0 : homeHeader.width - width
+                    y: homeHeader.tabsBelow ? greetingText.height + Theme.space4
+                                            : greetingText.baselineOffset - baselineOffset
+                    // Unset on the line, so the chips never wrap there.
+                    width: homeHeader.tabsBelow ? homeHeader.width : undefined
+                    model: root.feedTabs.map(function (t) { return root.tabTitle(t.name, root.feedLanguage) })
+                    currentIndex: Math.max(0, root.feedTabs.findIndex(function (t) { return t.feed === root.feedTab }))
+                    onActivated: (index) => root.showFeedTab(index)
+                }
             }
 
             // Under it, the track in the player, to pick up where it was left.
