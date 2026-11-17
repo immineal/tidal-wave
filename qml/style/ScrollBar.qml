@@ -34,7 +34,8 @@ T.ScrollBar {
         transitions: Transition {
             from: "active"
             SequentialAnimation {
-                PauseAnimation { duration: Theme.dur(Theme.motionSlow) }
+                // The hold is not motion: reduced motion only drops the fade.
+                PauseAnimation { duration: Theme.motionSlow }
                 NumberAnimation {
                     target: control.contentItem; property: "opacity"; to: 0.0
                     duration: Theme.dur(Theme.motionMedium)
