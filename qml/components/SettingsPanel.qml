@@ -1275,7 +1275,8 @@ Popup {
                     columns: 2
                     columnSpacing: Theme.space3
                     rowSpacing: Theme.space2
-                    readonly property var rows: [
+                    // Not "rows": GridLayout's own, FINAL on Qt 6.5 and 6.6.
+                    readonly property var shortcutRows: [
                         { ids: ["playPause"],                       d: qsTr("Play / pause") },
                         { ids: ["next", "previous"],                d: qsTr("Next / previous track") },
                         { ids: ["seekForward", "seekBack"],         d: qsTr("Seek forward / back 10s") },
@@ -1296,7 +1297,7 @@ Popup {
                     ]
 
                     Repeater {
-                        model: shortcutTable.rows
+                        model: shortcutTable.shortcutRows
                         delegate: Item {
                             required property var modelData
                             required property int index
@@ -1325,7 +1326,7 @@ Popup {
                         }
                     }
                     Repeater {
-                        model: shortcutTable.rows
+                        model: shortcutTable.shortcutRows
                         delegate: Text {
                             required property var modelData
                             required property int index
