@@ -705,7 +705,7 @@ TestCase {
                         && c.width > 0 && c.height > 0) {
                     var at = c.mapToItem(ind, 0, 0)
                     out.push({ x: at.x, top: at.y, bottom: at.y + c.height,
-                               w: c.width, h: c.height })
+                               w: c.width, h: c.height, aa: c.antialiasing })
                 } else {
                     walk(c)
                 }
@@ -844,6 +844,63 @@ TestCase {
             compare(gap, gap0,
                     row.tag + ": gap " + (k - 1) + " is " + gap
                     + " against the first gap at " + gap0)
+        }
+    }
+
+    // The playing mark at the sizes it is drawn at (queue 16x14, track rows
+    // 14x14) on 1x, 1.5x and 2x screens: every bar edge on a whole device
+    // pixel, one bar width and one gap, parked and while moving.
+    function test_the_playing_mark_sits_on_the_pixel_grid_data() {
+        var out = []
+        var sizes = [{ w: 16, h: 14, at: "queue" }, { w: 14, h: 14, at: "track row" }]
+        var dprs = [1, 1.25, 1.5, 2]
+        for (var s = 0; s < sizes.length; ++s)
+            for (var d = 0; d < dprs.length; ++d)
+                for (var m = 0; m < 2; ++m)
+                    out.push({ tag: sizes[s].at + " @" + dprs[d] + "x" + (m ? " moving" : " parked"),
+                               w: sizes[s].w, h: sizes[s].h, dpr: dprs[d], moving: m === 1 })
+        return out
+    }
+
+    function test_the_playing_mark_sits_on_the_pixel_grid(row) {
+        app.setReducedMotionForTest(!row.moving)
+        var holder = createTemporaryObject(holderC, testCase, { width: 200, height: 200 })
+        var probe = createTemporaryObject(playingProbeC, holder, {})
+        verify(probe, "the probe was not created")
+        var ind = probe.indicator
+        ind.dpr = row.dpr
+        ind.width = row.w
+        ind.height = row.h
+        settle(holder)
+
+        // Moving: several samples, so mid-animation heights are checked too.
+        for (var sample = 0; sample < (row.moving ? 6 : 1); ++sample) {
+            if (sample > 0) wait(37)
+            var bars = barsOf(ind)
+            compare(bars.length, 5, row.tag + ": the playing mark is five bars")
+            function whole(v, what) {
+                var dev = v * row.dpr
+                verify(Math.abs(dev - Math.round(dev)) < 0.001,
+                       row.tag + ": " + what + " is at " + dev.toFixed(3)
+                       + " device px, not a whole pixel")
+            }
+            var gap0 = bars[1].x - (bars[0].x + bars[0].w)
+            verify(gap0 * row.dpr >= 0.999, row.tag + ": the bars touch")
+            for (var i = 0; i < bars.length; ++i) {
+                // A feathered edge is a blurred one, even on the grid.
+                verify(!bars[i].aa, row.tag + ": bar " + i + " is antialiased")
+                whole(bars[i].x, "bar " + i + "'s left edge")
+                whole(bars[i].w, "bar " + i + "'s width")
+                whole(bars[i].top, "bar " + i + "'s top")
+                whole(bars[i].bottom, "bar " + i + "'s bottom")
+                fuzzyCompare(bars[i].w, bars[0].w, 0.001,
+                             row.tag + ": bar " + i + " is not as wide as bar 0")
+                if (i > 0)
+                    fuzzyCompare(bars[i].x - (bars[i - 1].x + bars[i - 1].w), gap0, 0.001,
+                                 row.tag + ": gap " + (i - 1) + " differs from the first")
+                verify(bars[i].x >= -0.001 && bars[i].x + bars[i].w <= ind.width + 0.001,
+                       row.tag + ": bar " + i + " reaches outside the box")
+            }
         }
     }
 
