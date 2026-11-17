@@ -331,10 +331,10 @@ Item {
     // every track row is rowHeight tall and every heading headerHeight.
     function flatY(i) {
         var heads = [playedHeaderAt, nowHeaderAt, manualHeaderAt, contextHeaderAt]
-        var a = Math.min(i, dragFlat), b = Math.max(i, dragFlat), short = 0
+        var a = Math.min(i, dragFlat), b = Math.max(i, dragFlat), between = 0
         for (var k = 0; k < heads.length; ++k)
-            if (heads[k] >= a && heads[k] < b) short++
-        var d = (b - a) * rowHeight - short * (rowHeight - headerHeight)
+            if (heads[k] >= a && heads[k] < b) between++
+        var d = (b - a) * rowHeight - between * (rowHeight - headerHeight)
         return dragRowY + (i >= dragFlat ? d : -d)
     }
 
