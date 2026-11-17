@@ -184,4 +184,44 @@ TestCase {
         compare(findByType(s.page, "DetailHero").kind, "Radio",
                 "an artist's station is headed as a mix")
     }
+
+    // ── Copy link, from the hero's menu ─────────────────────────────────
+
+    function test_the_hero_menu_copies_the_link_data() {
+        return [
+            { tag: "album",    c: albumC,    props: { albumId: 7788 },
+              link: "https://tidal.com/album/7788" },
+            { tag: "playlist", c: playlistC, props: { playlistUuid: "0c1d2e3f-aaaa-bbbb-cccc-000000000001",
+                                                      playlistTitle: "Liste" },
+              link: "https://tidal.com/playlist/0c1d2e3f-aaaa-bbbb-cccc-000000000001" },
+            { tag: "mix",      c: mixC,      props: { mixId: "0123abcd", title: "Mix" },
+              link: "https://tidal.com/mix/0123abcd" },
+            { tag: "artist",   c: artistC,   props: { artistId: 11 },
+              link: "https://tidal.com/artist/11" },
+        ]
+    }
+
+    function test_the_hero_menu_copies_the_link(row) {
+        var s = page(row.c, row.props)
+        frame(s.host.contentItem)
+        var more = findByName(s.page, "heroMoreButton")
+        verify(more && more.visible, row.tag + "'s hero has no menu button")
+        mouseClick(more)
+        var menu = s.page.pinMenu
+        tryVerify(function () { return menu.opened }, 2000, "the menu button opened no menu")
+        verify(menu.copyLinkItem.visible, row.tag + "'s menu has no Copy link")
+        compare(menu.copyLinkItem.text, "Copy link")
+        menu.copyLinkItem.triggered()
+        compare(bridge.lastClipboardTextForTest(), row.link,
+                row.tag + " copied the wrong link")
+        menu.close()
+    }
+
+    // The radio list has no identity on Tidal, so nothing to link to.
+    function test_a_track_radio_list_has_no_menu_button() {
+        var s = page(radioC, { radioTitle: "Radio" })
+        s.page.tracks = tracks(3)
+        frame(s.host.contentItem)
+        verify(!findByName(s.page, "heroMoreButton"), "the radio list offers a menu with nothing in it")
+    }
 }
