@@ -2449,6 +2449,29 @@ public:
     Q_INVOKABLE bool isDownloading(qlonglong id) const { return m_active.contains(id); }
     Q_INVOKABLE void cancelDownload(qlonglong id) { m_active.remove(id); }
 
+    // Albums and playlists: the state is whatever a test set, and the calls
+    // are recorded as "download kind:id n" and "cancel kind:id".
+    Q_INVOKABLE void downloadCollection(const QString &kind, const QString &id,
+                                        const QString &title, const QVariantList &tracks) {
+        m_collectionCalls << QStringLiteral("download %1:%2 %3").arg(kind, id).arg(tracks.size());
+        m_collectionTitle = title;
+    }
+    Q_INVOKABLE void cancelCollection(const QString &kind, const QString &id) {
+        m_collectionCalls << QStringLiteral("cancel %1:%2").arg(kind, id);
+    }
+    Q_INVOKABLE QVariantMap collectionState(const QString &kind, const QString &id) const {
+        return m_collections.value(kind + QLatin1Char(':') + id,
+                                   {{QStringLiteral("state"), QStringLiteral("idle")}});
+    }
+    Q_INVOKABLE void setCollectionStateForTest(const QString &kind, const QString &id,
+                                               const QVariantMap &state) {
+        const QString key = kind + QLatin1Char(':') + id;
+        m_collections.insert(key, state);
+        emit collectionChanged(key);
+    }
+    Q_INVOKABLE QStringList collectionCallsForTest() const { return m_collectionCalls; }
+    Q_INVOKABLE QString collectionTitleForTest() const { return m_collectionTitle; }
+
     // test hooks: QML cannot emit C++ signals, so tests drive the download
     // lifecycle (TrackRow/NowPlayingPage listen for all three) from here.
     Q_INVOKABLE void emitDownloadStartedForTest(qlonglong id) {
@@ -2470,6 +2493,7 @@ public:
     Q_INVOKABLE void resetForTest() {
         m_active.clear(); m_saved.clear(); m_shown.clear(); m_chooseCalls = 0;
         m_lastTrack.clear();
+        m_collections.clear(); m_collectionCalls.clear(); m_collectionTitle.clear();
     }
 
 signals:
@@ -2477,8 +2501,13 @@ signals:
     void downloadStarted(qlonglong id);
     void downloadFinished(qlonglong id, const QString &path);
     void downloadError(qlonglong id, const QString &msg);
+    void downloadCancelled(qlonglong id);
+    void collectionChanged(const QString &key);
 
 private:
+    QHash<QString, QVariantMap> m_collections;
+    QStringList     m_collectionCalls;
+    QString         m_collectionTitle;
     QSet<qlonglong> m_active;
     QVariantMap     m_lastTrack;
     QString         m_folder = QStringLiteral("/home/someone/Music");
