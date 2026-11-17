@@ -23,26 +23,36 @@ Item {
 
     // Keyboard and screen reader steps. The value interface reads
     // value/from/to/stepSize; moved() still carries every change.
-    readonly property real from: 0
-    readonly property real to: 1
-    readonly property real stepSize: 0.05
-    function stepBy(d) { moved(Math.max(0, Math.min(1, value + d))) }
+    property real from: 0
+    property real to: 1
+    property real stepSize: 0.05
+    property real pageStep: 4 * stepSize
+    // Drags land on a step too: the sleep timer counts whole minutes.
+    property bool snapToStep: false
+    property string accessibleName: qsTr("Volume")
+    readonly property real fraction:
+        to > from ? Math.max(0, Math.min(1, (value - from) / (to - from))) : 0
+    function clamped(v) {
+        if (snapToStep && stepSize > 0) v = from + Math.round((v - from) / stepSize) * stepSize
+        return Math.max(from, Math.min(to, v))
+    }
+    function stepBy(d) { moved(clamped(value + d)) }
 
     activeFocusOnTab: true
     Keys.onPressed: (event) => {
         switch (event.key) {
         case Qt.Key_Right: case Qt.Key_Up:   stepBy(stepSize); break
         case Qt.Key_Left:  case Qt.Key_Down: stepBy(-stepSize); break
-        case Qt.Key_PageUp:   stepBy(4 * stepSize); break
-        case Qt.Key_PageDown: stepBy(-4 * stepSize); break
-        case Qt.Key_Home: moved(0); break
-        case Qt.Key_End:  moved(1); break
+        case Qt.Key_PageUp:   stepBy(pageStep); break
+        case Qt.Key_PageDown: stepBy(-pageStep); break
+        case Qt.Key_Home: moved(from); break
+        case Qt.Key_End:  moved(to); break
         default: return
         }
         event.accepted = true
     }
     Accessible.role: Accessible.Slider
-    Accessible.name: qsTr("Volume")
+    Accessible.name: root.accessibleName
     Accessible.onIncreaseAction: stepBy(stepSize)
     Accessible.onDecreaseAction: stepBy(-stepSize)
 
@@ -81,7 +91,7 @@ Item {
         // past the knob. Upright it fills from the bottom: louder is higher.
         Rectangle {
             objectName: "volumeSliderFill"
-            readonly property real extent: root.value * root.travel + root.handleR
+            readonly property real extent: root.fraction * root.travel + root.handleR
             width:  root.upright ? parent.width : extent
             height: root.upright ? extent : parent.height
             y: root.upright ? parent.height - height : 0
@@ -92,8 +102,8 @@ Item {
         Rectangle {
             objectName: "volumeSliderHandle"
             x: root.upright ? (parent.width - root.handleSize) / 2
-                            : root.value * root.travel
-            y: root.upright ? (1 - root.value) * root.travel
+                            : root.fraction * root.travel
+            y: root.upright ? (1 - root.fraction) * root.travel
                             : (parent.height - root.handleSize) / 2
             width: root.handleSize; height: root.handleSize
             radius: root.handleR
@@ -109,7 +119,8 @@ Item {
         // reaches 0 and 1. Upright, the axis is inverted as well as swapped.
         function valueAt(p) {
             var raw = (p - root.handleR) / Math.max(1, root.travel)
-            return Math.max(0, Math.min(1, root.upright ? 1 - raw : raw))
+            var f = Math.max(0, Math.min(1, root.upright ? 1 - raw : raw))
+            return root.clamped(root.from + f * (root.to - root.from))
         }
         function axisOf(mouse) { return root.upright ? mouse.y : mouse.x }
         onPressed: (mouse) => moved(valueAt(axisOf(mouse)))

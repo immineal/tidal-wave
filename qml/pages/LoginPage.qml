@@ -111,33 +111,13 @@ Rectangle {
                         font.pixelSize: Theme.fontBody
                     }
 
-                    Rectangle {
+                    PillButton {
                         id: loginBtn
+                        objectName: "loginButton"
                         Layout.fillWidth: true
-                        height: 48
-                        radius: Theme.radiusMedium
-                        color: Theme.accent
-                        border.width: activeFocus ? 2 : 0
-                        border.color: Theme.textPrimary
-                        scale: loginHov.hovered ? 0.98 : 1
-                        Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
-
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: auth.startDeviceFlow()
-                        Keys.onSpacePressed:  auth.startDeviceFlow()
-                        Accessible.role: Accessible.Button
-                        Accessible.name: qsTr("Log in with Tidal")
-                        Accessible.onPressAction: auth.startDeviceFlow()
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: qsTr("Log in with Tidal")
-                            color: Theme.accentInk
-                            font.pixelSize: Theme.fontBody
-                            font.bold: true
-                        }
-                        HoverHandler { id: loginHov; cursorShape: Qt.PointingHandCursor }
-                        TapHandler   { onTapped: auth.startDeviceFlow() }
+                        accent: true
+                        text: qsTr("Log in with Tidal")
+                        onClicked: auth.startDeviceFlow()
                     }
 
                     Text {
