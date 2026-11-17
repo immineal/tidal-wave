@@ -20,7 +20,7 @@
 #   tests/visual/run.sh --clean          also throw the harness build away first
 #   tests/visual/run.sh --keep           leave the sandbox behind for poking at
 #   DWELL=12 tests/visual/run.sh         seconds to let each app launch live
-#   STORE_THEMES='sea sky' tests/visual/run.sh store   the themes the store set is drawn in
+#   STORE_THEMES='sea sand' tests/visual/run.sh store   the themes the store set is drawn in
 #   TIDALWAVE_BIN=/path/to/tidal-wave tests/visual/run.sh
 #   TW_VISUAL_BUILD=/path tests/visual/run.sh   where the shot runner is built
 #   tests/visual/run.sh --qt=/path/to/Qt/6.x/gcc_64   the Qt to build it against
@@ -68,8 +68,8 @@ WANTED=()
 
 # The six palette names in src/ui/ThemePalette.cpp: three dark, then three light.
 THEMES=(sea pine rust clay sky sand)
-# The store set: the default dark theme and its light counterpart.
-read -r -a STORE_THEMES <<< "${STORE_THEMES:-sea sky}"
+# The store set: the default dark theme and the light theme picked for it.
+read -r -a STORE_THEMES <<< "${STORE_THEMES:-sea clay}"
 
 # The width the layout was designed against (tests/qml/tst_layout_player.qml).
 SHOT_W=960
