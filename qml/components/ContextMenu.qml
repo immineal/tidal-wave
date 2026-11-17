@@ -5,7 +5,7 @@ import TidalWave
 
 // The one context menu in the app: the pin menu that sidebar rows, media
 // cards and the page hero headers open on a right-click, with the two queue
-// actions above it. Only this file knows the labels and the player calls.
+// actions above it and Copy link under Pin. Only this file knows the labels and the player calls.
 // It also owns ContextMenu.Entry, the row every Menu in the app is built
 // from, and the fades and FavoriteAction that other hosts borrow.
 Menu {
@@ -263,8 +263,19 @@ Menu {
 
     // So a right-click handler can skip the menu entirely, and so the tests
     // can read the label without walking a popup's contents.
-    readonly property alias pinItem:    pinEntry
-    readonly property alias removeItem: removeEntry
+    readonly property alias pinItem:      pinEntry
+    readonly property alias copyLinkItem: copyLinkEntry
+    readonly property alias removeItem:   removeEntry
+
+    // The web link of what the menu is on, the short form TrackRow copies for
+    // a track. Every kind that can be pinned has one.
+    readonly property string linkUrl: canPin ? "https://tidal.com/" + pinKind + "/" + pinId : ""
+
+    function copyLink() {
+        if (root.linkUrl.length === 0) return
+        bridge.copyToClipboard(root.linkUrl)
+        Toasts.show(qsTr("Link copied"))
+    }
 
     background: Rectangle {
         color: Theme.surfaceHigh
@@ -313,6 +324,15 @@ Menu {
             else             pins.pin(root.pinKind, root.pinId, root.pinTitle,
                                       root.pinSubtitle, root.pinImageUrl)
         }
+    }
+    Entry {
+        id: copyLinkEntry
+        objectName: "copyLinkMenuItem"
+        visible: root.linkUrl.length > 0
+        height: visible ? implicitHeight : 0
+        text: qsTranslate("TrackRow", "Copy link")
+        iconName: "copy"
+        onTriggered: root.copyLink()
     }
 
     // Last, under a rule of its own: the one row where a misclick costs you

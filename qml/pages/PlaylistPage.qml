@@ -268,6 +268,20 @@ Rectangle {
                         editPlaylistPopup.busy      = false
                         editPlaylistPopup.open()
                     }
+                },
+                // The hero's menu, which right-click also opens: the queue
+                // actions, Pin and Copy link.
+                IconButton {
+                    objectName: "heroMoreButton"
+                    icon: "more"
+                    label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                    size: 20
+                    pad: Theme.space5
+                    backed: true
+                    onClicked: {
+                        var p = mapToItem(root, 0, height)
+                        root.showHeroPinMenu(p.x, p.y)
+                    }
                 }
             ]
         }

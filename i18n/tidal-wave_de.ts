@@ -546,6 +546,10 @@
         <comment>verb, remove from the pinned block</comment>
         <translation>Nicht mehr anheften</translation>
     </message>
+    <message>
+        <source>Link copied</source>
+        <translation>Link kopiert</translation>
+    </message>
 </context>
 <context>
     <name>DeletePlaylistDialog</name>
@@ -569,6 +573,14 @@
     <message>
         <source>Could not delete the playlist.</source>
         <translation>Die Playlist konnte nicht gelöscht werden.</translation>
+    </message>
+</context>
+<context>
+    <name>DetailHero</name>
+    <message>
+        <source>More</source>
+        <comment>button that opens the page's menu</comment>
+        <translation>Mehr</translation>
     </message>
 </context>
 <context>
