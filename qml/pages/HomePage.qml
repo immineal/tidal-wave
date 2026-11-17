@@ -146,6 +146,16 @@ Rectangle {
         })
     }
 
+    // Tidal names its tabs in title case ("Staff Picks"); the app writes
+    // sentence case. Names and acronyms keep their capitals, and German its
+    // nouns', so only an English feed is lowered.
+    function tabTitle(name, language) {
+        if (language === "de") return name
+        return name.split(" ").map(function (w, i) {
+            return i > 0 && /^[A-Z][a-z]+$/.test(w) && w !== "Tidal" ? w.toLowerCase() : w
+        }).join(" ")
+    }
+
     function showFeedTab(index) {
         var tab = root.feedTabs[index]
         if (!tab) return
@@ -314,7 +324,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.space6
                 Layout.rightMargin: Theme.space6
-                model: root.feedTabs.map(function (t) { return t.name })
+                model: root.feedTabs.map(function (t) { return root.tabTitle(t.name, root.feedLanguage) })
                 currentIndex: Math.max(0, root.feedTabs.findIndex(function (t) { return t.feed === root.feedTab }))
                 onActivated: (index) => root.showFeedTab(index)
             }
