@@ -607,62 +607,17 @@ Rectangle {
             }
         }
 
-        // ── making four sinks on one card distinguishable ────────────────
-        // ALSA and PipeWire name a sink after the card first and the socket
-        // last, so sinks on one card differ only at the end. A shared prefix
-        // folds to a leading ellipsis, and the rest elides in the middle.
+        // The rows as drawn: {id, label, fullLabel, isDefault}. Sinks on one
+        // card differ only at the end of the name, so the menu grows to the
+        // longest name and a name past that elides in the middle.
+        readonly property var localRows: picker.localDevices.map(function (d) {
+            return { id: d.id, label: d.label, fullLabel: d.label,
+                     isDefault: d.isDefault === true }
+        })
 
-        // The shortest shared prefix worth hiding. Below this the shared part
-        // is not what is costing the row its name, and folding would read
-        // worse: "Speaker Left" must not become "... Left".
-        readonly property int sharedPrefixFloor: 16
-
-        // The rows as drawn: {id, label, fullLabel, isDefault}, where `label`
-        // may have been folded and `fullLabel` is always what the backend said.
-        readonly property var localRows: picker.foldSharedPrefixes(picker.localDevices)
-
-        // The longest prefix two labels share, cut back to the last whole word.
-        // Empty for two equal strings: there is nothing to tell apart.
-        function sharedPrefix(a, b) {
-            if (a === b) return ""
-            var n = Math.min(a.length, b.length)
-            var i = 0
-            while (i < n && a.charAt(i) === b.charAt(i)) ++i
-            var cut = a.substring(0, i).lastIndexOf(" ")
-            return cut > 0 ? a.substring(0, cut) : ""
-        }
-
-        function foldSharedPrefixes(devices) {
-            var rows = []
-            var i, j
-            for (i = 0; i < devices.length; ++i)
-                rows.push({ id:        devices[i].id,
-                            label:     devices[i].label,
-                            fullLabel: devices[i].label,
-                            isDefault: devices[i].isDefault === true })
-
-            for (i = 0; i < rows.length; ++i) {
-                // "System default" is a sentinel with an empty id, not a piece
-                // of hardware, and shares no card name with anything.
-                if (!rows[i].id) continue
-                // The shortest prefix this device shares with a neighbour, not
-                // the longest: sinks on one card can agree right up to a final
-                // digit, and the part to lose is the card name they all share.
-                var best = ""
-                for (j = 0; j < rows.length; ++j) {
-                    if (j === i || !rows[j].id) continue
-                    var p = picker.sharedPrefix(rows[i].fullLabel, rows[j].fullLabel)
-                    if (p.length < picker.sharedPrefixFloor) continue
-                    if (best.length === 0 || p.length < best.length) best = p
-                }
-                if (best.length === 0) continue
-                var rest = rows[i].fullLabel.substring(best.length)
-                                            .replace(/^[\s:,\-]+/, "")
-                if (rest.length === 0) continue
-                rows[i].label = "… " + rest
-            }
-            return rows
-        }
+        // Room left of the button's right edge, read as the menu opens. A bar
+        // squeezed past the window still keeps the menu inside it.
+        property real menuRoom: Theme.menuMaxWidth
 
         // A layout change hands the page to the other copy of the picker, and
         // fullscreen is one: the menu would be left floating over the page.
@@ -675,6 +630,10 @@ Rectangle {
         // Enter work at once; a click leaves no ring on a row.
         function openMenu(fromKeyboard) {
             picker.reloadDevices()
+            var right = picker.mapToItem(null, picker.width, 0).x
+            if (picker.Window.window)
+                right = Math.min(right, picker.Window.window.width - Theme.menuWindowMargin)
+            picker.menuRoom = right - Theme.menuWindowMargin
             if (picker.castSource) picker.castSource.startScan()
             menu.open()
             if (fromKeyboard === true) {
@@ -735,7 +694,9 @@ Rectangle {
             id: menu
             objectName: "outputMenu"
             x: picker.width - width
-            width: 260
+            width: Math.max(Math.min(260, picker.menuRoom),
+                            Math.min(Theme.menuMaxWidth, picker.menuRoom,
+                                     menuContent.implicitWidth + leftPadding + rightPadding))
             padding: Theme.space2
             // A popup only hears Escape while it holds the keyboard.
             focus: true
@@ -813,14 +774,16 @@ Rectangle {
     component OutputRow : Rectangle {
         id: orow
         property string label
-        // What the backend called this, before the picker folded away the part
-        // it shares with its neighbours.
+        // What the backend called this, for the tooltip and a screen reader.
         property string fullLabel: orow.label
+        readonly property bool tipsFullName:
+            orow.label !== orow.fullLabel || orowLabel.truncated
         property string glyph: "speaker"
         property bool   active: false
         signal selected()
         Layout.fillWidth: true
-        implicitWidth: 240
+        // As wide as the whole name: glyph, label, tick and the gaps between.
+        implicitWidth: Math.max(240, orowLabel.implicitWidth + 16 + 14 + 4 * Theme.space2)
         implicitHeight: 36
         radius: Theme.radiusMedium
         color: orowHov.hovered ? Theme.hoverFill : "transparent"
@@ -867,8 +830,7 @@ Rectangle {
         TapHandler   { onTapped: orow.selected() }
 
         // The whole name, only for a row that is not showing all of it.
-        ToolTip.visible: orowHov.hovered
-                         && (orow.label !== orow.fullLabel || orowLabel.truncated)
+        ToolTip.visible: orowHov.hovered && orow.tipsFullName
         ToolTip.text: orow.fullLabel
         ToolTip.delay: Theme.tooltipDelay
     }
