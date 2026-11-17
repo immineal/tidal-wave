@@ -738,7 +738,7 @@ Rectangle {
                     backed: true
                     pad: Theme.space5
                     iconColor: Theme.textPrimary
-                    label: qsTr("Close Now Playing", "returns to the page you came from")
+                    label: qsTr("Close now playing", "returns to the page you came from")
                     onClicked: Window.window.goBack()
                 }
 

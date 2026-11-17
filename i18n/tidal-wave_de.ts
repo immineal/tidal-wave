@@ -1176,9 +1176,9 @@
 <context>
     <name>NowPlayingPage</name>
     <message>
-        <source>Close Now Playing</source>
+        <source>Close now playing</source>
         <comment>returns to the page you came from</comment>
-        <translation>Jetzt läuft schließen</translation>
+        <translation>„Jetzt läuft“ schließen</translation>
     </message>
     <message>
         <source>Leave fullscreen</source>
@@ -1479,9 +1479,9 @@
         <translation>Gefällt mir</translation>
     </message>
     <message>
-        <source>Open Now Playing</source>
+        <source>Open now playing</source>
         <comment>player bar button, opens the full-page player</comment>
-        <translation>Jetzt läuft öffnen</translation>
+        <translation>„Jetzt läuft“ öffnen</translation>
     </message>
     <message>
         <source>%1%</source>
@@ -2282,7 +2282,7 @@
         <translation>Oberflächengröße</translation>
     </message>
     <message>
-        <source>Colour fullscreen Now Playing from the cover</source>
+        <source>Colour fullscreen now playing from the cover</source>
         <translation>Vollbild-Wiedergabe nach Cover einfärben</translation>
     </message>
     <message>
@@ -2351,7 +2351,7 @@
         <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Sammlung; Songtexte, die auf anderen Seiten gefunden wurden; und die hier erstellten Zeitangaben für einfache Songtexte.</translation>
     </message>
     <message>
-        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while the now playing page is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
         <translation>Songtexte von anderen Seiten gibt es für Titel, zu denen Tidal keinen synchronisierten Songtext hat; die Schalter dafür stehen unter „Experimentell“. Standardmäßig wird nur lrclib.net gefragt und erhält Interpret, Titel, Album und Länge des Titels. Ist „Songtexte von weiteren Seiten“ an, folgen in dieser Reihenfolge: music.163.com (NetEase Cloud Music) erhält Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Die Suche endet bei der ersten Seite mit synchronisiertem Songtext. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Gefragt wird nur, solange „Jetzt läuft“ offen ist. Was die Seiten finden, wird auf diesem Rechner gespeichert: Ein Titel mit synchronisiertem Songtext wird nicht noch einmal nachgeschlagen, einer mit einfachem Songtext oder ohne Songtext nach 30 Tagen erneut.</translation>
     </message>
     <message>
@@ -2432,11 +2432,11 @@
         <translation>Startseite / Suche / Sammlung</translation>
     </message>
     <message>
-        <source>Now Playing</source>
+        <source>Now playing</source>
         <translation>Jetzt läuft</translation>
     </message>
     <message>
-        <source>Fullscreen Now Playing</source>
+        <source>Fullscreen now playing</source>
         <translation>Jetzt läuft im Vollbild</translation>
     </message>
     <message>

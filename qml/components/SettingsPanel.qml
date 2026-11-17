@@ -433,7 +433,7 @@ Popup {
                         spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsCoverGradientLabel"
-                            text: qsTr("Colour fullscreen Now Playing from the cover")
+                            text: qsTr("Colour fullscreen now playing from the cover")
                             color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -446,7 +446,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsCoverGradientToggle"
-                        label: qsTr("Colour fullscreen Now Playing from the cover")
+                        label: qsTr("Colour fullscreen now playing from the cover")
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.coverGradient
                         onToggled: prefs.coverGradient = !prefs.coverGradient
@@ -1355,9 +1355,9 @@ Popup {
                         { ids: ["repeat"],                          d: qsTr("Cycle repeat mode") },
                         { ids: ["like"],                            d: qsTr("Like or unlike the playing track") },
                         { ids: ["home", "search", "collection"],    d: qsTr("Home / Search / Collection") },
-                        { ids: ["nowPlaying"],                      d: qsTr("Now Playing") },
+                        { ids: ["nowPlaying"],                      d: qsTr("Now playing") },
                         { ids: ["find", "findAlt"],                 d: qsTr("Find", "shortcut, puts the keyboard in the search field") },
-                        { ids: ["fullScreen"],                      d: qsTr("Fullscreen Now Playing") },
+                        { ids: ["fullScreen"],                      d: qsTr("Fullscreen now playing") },
                         { ids: ["queue"],                           d: qsTr("Toggle queue") },
                         { ids: ["back", "escape"],                  d: qsTr("Go back") },
                         { ids: ["settings"],                        d: qsTr("Settings") },
@@ -1472,7 +1472,7 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.")
+                    text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Sites are asked only while the now playing page is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
