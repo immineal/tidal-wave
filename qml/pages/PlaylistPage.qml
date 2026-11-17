@@ -177,8 +177,11 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
 
         // The hero, then the column headings, which scroll away with it.
-        header: Column {
+        header: Item {
             width: tracksList.width
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
 
             DetailHero {
                 id: hero
@@ -265,7 +268,9 @@ Rectangle {
             }
 
             TrackListHeader {
+                id: headings
                 objectName: "playlistTracksHeader"
+                y: hero.height
                 // At x 0 with the rows' width: a vertical ListView puts its
                 // rows at its left edge, whatever x they ask for.
                 width: tracksList.width - 32

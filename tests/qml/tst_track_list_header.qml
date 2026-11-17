@@ -312,6 +312,15 @@ TestCase {
         checkAligned(p, p.list.itemAtIndex(0), data.tag)
     }
 
+    // A long list opens at the top, its hero on screen, not scrolled by
+    // the hero's height.
+    function test_a_long_list_opens_at_its_hero_data() { return pagesWithHeadings().slice(1) }
+    function test_a_long_list_opens_at_its_hero(data) {
+        var p = openPage(data.which)
+        compare(p.list.contentY, p.list.originY, "the page opened scrolled")
+        verify(p.head.mapToItem(p.page, 0, 0).y > 200, "the headings are not under the hero")
+    }
+
     // ── Liked tracks ─────────────────────────────────────────────────────
 
     function makeCollection() {
