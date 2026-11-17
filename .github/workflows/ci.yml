@@ -318,12 +318,14 @@ jobs:
 
       - name: Scan the tracked tree
         run: |
-          allowed='tidal-wave@linu\.li|noreply@anthropic\.com|someone@example\.com'
-          # Allowed: the project mailbox and the fake user in tests/tst_auth.cpp.
+          allowed='tidal-wave@linu\.li|noreply@anthropic\.com|someone@example\.com|tidal\.com@example\.com'
+          # Allowed: the project mailbox, the fake user in tests/tst_auth.cpp and
+          # the spoofed link in tests/tst_tidal_link.cpp. Image names (@2x.png) skip.
           # @BASE@ is the marker in the DASH fixtures; what follows it reads as a
           # domain, so it comes out first. This file is scanned too.
           found=$(git grep -hI -e '' -- . | sed 's/@BASE@//g' \
                   | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
+                  | grep -ivE '@[0-9]x\.(png|jpe?g|svg|webp)$' \
                   | sort -u | grep -ivE "^($allowed)$" || true)
           if [ -n "$found" ]; then
             echo "Addresses in the tree that are not on the allowlist:"

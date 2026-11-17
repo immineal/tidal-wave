@@ -16,6 +16,12 @@ endif()
 # One binary per tst_*.cpp, because each carries its own QTEST_MAIN.
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tst_*.cpp")
 list(REMOVE_ITEM TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tst_qml.cpp")
+# Casting is built on Linux only (Avahi), and so are its tests.
+if(NOT (UNIX AND NOT APPLE))
+    foreach(linux_only discovery manager session server prep)
+        list(REMOVE_ITEM TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tst_cast_${linux_only}.cpp")
+    endforeach()
+endif()
 
 set(CORE_TEST_TARGETS "")
 foreach(test_src IN LISTS TEST_SOURCES)
