@@ -57,7 +57,7 @@ const Spec kSpecs[] = {
     { "rust", "Rust", true,
       "#180A03", "#21140D", "#2C1C16", "#4B342B", "#3B2922", 26,
       "#F7F2EF", "#BFB3AB", "#968E88",
-      "#C14A18", "#93340C", "#FFFFFF", "#FF9874",
+      "#BA5702", "#8B3E00", "#FFFFFF", "#FAA36C",
       "#CF3939", "#FFFFFF", "#FE3C40", "#5FBF7A" },
 
     { "sky",  "Sky",  false,
@@ -77,7 +77,7 @@ const Spec kSpecs[] = {
     { "clay", "Clay", false,
       "#F8EFEA", "#F3E4DE", "#EED7CF", "#D2B4AB", "#E6CAC1", 26,
       "#241510", "#6E4F3E", "#96705D",
-      "#B4481C", "#8A3310", "#FFFFFF", "#A63B09",
+      "#AB5D2B", "#7E4118", "#FFFFFF", "#944812",
       "#B3302A", "#FFFFFF", "#B12E29", "#3F7A3A" },
 };
 
