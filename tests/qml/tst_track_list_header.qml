@@ -124,6 +124,23 @@ TestCase {
         verify(!label.truncated, "the date heading is cut while it sorts")
     }
 
+    // The date in the language picked in the app, whatever the system's
+    // formats, and again after a switch while the row is on screen.
+    function test_the_date_is_written_in_the_apps_language() {
+        var t = { id: 21, title: "Mittag", artists: "B", albumTitle: "Zweites",
+                  addedAt: new Date(2023, 7, 30).getTime() }
+        var before = createTemporaryObject(rowC, testCase, { width: 1200, showAdded: true, trackData: t })
+        verify(bridge.useCatalogueForTest("de"), "the German catalogue did not load")
+        var after = createTemporaryObject(rowC, testCase, { width: 1200, showAdded: true, trackData: t, y: 60 })
+        waitForRendering(after)
+        compare(findByName(after, "trackAddedColumn").text, "30.08.23", "a new row")
+        compare(findByName(before, "trackAddedColumn").text, "30.08.23", "a row from before the switch")
+        bridge.useCatalogueForTest("")
+        var back = findByName(before, "trackAddedColumn").text
+        verify(back !== "30.08.23", "the German date stayed after the switch back")
+        compare(back, findByName(after, "trackAddedColumn").text, "two rows disagree in English")
+    }
+
     // A column the page turns off has no heading either.
     function test_a_page_without_albums_has_no_album_heading() {
         var head = createTemporaryObject(headerC, testCase, { width: 1200, showAlbum: false })

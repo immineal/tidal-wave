@@ -49,7 +49,10 @@ Item {
         property TextMetrics lengthRoom: TextMetrics { font.pixelSize: Theme.fontMeta; text: "0:00:00" }
         property TextMetrics dateRoom: TextMetrics {
             font.pixelSize: Theme.fontMeta
-            text: new Date(2000, 11, 28).toLocaleDateString(Qt.locale(), Locale.ShortFormat)
+            text: {
+                var relocalise = qsTranslate("TrackListHeader", "Date added", "column heading")   // see addedText
+                return new Date(2000, 11, 28).toLocaleDateString(Qt.locale(), Locale.ShortFormat)
+            }
         }
 
         // Four digits, so a long collection's numbers stay in their gutter.
@@ -209,8 +212,13 @@ Item {
     readonly property int albumBreakpoint: cols.albumBreakpoint
     readonly property int addedBreakpoint: cols.addedBreakpoint
     readonly property real addedAt: root.trackData ? (Number(root.trackData.addedAt) || 0) : 0
-    readonly property string addedText: root.addedAt > 0
-        ? new Date(root.addedAt).toLocaleDateString(Qt.locale(), Locale.ShortFormat) : ""
+    // In the app's locale, which I18n sets before it retranslates. Only a
+    // binding that translates is redone then, so this one reads a string.
+    readonly property string addedText: {
+        var relocalise = qsTranslate("TrackListHeader", "Date added", "column heading")
+        return root.addedAt > 0
+            ? new Date(root.addedAt).toLocaleDateString(Qt.locale(), Locale.ShortFormat) : ""
+    }
 
     // Reads the row's hover state from outside, e.g. so a layout test can
     // check the title does not move when the pointer enters.
