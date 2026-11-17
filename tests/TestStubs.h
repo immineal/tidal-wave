@@ -2217,6 +2217,9 @@ public:
         if (url.isEmpty()) return;
         m_openedUrls << url;
     }
+    // The page saved by the last run, which the real Application reads once.
+    Q_INVOKABLE QString startPage() const { return m_startPage; }
+    Q_INVOKABLE void setStartPageForTest(const QString &page) { m_startPage = page; }
 
     // test hooks
     Q_INVOKABLE int quitCountForTest() const { return m_quitCount; }
@@ -2232,6 +2235,7 @@ public:
     Q_INVOKABLE void resetForTest() {
         m_quitCount = 0;
         m_openedUrls.clear();
+        m_startPage.clear();
         setReducedMotionForTest(false);
         if (m_reallyQuit) {
             m_reallyQuit = false;
@@ -2250,6 +2254,7 @@ private:
     bool        m_reducedMotion = false;
     int         m_quitCount = 0;
     QStringList m_openedUrls;
+    QString     m_startPage;
 };
 
 // ─── downloader ─────────────────────────────────────────────────────────────
@@ -2376,6 +2381,8 @@ class StubPrefs : public QObject {
     Q_PROPERTY(bool crossfade MEMBER m_crossfade NOTIFY crossfadeChanged)
     Q_PROPERTY(int crossfadeSeconds MEMBER m_crossfadeSeconds NOTIFY crossfadeSecondsChanged)
     Q_PROPERTY(bool crossfadeAvailable MEMBER m_crossfadeAvailable CONSTANT)
+    // The page the window last showed, as the real Prefs keeps it.
+    Q_PROPERTY(QString lastPage MEMBER m_lastPage NOTIFY lastPageChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -2497,6 +2504,7 @@ public:
     Q_INVOKABLE void setAppVersionForTest(const QString &v) { m_version = v; }
 
 signals:
+    void lastPageChanged();
     void themeChanged();
     void oledBlackChanged();
     void tintedGreysChanged();
@@ -2519,6 +2527,7 @@ signals:
     void crossfadeSecondsChanged();
 
 private:
+    QString m_lastPage;
     QString m_reducedMotion = QStringLiteral("system");
     QString m_theme    = QStringLiteral("sea");
     // Off, unlike the real Prefs, so a QML test that says nothing about it

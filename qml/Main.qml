@@ -389,6 +389,7 @@ ApplicationWindow {
                 root.pageParams = p
         }
         currentPage = page
+        root._rememberPage(page, p)
         root._pruneDetailViews()
         if (page === "search") {
             searchLoader.forceActiveFocus()
@@ -463,7 +464,7 @@ ApplicationWindow {
         target: auth
         function onStateChanged(state) {
             if (state === 2) {
-                root.navigate("home")
+                root.openStartPage()
             } else {
                 // Signing out lands on the login page, where every way out of
                 // fullscreen is gated on being signed in.
@@ -792,7 +793,39 @@ ApplicationWindow {
 
     // The cached answer is already in UpdateCheck when the engine runs.
     // Whatever the network says afterwards is for the next launch.
-    Component.onCompleted: updatePrompt.showIfAvailable()
+    Component.onCompleted: {
+        updatePrompt.showIfAvailable()
+        root._startPage = app.startPage()
+        if (auth.state === 2) root.openStartPage()
+    }
+
+    // ─── The page a restart opens on ───────────────────────────────────
+    // Now Playing is left out: it needs a track, and a restart starts
+    // paused. Only plain values are kept, and a search is not run again.
+    readonly property var restorablePages:
+        ["home", "search", "collection", "album", "artist", "playlist", "mix", "radio"]
+    property string _startPage: ""
+    function _rememberPage(page, params) {
+        if (root.restorablePages.indexOf(page) === -1) return
+        var kept = {}
+        for (var k in params) {
+            var v = params[k]
+            if (k === "requestedQuery") continue
+            if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") kept[k] = v
+        }
+        prefs.lastPage = JSON.stringify({ page: page, params: kept })
+    }
+    // Once per run: a later sign-in is a new session and starts at Home.
+    function openStartPage() {
+        var saved = root._startPage
+        root._startPage = ""
+        var entry = null
+        try { entry = saved.length > 0 ? JSON.parse(saved) : null } catch (e) { entry = null }
+        if (entry && typeof entry.page === "string" && root.restorablePages.indexOf(entry.page) !== -1)
+            root.navigate(entry.page, entry.params || {})
+        else
+            root.navigate("home")
+    }
 
     CastErrorTip { }
 
