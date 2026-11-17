@@ -25,6 +25,8 @@ constexpr Binding kBindings[] = {
     { "mute",        "Ctrl+M"      },
     { "shuffle",     "Ctrl+S"      },
     { "repeat",      "Ctrl+R"      },
+    // Spotify's key for liking the playing track; Option+Shift+B on macOS.
+    { "like",        "Alt+Shift+B" },
     // Navigation.
     { "home",        "Ctrl+1"      },
     { "search",      "Ctrl+2"      },

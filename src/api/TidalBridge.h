@@ -39,6 +39,9 @@ class TidalBridge : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Use the bridge context property")
     Q_PROPERTY(QString preferredQuality READ preferredQuality WRITE setPreferredQuality NOTIFY preferredQualityChanged)
+    // Which version lists show of a release Tidal has explicit and clean.
+    // Explicit unless set, as in Tidal's own apps. Persisted.
+    Q_PROPERTY(bool preferExplicit READ preferExplicit WRITE setPreferExplicit NOTIFY preferExplicitChanged)
     // True until the newest liked songs have arrived after a sign-in.
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoriteTracksChanged)
     // The other three sign-in lists, each true until its own reply is in, the
@@ -64,11 +67,24 @@ public:
     QString preferredQuality() const;
     void    setPreferredQuality(const QString &q);
 
+    bool preferExplicit() const;
+    void setPreferExplicit(bool on);
+
     Q_INVOKABLE void fetchHomeMixes     (QJSValue cb);
     Q_INVOKABLE void fetchMixTracks     (const QString &mixId, QJSValue cb);
     // function(mix, tracks, error): the mix's header beside its tracks, for a
     // page opened with nothing but an id.
     Q_INVOKABLE void fetchMixPage      (const QString &mixId, QJSValue cb);
+
+    // ── Tidal's own Home ────────────────────────────────────────────────
+    // A feed ("static" or "editorial") as {tabs, modules}, each module's
+    // items maps of their kind with `kind` beside them. The cached one is the
+    // last answer on disk; a fetch that lands is written there.
+    Q_INVOKABLE QVariantMap cachedHomeFeed(const QString &feed);
+    // function(feed, error), the feed worded in `language` ("en", "de").
+    Q_INVOKABLE void fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb);
+    static QString homeFeedLocale(const QString &language);
+    QString homeFeedCachePath(const QString &feed) const;
 
     bool favoritesLoading() const { return m_favoritesLoading; }
     bool albumsLoading()    const { return m_albumsLoading; }
@@ -158,6 +174,9 @@ public:
     // function(ok). On success both re-read the playlist's header and merge it
     // into both caches: see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist   (const QString &uuid, qlonglong trackId, QJSValue cb);
+    // Several in one write, in order; allowDupes adds those it holds again.
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb);
     // function(ok). Undoes a removal: the track goes back in at `index`.
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb);
@@ -174,6 +193,9 @@ public:
     // `index` is the row to take out once earlier removals have landed, -1
     // when there is none. `stale` means the playlist changed elsewhere.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
+    // cb(ok, stale): stale when the playlist changed since it was read.
+    Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                         QJSValue cb);
     // function(ok). On success the playlist leaves the caches, and
     // playlistDeleted tells the pages and the sidebar.
     Q_INVOKABLE void deletePlaylist         (const QString &uuid, QJSValue cb);
@@ -211,6 +233,7 @@ public:
 
 signals:
     void preferredQualityChanged();
+    void preferExplicitChanged();
     void favoriteTracksChanged();
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
@@ -309,6 +332,7 @@ private:
     QVariantList artistsToList (const QList<Artist>   &v) const;
     QVariantList playlistsList (const QList<Playlist> &v) const;
     QVariantList mixesList     (const QList<Mix>      &v) const;
+    QVariantMap  homeFeedToMap (const HomeFeed &feed) const;
 
     TidalClient  *m_client;
     LyricsFinder *m_lyricsFinder = nullptr;
@@ -318,6 +342,11 @@ private:
     QSet<qlonglong> m_favoriteTrackIds;
     // The last favorites/ids answer for songs, kept in step with likes here.
     QSet<qlonglong> m_likedTrackIds;
+
+    // A list with each release it holds explicit and clean cut to the
+    // preferred version; see preferredVersions(). Saved ones always stay.
+    QList<Album> shownVersions(const QList<Album> &albums) const;
+    QList<Track> shownVersions(const QList<Track> &tracks) const;
     int             m_likedIdsGen = 0;
     bool            m_likedIdsInFlight = false;
     // The liked-songs listing on hand was paged because one page was refused.

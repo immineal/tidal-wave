@@ -184,6 +184,10 @@
         <source>Artist</source>
         <translation>Künstler</translation>
     </message>
+    <message>
+        <source>Artist radio</source>
+        <translation>Künstler-Radio</translation>
+    </message>
 </context>
 <context>
     <name>BackButton</name>
@@ -291,10 +295,6 @@
     <message>
         <source>Default</source>
         <translation>Standard</translation>
-    </message>
-    <message>
-        <source>Default: most recently liked first</source>
-        <translation>Standard: zuletzt mit „Gefällt mir“ markierte zuerst</translation>
     </message>
     <message>
         <source>Default: most recently saved first</source>
@@ -436,6 +436,16 @@
         <source>Try again</source>
         <translation>Erneut versuchen</translation>
     </message>
+    <message>
+        <source>Artist</source>
+        <comment>sorts albums by artist</comment>
+        <translation>Künstler</translation>
+    </message>
+    <message>
+        <source>Year</source>
+        <comment>sorts albums by release, newest first</comment>
+        <translation>Jahr</translation>
+    </message>
 </context>
 <context>
     <name>ConfirmDialog</name>
@@ -542,6 +552,10 @@
         <comment>verb, remove from the pinned block</comment>
         <translation>Nicht mehr anheften</translation>
     </message>
+    <message>
+        <source>Link copied</source>
+        <translation>Link kopiert</translation>
+    </message>
 </context>
 <context>
     <name>DeletePlaylistDialog</name>
@@ -565,6 +579,71 @@
     <message>
         <source>Could not delete the playlist.</source>
         <translation>Die Playlist konnte nicht gelöscht werden.</translation>
+    </message>
+</context>
+<context>
+    <name>DetailHero</name>
+    <message>
+        <source>More</source>
+        <comment>button that opens the page's menu</comment>
+        <translation>Mehr</translation>
+    </message>
+</context>
+<context>
+    <name>DownloadAction</name>
+    <message>
+        <source>Cancel download</source>
+        <translation>Download abbrechen</translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded album or playlist</comment>
+        <translation>Im Ordner anzeigen</translation>
+    </message>
+    <message>
+        <source>Download album</source>
+        <translation>Album herunterladen</translation>
+    </message>
+    <message>
+        <source>Download playlist</source>
+        <translation>Playlist herunterladen</translation>
+    </message>
+    <message>
+        <source>Waiting for the other download to finish</source>
+        <translation>Wartet, bis der andere Download fertig ist</translation>
+    </message>
+    <message>
+        <source>Downloading %1 of %2</source>
+        <translation>Titel %1 von %2 wird heruntergeladen</translation>
+    </message>
+    <message>
+        <source>Download cancelled. %1 of %2 saved.</source>
+        <translation>Download abgebrochen. %1 von %2 gespeichert.</translation>
+    </message>
+    <message numerus="yes">
+        <source>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minute(s).</source>
+        <translation>
+            <numerusform>Tidal hat um eine Pause gebeten. %1 von %2 gespeichert. In etwa %Ln Minute noch einmal versuchen.</numerusform>
+            <numerusform>Tidal hat um eine Pause gebeten. %1 von %2 gespeichert. In etwa %Ln Minuten noch einmal versuchen.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>None of the tracks could be downloaded. %1</source>
+        <translation>Keiner der Titel konnte heruntergeladen werden. %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 of %2 saved. %Ln track(s) could not be downloaded.</source>
+        <translation>
+            <numerusform>%1 von %2 gespeichert. %Ln Titel konnte nicht heruntergeladen werden.</numerusform>
+            <numerusform>%1 von %2 gespeichert. %Ln Titel konnten nicht heruntergeladen werden.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln track(s) saved</source>
+        <translation>
+            <numerusform>%Ln Titel gespeichert</numerusform>
+            <numerusform>%Ln Titel gespeichert</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -612,6 +691,18 @@
     <message>
         <source>Download folder</source>
         <translation>Download-Ordner</translation>
+    </message>
+    <message>
+        <source>Could not save the track in the download folder.</source>
+        <translation>Der Titel konnte nicht im Download-Ordner gespeichert werden.</translation>
+    </message>
+    <message>
+        <source>Download to folder</source>
+        <translation>In Ordner herunterladen</translation>
+    </message>
+    <message>
+        <source>Could not make the folder %1.</source>
+        <translation>Der Ordner %1 konnte nicht angelegt werden.</translation>
     </message>
 </context>
 <context>
@@ -745,6 +836,31 @@
         <source>Put back in “%1”</source>
         <comment>after undoing a removal from a playlist</comment>
         <translation>Wieder in „%1“</translation>
+    </message>
+    <message>
+        <source>Could not move the track</source>
+        <comment>shown when reordering a playlist failed</comment>
+        <translation>Der Titel konnte nicht verschoben werden</translation>
+    </message>
+    <message>
+        <source>Moved back in “%1”</source>
+        <comment>after undoing a move in a playlist</comment>
+        <translation>Zurückverschoben in „%1“</translation>
+    </message>
+</context>
+<context>
+    <name>ErrorState</name>
+    <message>
+        <source>Tidal cannot be reached</source>
+        <translation>Tidal ist nicht erreichbar</translation>
+    </message>
+    <message>
+        <source>Check the connection. The page loads by itself once Tidal answers again.</source>
+        <translation>Prüfe die Verbindung. Die Seite lädt von selbst, sobald Tidal wieder antwortet.</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
     </message>
 </context>
 <context>
@@ -1225,6 +1341,10 @@
         <comment>the track was started from the search results</comment>
         <translation>Wiedergabe von: Suche „%1“</translation>
     </message>
+    <message>
+        <source>Play a track, an album or a playlist and it shows here.</source>
+        <translation>Was du abspielst, erscheint hier. Starte einen Titel, ein Album oder eine Playlist.</translation>
+    </message>
 </context>
 <context>
     <name>OfflineNotice</name>
@@ -1433,6 +1553,11 @@
         <comment>noun, opens the play queue</comment>
         <translation>Warteschlange</translation>
     </message>
+    <message>
+        <source>Sleep timer: %1</source>
+        <comment>player bar, the time left or End of track</comment>
+        <translation>Sleep-Timer: %1</translation>
+    </message>
 </context>
 <context>
     <name>PlaylistPage</name>
@@ -1527,6 +1652,40 @@
         <comment>verb, confirm the edits in this dialog</comment>
         <translation>Speichern</translation>
     </message>
+    <message>
+        <source>Find in this playlist…</source>
+        <translation>In dieser Playlist suchen…</translation>
+    </message>
+    <message>
+        <source>No tracks match &quot;%1&quot;</source>
+        <translation>Keine Titel passen zu „%1“</translation>
+    </message>
+    <message>
+        <source>Clear the field above to see every track again.</source>
+        <translation>Leere das Feld oben, um wieder alle Titel zu sehen.</translation>
+    </message>
+    <message>
+        <source>This playlist was changed somewhere else, so nothing was moved. It has been reloaded.</source>
+        <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts verschoben. Sie wurde neu geladen.</translation>
+    </message>
+</context>
+<context>
+    <name>PlaylistPicker</name>
+    <message>
+        <source>Find a playlist</source>
+        <comment>search field in the Add to playlist picker</comment>
+        <translation>Playlist suchen</translation>
+    </message>
+    <message>
+        <source>Has all of these already</source>
+        <comment>picker row: the playlist holds every track being added</comment>
+        <translation>Alle schon darin</translation>
+    </message>
+    <message>
+        <source>Has this track already</source>
+        <comment>picker row: the playlist holds the track being added</comment>
+        <translation>Schon darin</translation>
+    </message>
 </context>
 <context>
     <name>QueuePanel</name>
@@ -1608,6 +1767,11 @@
         <source>Next from: search “%1”</source>
         <comment>the queue was started from the search results</comment>
         <translation>Als Nächstes von: Suche „%1“</translation>
+    </message>
+    <message>
+        <source>Add the queue to a playlist</source>
+        <comment>button in the queue&apos;s header</comment>
+        <translation>Warteschlange zu einer Playlist hinzufügen</translation>
     </message>
 </context>
 <context>
@@ -1752,10 +1916,6 @@
         <translation>Tidal durchsuchen</translation>
     </message>
     <message>
-        <source>Find tracks, albums, artists and more</source>
-        <translation>Titel, Alben, Künstler und mehr finden</translation>
-    </message>
-    <message>
         <source>No results for &quot;%1&quot;</source>
         <translation>Keine Ergebnisse für „%1“</translation>
     </message>
@@ -1833,6 +1993,30 @@
     <message>
         <source>Try again</source>
         <translation>Erneut versuchen</translation>
+    </message>
+    <message>
+        <source>Top result</source>
+        <comment>heading over the one best match of a search</comment>
+        <translation>Top-Ergebnis</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>the kind of a search's top result</comment>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <comment>the kind of a search's top result</comment>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Playlist</source>
+        <comment>the kind of a search's top result</comment>
+        <translation>Playlist</translation>
+    </message>
+    <message>
+        <source>Results appear as you type. Searches that found something are kept here.</source>
+        <translation>Ergebnisse erscheinen beim Tippen. Suchen, die etwas gefunden haben, bleiben hier stehen.</translation>
     </message>
 </context>
 <context>
@@ -2363,6 +2547,28 @@
         <comment>settings section with the app&apos;s name and version</comment>
         <translation>Über</translation>
     </message>
+    <message>
+        <source>Version of records with explicit lyrics</source>
+        <translation>Version von Aufnahmen mit expliziten Texten</translation>
+    </message>
+    <message>
+        <source>Explicit</source>
+        <comment>the version of a record with its lyrics as recorded</comment>
+        <translation>Explizit</translation>
+    </message>
+    <message>
+        <source>Clean</source>
+        <comment>the version of a record with its lyrics edited</comment>
+        <translation>Clean</translation>
+    </message>
+    <message>
+        <source>Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.</source>
+        <translation>Suche und Künstlerseiten zeigen diese Version, wo es beide gibt. Die Albumseite führt die andere weiterhin auf, und was du gespeichert hast, wird immer gezeigt.</translation>
+    </message>
+    <message>
+        <source>Like or unlike the playing track</source>
+        <translation>„Gefällt mir“ für den laufenden Titel setzen oder entfernen</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -2559,6 +2765,21 @@
         <comment>track row for a screen reader: album, length</comment>
         <translation>%1, %2</translation>
     </message>
+    <message>
+        <source>(%1)</source>
+        <comment>a track&apos;s version after its title, e.g. (Live)</comment>
+        <translation>(%1)</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <comment>row download button</comment>
+        <translation>Herunterladen</translation>
+    </message>
+    <message>
+        <source>Downloading…</source>
+        <comment>row download button, while saving</comment>
+        <translation>Wird heruntergeladen…</translation>
+    </message>
 </context>
 <context>
     <name>TrayMenu</name>
@@ -2628,6 +2849,52 @@
     <message>
         <source>Volume</source>
         <translation>Lautstärke</translation>
+    </message>
+</context>
+<context>
+    <name>ExplicitBadge</name>
+    <message>
+        <source>Explicit</source>
+        <comment>mark on a track whose lyrics are as recorded</comment>
+        <translation>Explizit</translation>
+    </message>
+</context>
+<context>
+    <name>TrackListHeader</name>
+    <message>
+        <source>#</source>
+        <comment>column heading over the track numbers</comment>
+        <translation>#</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <comment>column heading</comment>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>column heading</comment>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Date added</source>
+        <comment>column heading</comment>
+        <translation>Hinzugefügt am</translation>
+    </message>
+    <message>
+        <source>Length</source>
+        <comment>column heading over the track lengths</comment>
+        <translation>Länge</translation>
+    </message>
+    <message>
+        <source>sorted ascending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>aufsteigend sortiert</translation>
+    </message>
+    <message>
+        <source>sorted descending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>absteigend sortiert</translation>
     </message>
 </context>
 </TS>

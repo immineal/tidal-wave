@@ -7,6 +7,7 @@
 // Header-only and no QObject, so no moc. It reports through a std::function
 // and has no tr(): user-visible wording stays with the callers.
 #include <QByteArray>
+#include <QDeadlineTimer>
 #include <QDebug>
 #include <QDir>
 #include <QLatin1String>
@@ -15,6 +16,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTemporaryFile>
+#include <QTimer>
 #include <QUrl>
 #include <QVector>
 #include <QXmlStreamReader>
@@ -92,6 +94,18 @@ public:
     int segmentsReady() const { return m_writeCursor; }
     // How long the track plays, from the manifest; 0 when it does not say.
     qint64 lengthMs() const { return m_lengthMs; }
+    // The wait a 429 asked for when it ended the join, 0 when none did.
+    int rateLimitedSecs() const { return m_rateLimitedSecs; }
+
+    // A segment that got no answer, a 408, 429 or 5xx is asked again this
+    // many times, after kRetryBaseMs doubling, or after a 429's Retry-After.
+    static constexpr int kSegmentRetries = 3;
+    static constexpr int kRetryBaseMs = 500;
+    // A request that went silent for the whole transfer timeout is asked
+    // once more only, so a dead link ends a load in two timeouts.
+    static constexpr int kTimeoutRetries = 1;
+    // A 429 that asks for longer ends the join instead of stalling it.
+    static constexpr int kMaxRateLimitWaitSecs = 60;
 
     // Optional, set before start(). Called from the event loop, and the
     // receiver may delete this fetcher from inside it.
@@ -102,8 +116,8 @@ public:
     void start(Done done)
     {
         m_done = std::move(done);
-        for (int i = 0; i < kMaxParallel && m_nextToRequest < m_urls.size(); ++i)
-            fetchAt(m_nextToRequest++);
+        m_tries.fill(0, m_urls.size());
+        pump();
     }
 
 private:
@@ -197,23 +211,87 @@ private:
 
     // ── fetching ────────────────────────────────────────────────────────────
 
+    // Sends what may go now: retries first, then the next segments, never
+    // more than kMaxParallel at once and none while a 429's wait runs.
+    void pump()
+    {
+        if (m_settled) return;
+        if (!m_holdUntil.hasExpired()) {
+            if (m_pumpPending) return;
+            m_pumpPending = true;
+            std::weak_ptr<char> alive = m_alive;
+            QTimer::singleShot(int(qMax<qint64>(1, m_holdUntil.remainingTime())), m_client,
+                               [this, alive] {
+                if (alive.expired()) return;
+                m_pumpPending = false;
+                pump();
+            });
+            return;
+        }
+        while (m_active < kMaxParallel) {
+            int index = -1;
+            if (!m_retry.isEmpty())
+                index = m_retry.takeFirst();
+            else if (m_nextToRequest < m_urls.size() && m_nextToRequest < m_writeCursor + kMaxAhead)
+                index = m_nextToRequest++;
+            else
+                break;
+            fetchAt(index);
+        }
+    }
+
+    static bool worthRetrying(int httpStatus)
+    {
+        return httpStatus == 0 || httpStatus == 408 || httpStatus == 429 || httpStatus >= 500;
+    }
+
+    // A retry asks for the same segment URL again: the manifest, and with it
+    // a stream request to Tidal, is never fetched anew from here.
+    void failed(int index, const TidalApi::RawAnswer &a)
+    {
+        const int httpStatus = a.httpStatus;
+        const bool limited = httpStatus == 429;
+        const int secs = !limited ? 0
+            : qMax(1, a.retryAfterSecs >= 0 ? a.retryAfterSecs : int(TidalApi::kRateLimitDefaultSecs));
+        const int allowed = a.timedOut ? kTimeoutRetries : kSegmentRetries;
+        if (!(a.error.isEmpty() || worthRetrying(httpStatus)) || m_tries[index] >= allowed
+            || secs > kMaxRateLimitWaitSecs) {
+            m_rateLimitedSecs = secs;
+            settle(nullptr, a.error);
+            return;
+        }
+        const int waitMs = limited ? secs * 1000 : kRetryBaseMs << m_tries[index];
+        if (limited && m_holdUntil.remainingTime() < waitMs) m_holdUntil = QDeadlineTimer(waitMs);
+        ++m_tries[index];
+        qInfo() << "[dash] segment" << index << "failed with" << httpStatus
+                << "- asking again in" << waitMs << "ms";
+        std::weak_ptr<char> alive = m_alive;
+        QTimer::singleShot(waitMs, m_client, [this, alive, index] {
+            if (alive.expired() || m_settled) return;
+            m_retry.append(index);
+            pump();
+        });
+    }
+
     void fetchAt(int index)
     {
         std::weak_ptr<char> alive = m_alive;
-        QNetworkReply *reply = m_client->fetchRaw(QUrl(m_urls.at(index)),
-            [this, alive, index](QByteArray data, QString err) {
+        ++m_active;
+        QNetworkReply *reply = m_client->fetchRawWithStatus(QUrl(m_urls.at(index)),
+            [this, alive, index](const TidalApi::RawAnswer &a) {
                 if (alive.expired() || m_settled) return;
+                --m_active;
 
-                if (!err.isEmpty() || data.isEmpty()) {
-                    settle(nullptr, err);
+                if (!a.error.isEmpty() || a.body.isEmpty()) {
+                    failed(index, a);
                     return;
                 }
 
-                m_parts[index] = data;
+                m_parts[index] = a.body;
                 ++m_completed;
 
                 // Written in play order as soon as the gap in front of a segment
-                // closes, so at most kMaxParallel segments are ever in memory.
+                // closes, so at most kMaxAhead segments are ever in memory.
                 const int cursorBefore = m_writeCursor;
                 while (m_writeCursor < m_parts.size() && !m_parts[m_writeCursor].isEmpty()) {
                     if (m_file->write(m_parts[m_writeCursor]) != m_parts[m_writeCursor].size()) {
@@ -241,9 +319,6 @@ private:
                     }
                 }
 
-                if (m_nextToRequest < m_urls.size())
-                    fetchAt(m_nextToRequest++);
-
                 if (m_completed == m_urls.size()) {
                     m_file->flush();
                     qInfo() << "[dash] joined" << m_urls.size() << "segments into"
@@ -252,7 +327,9 @@ private:
                     QTemporaryFile *done = m_file;
                     m_file = nullptr;           // ownership leaves with settle()
                     settle(done, QString());
+                    return;
                 }
+                pump();
             });
 
         // QNetworkAccessManager never emits finished() synchronously, so the
@@ -298,7 +375,13 @@ private:
     int  m_nextToRequest = 0;
     int  m_completed     = 0;
     int  m_writeCursor   = 0;
+    int  m_active        = 0;    // requests out
     bool m_settled       = false;
+    bool m_pumpPending   = false;
+    int  m_rateLimitedSecs = 0;
+    QVector<int> m_tries;            // failed attempts per segment
+    QVector<int> m_retry;            // segments due to be asked again
+    QDeadlineTimer m_holdUntil;      // expired unless a 429 asked for a wait
 
     // Expires with this object, which is how an in-flight reply's callback
     // learns it has nothing left to call into. Nothing is ever read through it.
@@ -307,6 +390,8 @@ private:
     // Segments are small and independent, so a few run at once. One at a time
     // would add a round trip per segment before the first note.
     static constexpr int kMaxParallel = 6;
+    // How far requests run ahead of a segment that is being retried.
+    static constexpr int kMaxAhead = 2 * kMaxParallel;
 
     // A count no real track comes near. It bounds numbers that arrive over the
     // network: r= attributes that would overflow an int, and a duration

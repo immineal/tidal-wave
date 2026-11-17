@@ -40,6 +40,8 @@ const QString kPath      = QStringLiteral("/org/mpris/MediaPlayer2");
 const QString kPlayer    = QStringLiteral("org.mpris.MediaPlayer2.Player");
 const QString kProps     = QStringLiteral("org.freedesktop.DBus.Properties");
 const QString kService   = QStringLiteral("org.mpris.MediaPlayer2.tidalwave");
+const QString kRootIface = QStringLiteral("org.mpris.MediaPlayer2");
+const QString kTrackList = QStringLiteral("org.mpris.MediaPlayer2.TrackList");
 
 QVariantMap trackOf(qlonglong id) {
     QVariantMap t;
@@ -208,6 +210,8 @@ public:
                       this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
         m_bus.connect(QString(), kPath, kPlayer, QStringLiteral("Seeked"),
                       this, SLOT(onSeeked(qlonglong)));
+        m_bus.connect(QString(), kPath, kTrackList, QStringLiteral("TrackListReplaced"),
+                      this, SLOT(onTrackListReplaced(QList<QDBusObjectPath>,QDBusObjectPath)));
     }
 
     bool isConnected() const { return m_bus.isConnected(); }
@@ -215,6 +219,8 @@ public:
     // Every value announced for the player interface, oldest first.
     QList<std::pair<QString, QVariant>> changes;
     QList<qlonglong>                    seeked;   // microseconds
+    // The CurrentTrack of every TrackListReplaced, oldest first.
+    QList<QDBusObjectPath>              replacedAt;
 
     QVariantList announced(const QString &property) const
     {
@@ -247,9 +253,10 @@ public:
     {
         return call(kPlayer, method, args);
     }
-    QVariant get(const QString &property)
+    QVariant get(const QString &property) { return getOn(kPlayer, property); }
+    QVariant getOn(const QString &iface, const QString &property)
     {
-        const QDBusMessage reply = call(kProps, QStringLiteral("Get"), { kPlayer, property });
+        const QDBusMessage reply = call(kProps, QStringLiteral("Get"), { iface, property });
         if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
             return QVariant();
         return plain(reply.arguments().constFirst().value<QDBusVariant>().variant());
@@ -268,6 +275,7 @@ public:
         status();
         changes.clear();
         seeked.clear();
+        replacedAt.clear();
     }
 
 public slots:
@@ -279,6 +287,10 @@ public slots:
             changes.append({ it.key(), plain(it.value()) });
     }
     void onSeeked(qlonglong position) { seeked.append(position); }
+    void onTrackListReplaced(const QList<QDBusObjectPath> &, const QDBusObjectPath &current)
+    {
+        replacedAt.append(current);
+    }
 
 private:
     // A dictionary inside a variant arrives still packed.
@@ -1125,6 +1137,96 @@ private slots:
                                   (QVariantList{ QStringLiteral("Track") }), 3000);
         QCOMPARE(desk().announced(QStringLiteral("Shuffle")), (QVariantList{ true }));
         QCOMPARE(desk().announced(QStringLiteral("Volume")), (QVariantList{ 0.25 }));
+    }
+
+    // ── OpenUri ────────────────────────────────────────────────────────────
+
+    // A Tidal link from a desktop widget goes where a link from the command
+    // line goes; anything else is not ours and is dropped.
+    void openUriHandsOnATidalLink() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        const QStringList schemes =
+            desk().getOn(kRootIface, QStringLiteral("SupportedUriSchemes")).toStringList();
+        QVERIFY2(schemes.contains(QStringLiteral("tidal")),
+                 qPrintable(QStringLiteral("SupportedUriSchemes is [%1]").arg(schemes.join(u','))));
+
+        QSignalSpy opened(a.mpris.get(), SIGNAL(openUriRequested(QString)));
+        QVERIFY2(opened.isValid(), "MprisManager has no openUriRequested signal");
+        desk().player(QStringLiteral("OpenUri"), { QStringLiteral("file:///tmp/x.flac") });
+        desk().player(QStringLiteral("OpenUri"), { QStringLiteral("tidal://album/123") });
+        QTRY_COMPARE(opened.count(), 1);
+        QCOMPARE(opened.first().first().toString(), QStringLiteral("tidal://album/123"));
+    }
+
+    // ── TrackList ──────────────────────────────────────────────────────────
+
+    QList<QDBusObjectPath> tracks() {
+        const QDBusMessage reply = desk().call(kProps, QStringLiteral("Get"),
+                                               { kTrackList, QStringLiteral("Tracks") });
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) return {};
+        const QVariant v = reply.arguments().constFirst().value<QDBusVariant>().variant();
+        if (v.userType() == qMetaTypeId<QDBusArgument>())
+            return qdbus_cast<QList<QDBusObjectPath>>(v.value<QDBusArgument>());
+        return v.value<QList<QDBusObjectPath>>();
+    }
+
+    static QList<QDBusObjectPath> pathsOf(const QList<qlonglong> &ids) {
+        QList<QDBusObjectPath> out;
+        for (qlonglong id : ids) out.append(QDBusObjectPath(trackPath(id)));
+        return out;
+    }
+
+    // What played just before and what plays next, the current track among
+    // them under the id Metadata gives it.
+    void theTrackListShowsTheQueueAroundTheCurrentTrack() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(desk().getOn(kRootIface, QStringLiteral("HasTrackList")).toBool());
+        QVERIFY(!desk().getOn(kTrackList, QStringLiteral("CanEditTracks")).toBool());
+
+        a.p().playTracks(contextOf(5000, 4), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(tracks(), pathsOf({5000, 5001, 5002, 5003}), 5000);
+
+        const QDBusMessage reply = desk().call(kTrackList, QStringLiteral("GetTracksMetadata"),
+            { QVariant::fromValue(pathsOf({5002})) });
+        QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+        const auto metas = qdbus_cast<QList<QVariantMap>>(
+            reply.arguments().value(0).value<QDBusArgument>());
+        QCOMPARE(metas.size(), 1);
+        QCOMPARE(metas.first().value(QStringLiteral("xesam:title")).toString(),
+                 QStringLiteral("T5002"));
+    }
+
+    void goToPlaysTheTrackItNames() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(6000, 4), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(tracks().size(), 4, 5000);
+        desk().forget();
+        desk().call(kTrackList, QStringLiteral("GoTo"),
+                    { QVariant::fromValue(QDBusObjectPath(trackPath(6002))) });
+        QTRY_COMPARE(currentId(a.p()), 6002LL);
+        QTRY_VERIFY_WITH_TIMEOUT(!desk().replacedAt.isEmpty(), 5000);
+        QCOMPARE(desk().replacedAt.last(), QDBusObjectPath(trackPath(6002)));
+
+        // A track no longer in the list is a stale call.
+        desk().call(kTrackList, QStringLiteral("GoTo"),
+                    { QVariant::fromValue(QDBusObjectPath(trackPath(9999))) });
+        QTest::qWait(100);
+        QCOMPARE(currentId(a.p()), 6002LL);
+    }
+
+    // The same song twice in the queue is two entries with two ids.
+    void aTrackQueuedTwiceHasTwoIds() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks({ trackOf(7100), trackOf(7100), trackOf(7101) }, 0);
+        QList<QDBusObjectPath> list;
+        QTRY_VERIFY_WITH_TIMEOUT((list = tracks()).size() == 3, 5000);
+        QCOMPARE(list.first(), QDBusObjectPath(trackPath(7100)));
+        QVERIFY(list.at(1) != list.at(0));
+        QCOMPARE(list.at(2), QDBusObjectPath(trackPath(7101)));
     }
 
 private:

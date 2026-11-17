@@ -50,6 +50,8 @@ Item {
     // the duration label outside the bar for that frame.
     Text {
         id: elapsedLabel
+        objectName: "seekBarElapsed"
+        Component.onCompleted: Theme.tabularFigures(elapsedLabel)
         // As wide as the length: a track of an hour or more reads h:mm:ss.
         width: durationLabel.width
         anchors.left: parent.left
@@ -124,6 +126,8 @@ Item {
 
     Text {
         id: durationLabel
+        objectName: "seekBarTotal"
+        Component.onCompleted: Theme.tabularFigures(durationLabel)
         width: Math.max(36, implicitWidth)
         anchors.right: parent.right
         anchors.rightMargin: Theme.space2

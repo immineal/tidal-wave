@@ -15,6 +15,9 @@ Rectangle {
     property var    artists:   []
     property var    playlists: []
     property var    mixes:     []
+    // The server's own best match, {kind, item}, or null. Set from the first
+    // page only and cleared with the rest.
+    property var    topHit:    null
     property bool   loading:   false
     property int    activeTab: 0
     property int    _searchGen: 0
@@ -191,6 +194,16 @@ Rectangle {
             Layout.rightMargin: Theme.space6
             placeholder: qsTr("Search tracks, albums, artists, playlists…")
             onTextEdited: (text) => {
+                // A link pasted in whole opens its page. Typed a letter at a
+                // time, it is a search like any other.
+                var before = root.query
+                if (text.length > before.length + 1 && app.isTidalLink(text)) {
+                    searchBar.text = ""
+                    root.query = ""
+                    clearResults()
+                    app.openLink(text)
+                    return
+                }
                 root.query = text
                 if (text.length === 0) { clearResults(); return }
                 if (text.length < 2) { root.holdResults(); return }
@@ -227,8 +240,9 @@ Rectangle {
 
         Item { height: Theme.space2 }
 
-        // Empty state, outside the ScrollView so it centres in the page: the
-        // last few queries when there are any, the illustration otherwise.
+        // Empty state, outside the ScrollView: the last few queries, hung
+        // under the field and lined up with it, when there are any; a centred
+        // first-run note otherwise.
         Item {
             objectName: "searchEmptyState"
             Layout.fillWidth: true
@@ -247,13 +261,24 @@ Rectangle {
                     height: 48
                 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Search Tidal"); color: Theme.textPrimary; font.pixelSize: Theme.fontDisplay; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Find tracks, albums, artists and more"); color: Theme.textSec; font.pixelSize: Theme.fontBody }
+                Text {
+                    objectName: "searchFirstRunHint"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.maximumWidth: Math.max(0, root.width - 2 * Theme.space12)
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Results appear as you type. Searches that found something are kept here.")
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                }
             }
 
             ColumnLayout {
                 objectName: "searchRecents"
-                anchors.centerIn: parent
-                width: Math.min(420, parent.width - 48)
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.space6
+                width: Math.min(560, parent.width - 2 * Theme.space6)
                 spacing: Theme.space1
                 visible: root.recents.length > 0
 
@@ -461,6 +486,93 @@ Rectangle {
                         color: Theme.textSec
                         font.pixelSize: Theme.fontBody
                     }
+                }
+
+                // The server's own best match, over the five sections on the
+                // All tab. A track plays on a click, as a track row does;
+                // everything else opens its page.
+                Column {
+                    id: topHitBlock
+                    Layout.fillWidth: true
+                    visible: root.activeTab === 0 && root.replied && !!root.topHit
+                             && root.errorText.length === 0
+                    readonly property var  hit:  root.topHit ? root.topHit.item : null
+                    readonly property string kind: root.topHit ? root.topHit.kind : ""
+
+                    Item { width: 1; height: Theme.space4 }
+                    Text {
+                        x: Theme.space6
+                        text: qsTr("Top result", "heading over the one best match of a search")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                    }
+                    Item { width: 1; height: Theme.space3 }
+
+                    Rectangle {
+                        id: topHitCard
+                        objectName: "searchTopHit"
+                        x: Theme.space6
+                        width: Math.min(520, parent.width - 2 * Theme.space6)
+                        height: topHitRow.implicitHeight + 2 * Theme.space4
+                        radius: Theme.radiusLarge
+                        color: topHitHov.hovered || activeFocus ? Theme.hoverFill : Theme.surface
+                        border.width: activeFocus ? 2 : 0
+                        border.color: Theme.accent
+                        Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+
+                        activeFocusOnTab: visible
+                        Keys.onReturnPressed: root.openTopHit()
+                        Keys.onSpacePressed:  root.openTopHit()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: root.topHitTitle() + ", " + root.topHitKindLabel()
+                        Accessible.onPressAction: root.openTopHit()
+
+                        HoverHandler { id: topHitHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.openTopHit() }
+
+                        RowLayout {
+                            id: topHitRow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: Theme.space4
+                            anchors.rightMargin: Theme.space4
+                            spacing: Theme.space4
+
+                            CoverArt {
+                                objectName: "searchTopHitCover"
+                                Layout.preferredWidth: 96
+                                Layout.preferredHeight: 96
+                                // An artist is a face, round as on its card.
+                                radius: topHitBlock.kind === "artist" ? width / 2 : Theme.radiusSmall
+                                source: topHitBlock.hit ? (topHitBlock.hit.coverUrl || "") : ""
+                                glyph: topHitBlock.kind === "artist" ? "artist"
+                                     : topHitBlock.kind === "playlist" ? "playlist"
+                                     : topHitBlock.kind === "album" ? "album" : "track"
+                                decodeSize: Qt.size(192, 192)
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.space1
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.topHitTitle()
+                                    color: Theme.textPrimary
+                                    font.pixelSize: Theme.fontTitle
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.topHitMeta()
+                                    color: Theme.textSec
+                                    font.pixelSize: Theme.fontMeta
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+                    Item { width: 1; height: Theme.space6 }
                 }
 
                 // The five sections in the query's order: the Loaders stay put,
@@ -828,6 +940,53 @@ Rectangle {
                                 mixType: item.mixType || "" })
     }
 
+    // ── the top result ──────────────────────────────────────────────────
+
+    function topHitTitle() {
+        var h = root.topHit ? root.topHit.item : null
+        if (!h) return ""
+        return root.topHit.kind === "artist" ? (h.name || "") : (h.title || "")
+    }
+
+    function topHitKindLabel() {
+        switch (root.topHit ? root.topHit.kind : "") {
+        case "artist":   return qsTr("Artist")
+        case "album":    return qsTr("Album", "the kind of a search's top result")
+        case "track":    return qsTr("Track", "the kind of a search's top result")
+        case "playlist": return qsTr("Playlist", "the kind of a search's top result")
+        }
+        return ""
+    }
+
+    // The kind, then who made it where that is known.
+    function topHitMeta() {
+        var h = root.topHit ? root.topHit.item : null
+        var parts = [root.topHitKindLabel()]
+        if (h && h.artists && root.topHit.kind !== "artist") parts.push(h.artists)
+        return parts.filter(function (p) { return p && p.length > 0 }).join(" · ")
+    }
+
+    function openTopHit() {
+        if (!root.topHit || !root.topHit.item) return
+        var h = root.topHit.item
+        switch (root.topHit.kind) {
+        case "track":
+            // From its row where the list holds it, as a click on that row
+            // would; on its own otherwise.
+            player.setPlaybackSource("search", root.query, root.query)
+            for (var i = 0; i < root.tracks.length; ++i)
+                if (root.tracks[i].id === h.id) { player.playTracks(root.tracks, i); return }
+            player.playTracks([h], 0)
+            return
+        case "album":    openTile(kAlbums, { id: h.id }); return
+        case "artist":   openTile(kArtists, { id: h.id }); return
+        case "playlist":
+            openTile(kPlaylists, { id: h.uuid, title: h.title, coverUrl: h.coverUrl || "",
+                                   playlistType: h.type || "" })
+            return
+        }
+    }
+
     // Declaring the source is what records the play. Inside the callback and
     // after the guard, so a failed or empty fetch records nothing. An artist
     // tile has no entry: no page in the app offers playing an artist.
@@ -985,6 +1144,7 @@ Rectangle {
             // Ordered from the reply, once, so the sections cannot move under
             // an append or a keystroke.
             root.sectionOrder = root.orderFor(q, results)
+            root.topHit = (results.topHit && results.topHit.item) ? results.topHit : null
 
             // Remembered only once it has found something: the page searches as
             // the user types, and prefixes and typos do not belong here.
@@ -1105,6 +1265,7 @@ Rectangle {
     function _resetResults() {
         moreFailedKind = -1
         tracks = []; albums = []; artists = []; playlists = []; mixes = []
+        topHit = null
         _seen = ({})
         _sent  = [0, 0, 0, 0, 0, 0]
         _total = [0, 0, 0, 0, 0, 0]

@@ -116,6 +116,28 @@ private slots:
         QCOMPARE(ids(out), (QList<qint64>{900101002}));
     }
 
+    // With clean preferred, the clean one stands for the record, before an
+    // explicit one in hi-res.
+    void cleanStandsBeforeExplicitWhenPreferred() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> out = oneEntryPerRecord({
+            popular(hiRes(explicitOne(product(900101011, t, 12, 2710))), 90),
+            popular(product(900101012, t, 12, 2709), 10),
+            popular(hiRes(product(900101013, t, 12, 2709)), 20),
+        }, false);
+        QCOMPARE(ids(out), (QList<qint64>{900101013}));
+    }
+
+    // A record Tidal has only explicit is shown explicit whatever is preferred.
+    void anExplicitOnlyRecordStandsWhenCleanIsPreferred() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> out = oneEntryPerRecord({
+            explicitOne(product(900101021, t, 12, 2710)),
+            hiRes(explicitOne(product(900101022, t, 12, 2710))),
+        }, false);
+        QCOMPARE(ids(out), (QList<qint64>{900101022}));
+    }
+
     // A version that cannot be played stands for nothing while one can.
     void onlyTheCleanOneStreamableIsChosen() {
         const QString t = QStringLiteral("Nachtfahrt");
@@ -544,6 +566,71 @@ private slots:
         QCOMPARE(recordSection(a), RecordSection::SinglesAndEps);
         a.featured = true;
         QCOMPARE(recordSection(a), RecordSection::AppearsOn);
+    }
+
+    // ── a list cut to the preferred version ─────────────────────────────────
+
+    void aPairInAListIsCutToTheExplicitOne() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> in = {
+            product(900200001, t, 12, 2709),
+            product(900200002, QStringLiteral("Morgenrot"), 9, 2400),
+            explicitOne(product(900200003, t, 12, 2710)),
+        };
+        QCOMPARE(ids(preferredVersions(in, true)), (QList<qint64>{900200002, 900200003}));
+        QCOMPARE(ids(preferredVersions(in, false)), (QList<qint64>{900200001, 900200002}));
+    }
+
+    void aReleaseOfOneVersionStays() {
+        const QList<Album> in = { explicitOne(product(900200011, QStringLiteral("Nachtfahrt"), 12, 2710)) };
+        QCOMPARE(ids(preferredVersions(in, false)), (QList<qint64>{900200011}));
+    }
+
+    void thePreferredOneUnstreamableKeepsTheOther() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> in = {
+            unstreamable(product(900200021, t, 12, 2709)),
+            explicitOne(product(900200022, t, 12, 2710)),
+        };
+        QCOMPARE(ids(preferredVersions(in, false)), (QList<qint64>{900200021, 900200022}));
+    }
+
+    void anotherArtistsRecordOfTheTitleIsNoPair() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        Album a = product(900200031, t, 12, 2709);
+        a.artists = {Artist{900200091, QStringLiteral("Eine Band"), {}, 0}};
+        Album b = explicitOne(product(900200032, t, 12, 2710));
+        b.artists = {Artist{900200092, QStringLiteral("Andere Band"), {}, 0}};
+        QCOMPARE(ids(preferredVersions({a, b}, true)), (QList<qint64>{900200031, 900200032}));
+    }
+
+    void anotherTrackCountIsNoPair() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> in = {
+            product(900200041, t, 14, 3209),
+            explicitOne(product(900200042, t, 12, 2710)),
+        };
+        QCOMPARE(ids(preferredVersions(in, true)), (QList<qint64>{900200041, 900200042}));
+    }
+
+    void aTrackPairIsCutAndALongerTakeIsNot() {
+        auto track = [](qint64 id, int duration, bool explicitOne) {
+            Track t;
+            t.id = id;
+            t.title = QStringLiteral("Erstes Lied");
+            t.duration = duration;
+            t.explicit_ = explicitOne;
+            t.artists = {Artist{900200099, QStringLiteral("Eine Band"), {}, 0}};
+            return t;
+        };
+        const QList<Track> in = { track(900200051, 201, true), track(900200052, 200, false),
+                                  track(900200053, 260, false) };
+        QList<qint64> got;
+        for (const Track &t : preferredVersions(in, true)) got << t.id;
+        QCOMPARE(got, (QList<qint64>{900200051, 900200053}));
+        got.clear();
+        for (const Track &t : preferredVersions(in, false)) got << t.id;
+        QCOMPARE(got, (QList<qint64>{900200052, 900200053}));
     }
 };
 

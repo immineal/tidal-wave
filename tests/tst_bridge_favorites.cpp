@@ -124,6 +124,8 @@ public:
     int        indexPageReads = 0;
     // Liked, but in no listing: what favorites/ids holds beyond the pages.
     QSet<qint64> unlistedLikes;
+    // Listed likes the ids answer leaves out, as one read before them does.
+    QSet<qint64> idsLeaveOut;
     int        idReads = 0;
 
     // Parks each ids reply, as the server had it when asked.
@@ -135,6 +137,7 @@ public:
         FavoriteIds ids;
         for (const Track &t : likes) ids.tracks.insert(t.id);
         ids.tracks.unite(unlistedLikes);
+        ids.tracks.subtract(idsLeaveOut);
         if (holdIds) { parkedIds << [cb, ids] { cb(ids, QString()); }; return; }
         cb(ids, QString());
     }
@@ -465,6 +468,28 @@ private slots:
         QVERIFY(h.bridge.isTrackFavorite(2000));
         QCOMPARE(elsewhere.size(), 1);
         QCOMPARE(redraws.size(), 1);
+    }
+
+    // Every row Liked tracks lists has its heart, also where the ids answer
+    // is older than the listing, and after a reload.
+    void everyListedLikeHasItsHeart() {
+        Harness h;
+        h.client.likes = mkLikes(5);
+        h.client.idsLeaveOut = {h.client.likes.at(2).id, h.client.likes.at(4).id};
+        h.client.setUserId(kUid);
+        const auto everyRowLiked = [&h] {
+            const QVariantList rows = h.bridge.searchFavoriteTracks(QString());
+            for (const QVariant &v : rows)
+                if (!h.bridge.isTrackFavorite(v.toMap().value(QStringLiteral("id")).toLongLong()))
+                    return false;
+            return !rows.isEmpty();
+        };
+        QVERIFY(everyRowLiked());
+        h.client.likes.prepend(mkLike(2000));
+        h.client.idsLeaveOut.insert(2000);
+        h.bridge.syncFavorites();
+        QCOMPARE(firstLiked(h), 2000LL);
+        QVERIFY(everyRowLiked());
     }
 
     void aRemovalFromThePhoneLeaves() {

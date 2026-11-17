@@ -816,28 +816,43 @@ TestCase {
         picker.menu.close()
     }
 
-    // Folding the card name away is only safe because the row still knows the
-    // whole string, which is what its tooltip shows.
-    function test_a_folded_row_still_knows_the_whole_name() {
+    // Every row shows the name the system gave it. Hiding a shared front
+    // part left pairs that read "… Pro" and "… Pro 7".
+    function test_every_row_shows_the_whole_name() {
         audioStub.devices = tigerLake()
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
         var body = openPicker(host, picker)
         var rows = collectVisibleByName(body, "outputLocalRow", [])
-
-        verify(rows[1].label !== rows[1].fullLabel,
-               "nothing was folded here, so this case proves nothing")
-        compare(rows[1].fullLabel, "Kestrel Lake HD Audio Controller Speaker",
-                "the row forgot the name it stands for")
-        compare(rows[0].label, "System default",
-                "the sentinel is not hardware and must never be folded")
+        for (var i = 0; i < rows.length; ++i)
+            compare(labelTextOf(rows[i]).text, rows[i].fullLabel,
+                    "row " + i + " draws less than its name")
+        compare(rows[1].fullLabel, "Kestrel Lake HD Audio Controller Speaker")
+        compare(rows[0].label, "System default")
         picker.menu.close()
     }
 
-    // Two cards, so no prefix is common to everything. The pair that shares
-    // one is folded, the odd one out keeps its whole name, and nothing
-    // truncates.
-    function test_a_device_that_shares_no_prefix_keeps_its_whole_name() {
+    function test_two_names_one_inside_the_other_read_in_full() {
+        audioStub.devices = [
+            { id: "",  label: "System default", isDefault: false },
+            { id: "a", label: "Corvid Studio Audio Pro",   isDefault: false },
+            { id: "b", label: "Corvid Studio Audio Pro 7", isDefault: true }
+        ]
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        var rows = collectVisibleByName(body, "outputLocalRow", [])
+        compare(labelsOf(rows).join(", "),
+                "System default, Corvid Studio Audio Pro, Corvid Studio Audio Pro 7",
+                "the card name was folded away")
+        for (var i = 0; i < rows.length; ++i)
+            verify(!labelTextOf(rows[i]).truncated, "row " + i + " is cut")
+        picker.menu.close()
+    }
+
+    // Two cards with long names: the menu grows to hold them rather than
+    // cutting them at a fixed width.
+    function test_the_menu_grows_to_the_longest_name() {
         audioStub.devices = [
             { id: "",   label: "System default", isDefault: false },
             { id: "s1", label: "Kestrel Lake HD Audio Controller Speaker", isDefault: false },
@@ -849,50 +864,47 @@ TestCase {
         var body = openPicker(host, picker)
         var rows = collectVisibleByName(body, "outputLocalRow", [])
         compare(rows.length, 4)
-
-        compare(rows[3].label, "Larkspur 2x2 USB",
-                "a device with nothing in common with the others lost part of its name")
-        verify(rows[1].label !== rows[1].fullLabel,
-               "the two sinks that do share a card name were not folded")
-        for (var i = 0; i < rows.length; ++i)
+        for (var i = 0; i < rows.length; ++i) {
+            compare(rows[i].label, rows[i].fullLabel)
             verify(!labelTextOf(rows[i]).truncated,
                    "row " + i + " does not fit: \"" + labelTextOf(rows[i]).text + "\"")
+        }
+        verify(picker.menu.width <= Theme.menuMaxWidth, "the menu outgrew the menu width cap")
         picker.menu.close()
     }
 
-    // A short shared prefix is left alone: folding it would read worse.
-    function test_a_short_shared_prefix_is_left_alone() {
-        audioStub.devices = [
-            { id: "",  label: "System default", isDefault: false },
-            { id: "a", label: "Speaker Left",   isDefault: false },
-            { id: "b", label: "Speaker Right",  isDefault: false }
-        ]
-        var host = showHost(playerBarHost, 1280, 200)
-        var picker = barPicker(host)
-        var body = openPicker(host, picker)
-        var rows = collectVisibleByName(body, "outputLocalRow", [])
-        compare(labelsOf(rows).join(", "), "System default, Speaker Left, Speaker Right",
-                "a prefix this short should have been left where it was")
-        picker.menu.close()
-    }
-
-    // One long-named sink and nothing to fold it against, so the elide
-    // carries it: the middle goes and the end stays.
-    function test_a_lone_long_name_loses_its_middle_and_not_its_end() {
+    // A name longer than any menu loses its middle, keeps its end, and the
+    // row tips the whole of it.
+    function test_a_name_too_long_for_any_menu_is_cut_in_the_middle_and_tipped() {
+        var longName = "Kestrel Lake High Definition Audio Controller Digital Surround Output HDMI / DisplayPort 3"
         audioStub.devices = [
             { id: "",   label: "System default", isDefault: false },
-            { id: "s1", label: "Kestrel Lake HD Audio Controller Speaker", isDefault: true }
+            { id: "s1", label: longName, isDefault: true }
         ]
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
         var body = openPicker(host, picker)
         var rows = collectVisibleByName(body, "outputLocalRow", [])
+        var t = labelTextOf(rows[1])
+        verify(t.truncated, "a name this long should not fit; the case proves nothing")
+        compare(t.elide, Text.ElideMiddle, "the end of the name, which names the socket, was cut")
+        compare(picker.menu.width, Theme.menuMaxWidth)
+        verify(!rows[0].tipsFullName, "a whole name offers a tip")
+        verify(rows[1].tipsFullName, "a cut name offers no tip of the whole")
+        picker.menu.close()
+    }
 
-        compare(rows[1].label, rows[1].fullLabel,
-                "there was nothing to fold against, so the name should be whole")
-        compare(labelTextOf(rows[1]).elide, Text.ElideMiddle,
-                "with nothing to fold, only eliding the middle keeps the end of the "
-                + "name, and the end is the part that names the socket")
+    // In a narrow window the menu stays inside it.
+    function test_the_menu_stays_inside_a_narrow_window() {
+        audioStub.devices = [
+            { id: "",   label: "System default", isDefault: false },
+            { id: "s1", label: "Kestrel Lake HD Audio Controller HDMI / DisplayPort 1", isDefault: true }
+        ]
+        var host = showHost(playerBarHost, 400, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        verify(picker.menu.width <= 400 - 2 * Theme.menuWindowMargin,
+               "the menu is " + picker.menu.width + " px in a 400 px window")
         picker.menu.close()
     }
 

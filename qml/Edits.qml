@@ -204,6 +204,59 @@ QtObject {
 
     // ── playlists ────────────────────────────────────────────────────────
 
+    // Asks the window's playlist picker to add these tracks (track maps)
+    // wherever the user picks. Main.qml holds the one picker that answers.
+    signal playlistPickRequested(var tracks)
+    function pickPlaylist(tracks) {
+        var list = (tracks || []).filter(function (t) { return t && Number(t.id) > 0 })
+        if (list.length > 0) edits.playlistPickRequested(list)
+    }
+
+    // cb(true) when the playlist holds every one of trackIds, for the
+    // picker's tick. Reads are kept per playlist until it changes or its
+    // count no longer fits, and at most two go out at once.
+    property var _heldCache: ({})
+    property var _heldWaiting: []
+    property int _heldInFlight: 0
+    readonly property int heldReadsAtOnce: 2
+    onPlaylistChanged: (uuid) => { delete edits._heldCache[uuid] }
+
+    function playlistHolds(uuid, numTracks, trackIds, cb) {
+        var ids = (trackIds || []).map(Number)
+        if (!uuid || ids.length === 0) { cb(false); return }
+        var answer = function (rows) {
+            cb(ids.every(function (id) { return edits._count(rows, id) > 0 }))
+        }
+        var known = edits._heldCache[uuid]
+        if (known && (numTracks === undefined || known.length === Number(numTracks))) {
+            answer(known); return
+        }
+        delete edits._heldCache[uuid]
+        edits._heldWaiting.push({ uuid: uuid, answer: answer, fail: function () { cb(false) } })
+        edits._readHeld()
+    }
+
+    function _readHeld() {
+        while (edits._heldInFlight < edits.heldReadsAtOnce && edits._heldWaiting.length > 0) {
+            var w = edits._heldWaiting.shift()
+            // An earlier read of the same playlist may have answered it.
+            if (edits._heldCache[w.uuid]) { w.answer(edits._heldCache[w.uuid]); continue }
+            edits._heldInFlight++
+            bridge.readPlaylistTrackIds(w.uuid, (function (w) {
+                return function (ok, rows) {
+                    edits._heldInFlight--
+                    if (ok === true) {
+                        edits._heldCache[w.uuid] = (rows || []).map(Number)
+                        w.answer(edits._heldCache[w.uuid])
+                    } else {
+                        w.fail()
+                    }
+                    edits._readHeld()
+                }
+            })(w))
+        }
+    }
+
     function _count(ids, trackId) {
         var n = 0
         for (var i = 0; i < ids.length; i++) if (Number(ids[i]) === Number(trackId)) n++
@@ -276,25 +329,33 @@ QtObject {
         if (cb) cb(false, refused)
     }
 
-    // One write per track, a new one with SKIP and one it holds with ADD, so
-    // each lands as one more row. `before` is the playlist as it was read.
+    // Tracks per write. Tidal takes a comma list; a whole album or queue in
+    // one request would be one long form, so it goes in runs of this many.
+    readonly property int addRun: 100
+
+    // In runs of addRun, in order. A run holding a track the playlist has,
+    // or one listed twice, asks for ADD so each lands as one more row; the
+    // rest SKIP. `before` is the playlist as it was read.
     function _addTracks(uuid, title, ids, before, cb) {
         var had = ids.map(function (id) { return edits._count(before, id) })
-        var i = 0
+        var runs = []
+        for (var k = 0; k < ids.length; k += edits.addRun) runs.push(k)
+        var r = 0
         function next() {
-            if (i === ids.length) { edits._added(uuid, title, ids, had, cb); return }
-            var id = ids[i], dupe = had[i] > 0
-            i++
-            var written = function (ok) {
+            if (r === runs.length) { edits._added(uuid, title, ids, had, cb); return }
+            var from = runs[r], to = Math.min(ids.length, from + edits.addRun)
+            r++
+            var run = ids.slice(from, to), again = false
+            for (var j = from; j < to; j++)
+                if (had[j] > 0 || ids.indexOf(ids[j]) < j) again = true
+            bridge.addTrackListToPlaylist(uuid, run, again, function (ok) {
                 if (ok !== true) {
                     edits._addRefused(title, ids.length, cb)
-                    if (i > 1) edits.playlistChanged(uuid)
+                    if (r > 1) edits.playlistChanged(uuid)
                     return
                 }
                 next()
-            }
-            if (dupe) bridge.restoreTrackToPlaylist(uuid, id, -1, written)
-            else      bridge.addTracksToPlaylist(uuid, id, written)
+            })
         }
         next()
     }
@@ -381,6 +442,55 @@ QtObject {
                 edits._offer(qsTranslate("PlaylistPage", "Removed from “%1”",
                                          "confirmation after removing a track from a playlist").arg(title),
                              function (done) { edits._putBack(uuid, title, trackId, index, done) })
+            })
+        })
+    }
+
+    // Moves the row at `from` so it ends at `to`. written(ok, stale) is the
+    // bridge's reply, for the page to move the row. No notice, as a drag
+    // shows itself; Ctrl+Z moves it back once the read-back shows it.
+    function movePlaylistItem(uuid, title, trackId, from, to, written) {
+        bridge.moveTrackInPlaylist(uuid, from, to, function (ok, stale) {
+            if (written) written(ok, stale)
+            if (ok !== true || stale === true) {
+                if (ok !== true && stale !== true)
+                    Toasts.show(qsTr("Could not move the track", "shown when reordering a playlist failed"))
+                return
+            }
+            edits._confirm(edits._playlistCheck(uuid, function (ids) {
+                return Number(ids[to]) === Number(trackId)
+            }), function (shown) {
+                if (!shown) {
+                    Toasts.show(edits.unconfirmedText)
+                    edits.playlistChanged(uuid)
+                    return
+                }
+                edits._push({ undo: function (done) { edits._moveBack(uuid, title, trackId, to, from, done) } })
+            })
+        })
+    }
+
+    function _moveBack(uuid, title, trackId, from, to, done) {
+        bridge.readPlaylistTrackIds(uuid, function (readOk, ids) {
+            // Moved again since, or no longer there: not this undo's to touch.
+            if (readOk !== true || Number(ids[from]) !== Number(trackId)) {
+                Toasts.show(edits.undoFailedText); done(false); return
+            }
+            bridge.moveTrackInPlaylist(uuid, from, to, function (ok) {
+                if (ok !== true) {
+                    Toasts.show(edits.undoFailedText)
+                    edits.playlistChanged(uuid)
+                    done(false)
+                    return
+                }
+                edits._confirm(edits._playlistCheck(uuid, function (now) {
+                    return Number(now[to]) === Number(trackId)
+                }), function (shown) {
+                    edits.playlistChanged(uuid)
+                    Toasts.show(shown ? qsTr("Moved back in “%1”", "after undoing a move in a playlist").arg(title)
+                                      : edits.unconfirmedText)
+                    done(shown)
+                })
             })
         })
     }

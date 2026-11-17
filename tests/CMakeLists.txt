@@ -49,10 +49,12 @@ if(TARGET tst_desktop_entry)
         TIDALWAVE_DESKTOP_FILE="${CMAKE_SOURCE_DIR}/packaging/io.github.immineal.TidalWave.desktop")
 endif()
 
-if(TARGET tst_lyrics)
-    target_compile_definitions(tst_lyrics PRIVATE
-        TW_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
-endif()
+foreach(reads_fixtures tst_lyrics tst_home_feed)
+    if(TARGET ${reads_fixtures})
+        target_compile_definitions(${reads_fixtures} PRIVATE
+            TW_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    endif()
+endforeach()
 
 # ── tst_qml: QtQuickTest runner over tests/qml/tst_*.qml ─────────────────────
 qt_add_executable(tst_qml

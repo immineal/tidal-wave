@@ -678,7 +678,12 @@ Item {
                 // the viewport is kept alive.
                 cacheBuffer: 240
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: ScrollBar {
+                    objectName: "sidebarLibraryScrollBar"
+                    policy: ScrollBar.AsNeeded
+                    // A long list keeps a handle the pointer can find and grab.
+                    minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
+                }
 
                 delegate: LibraryRow { }
 

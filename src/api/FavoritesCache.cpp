@@ -78,6 +78,7 @@ QJsonObject toJson(const Track &t) {
     QJsonObject o;
     o["id"]             = double(t.id);
     o["title"]          = t.title;
+    o["version"]        = t.version;
     o["duration"]       = t.duration;
     o["trackNumber"]    = t.trackNumber;
     o["volumeNumber"]   = t.discNumber;
@@ -87,6 +88,8 @@ QJsonObject toJson(const Track &t) {
     o["isrc"]           = t.isrc;
     o["allowStreaming"] = t.streamable;
     o["streamReady"]    = true;
+    // Where a playlist track has it, so fromJson() reads it back unwrapped.
+    o["dateAdded"]      = iso(t.addedAt);
     if (!t.trackMixId.isEmpty())
         o["mixes"] = QJsonObject{{QLatin1String(MixTypes::TrackMix), t.trackMixId}};
     o["album"]          = toJson(t.album);

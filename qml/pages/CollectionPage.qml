@@ -65,13 +65,24 @@ Rectangle {
         }
         return false
     }
-    // 0=default, 1=A-Z, 2=Z-A. Default is the order the bridge hands over:
-    // newest saved first, playlists by the later of last played and added.
-    // It is not persisted, so it is 0 on every visit.
+    // 0=default, 1=A-Z, 2=Z-A; albums also 3=artist, 4=year. Default is the
+    // order the bridge hands over: newest saved first, playlists by the later
+    // of last played and added. It is not persisted, so it is 0 on every visit.
     property int  sortMode: 0
+    // One list for every tab, so a tab switch keeps the pills; the last two
+    // are shown on the albums tab only.
+    readonly property var sortLabels: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A"),
+        qsTr("Artist", "sorts albums by artist"), qsTr("Year", "sorts albums by release, newest first")]
+    function sortCountOn(tab) { return tab === 1 ? 5 : 3 }
+    // Liked tracks sort in their column headings instead; see TrackListHeader.
+    TrackListHeader.Sort {
+        id: trackSort
+        onKeyChanged: contentEntry.restart()
+        onDescendingChanged: contentEntry.restart()
+    }
     // What Default means on the current tab, for the pill's tooltip.
     readonly property string defaultOrderHint: [
-        qsTr("Default: most recently liked first"),
+        "",
         qsTr("Default: most recently saved first"),
         qsTr("Default: most recently followed first"),
         qsTr("Default: most recently played or added first")
@@ -121,6 +132,8 @@ Rectangle {
     }
 
     onActiveTabChanged: {
+        // Artist and Year are the albums' alone.
+        if (sortMode >= sortCountOn(activeTab)) sortMode = 0
         updateFilteredContent()
         if (activeTab === 4 && mixes.length === 0) loadMixes()
         contentEntry.restart()
@@ -135,11 +148,21 @@ Rectangle {
 
     function sortItems(items, mode) {
         if (mode === 0) return items
+        function name(x) { return (x.title || x.name || "").toLowerCase() }
+        function year(x) { return String(x.releaseDate || "") }
         var copy = items.slice()
         copy.sort(function(a, b) {
-            var titleA = (a.title || a.name || "").toLowerCase()
-            var titleB = (b.title || b.name || "").toLowerCase()
-            return mode === 1 ? titleA.localeCompare(titleB) : titleB.localeCompare(titleA)
+            switch (mode) {
+            case 1: return name(a).localeCompare(name(b))
+            case 2: return name(b).localeCompare(name(a))
+            // An artist's albums oldest first, as a discography reads.
+            case 3: return String(a.artists || "").toLowerCase().localeCompare(String(b.artists || "").toLowerCase())
+                           || year(a).localeCompare(year(b)) || name(a).localeCompare(name(b))
+            // Newest first; an album with no date goes last.
+            case 4: return (year(a) === "") - (year(b) === "") || year(b).localeCompare(year(a))
+                           || name(a).localeCompare(name(b))
+            }
+            return 0
         })
         return copy
     }
@@ -213,6 +236,10 @@ Rectangle {
                 model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
                 labelFor: function (index, name) {
                     var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
+                    var waiting = [root.loading, bridge.albumsLoading, bridge.artistsLoading,
+                                   bridge.playlistsLoading, root.mixesLoading || !root.mixesLoaded && !root.mixesFailed]
+                    // A list on its way has no count yet; "(0)" would read as empty.
+                    if (waiting[index] && counts[index] === 0) return name
                     // Tab name followed by how many items it holds
                     return qsTr("%1 (%2)").arg(name)
                                           .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
@@ -222,18 +249,20 @@ Rectangle {
             }
 
             // Plain words with a line under the chosen one: the tab strip
-            // beside it already carries the row's one accent pill.
+            // beside it already carries the row's one accent pill. The card
+            // tabs only: Liked tracks sorts in its column headings.
             Row {
-                visible: root.activeTab < 4
+                visible: root.activeTab >= 1 && root.activeTab < 4
                 Layout.alignment: Qt.AlignVCenter
                 spacing: Theme.space1
                 Repeater {
-                    model: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A")]
+                    model: root.sortLabels
                     Rectangle {
                         required property string modelData
                         required property int    index
                         id: sortPill
                         objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
+                        visible: index < root.sortCountOn(root.activeTab)
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
                         readonly property bool chosen: root.sortMode === index
                         // Sized for the bold label, so choosing one moves nothing.
@@ -323,6 +352,20 @@ Rectangle {
                 }
             }
 
+            // Liked tracks as shown, from the top, as a playlist's Play.
+            PillButton {
+                objectName: "collectionPlayButton"
+                visible: root.activeTab === 0
+                text: qsTranslate("AlbumPage", "Play", "verb, button label")
+                icon: "play"
+                accent: true
+                enabled: root.tabCount > 0
+                opacity: enabled ? 1 : 0.45
+                Layout.preferredWidth:  implicitWidth
+                Layout.preferredHeight: 36
+                onClicked: root.playShown()
+            }
+
             // A pick from what the tab shows now, field filter included.
             PillButton {
                 objectName: "collectionSurpriseButton"
@@ -355,6 +398,19 @@ Rectangle {
 
         Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
 
+        // Over the rows as the list draws them: from its left edge, whatever
+        // x they ask for, and as wide as they are.
+        TrackListHeader {
+            id: tracksHeader
+            objectName: "collectionTracksHeader"
+            visible: root.activeTab === 0
+            Layout.fillWidth: true
+            Layout.rightMargin: Theme.space8
+            sort: trackSort
+            showAdded: true
+            opacity: root.contentIn
+        }
+
         // Tracks Tab: virtualized ListView
         ListView {
             id: tracksList
@@ -364,7 +420,7 @@ Rectangle {
             visible: root.activeTab === 0
             opacity: root.contentIn
             clip: true
-            property var sortedTracks: root.sortItems(root.filteredTracks, root.sortMode)
+            property var sortedTracks: trackSort.sorted(root.filteredTracks)
             // Bound on every tab, so a tab switch keeps the rows and the scroll.
             model: sortedTracks
             boundsBehavior: Flickable.StopAtBounds
@@ -373,7 +429,7 @@ Rectangle {
             // them as `var` and decides what a missing or mistyped one shows.
             delegate: TrackRow {
                 width: tracksList.width - 32
-                x: 16
+                showAdded:   true
                 trackNum:    index + 1
                 title:       modelData.title
                 artists:     modelData.artists
@@ -399,6 +455,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: tracksList }
         }
 
         // Tab 1: Albums Tab (virtualized GridView)
@@ -473,6 +530,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: albumsGrid }
         }
 
         // Tab 2: Artists Tab (virtualized GridView)
@@ -532,6 +590,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: artistsGrid }
         }
 
         // Tab 3: Playlists Tab (virtualized GridView)
@@ -593,6 +652,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: playlistsGrid }
         }
 
         // Empty state for playlists
@@ -676,6 +736,7 @@ Rectangle {
                 // A long list keeps a handle the pointer can find and grab.
                 minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: mixesGrid }
         }
 
         // Empty state for mixes
@@ -842,6 +903,16 @@ Rectangle {
         case 4: return root.filteredMixes
         }
         return []
+    }
+
+    // Liked tracks in the order shown, from the first. Shuffle stays as set.
+    function playShown() {
+        var items = tracksList.sortedTracks
+        if (!items || items.length === 0) return
+        player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
+        if (Number(items[0].albumId) > 0)
+            library.markPlayed("album", "" + items[0].albumId)
+        player.playTracks(items, 0)
     }
 
     // Tracks: all of them, shuffled, from a random one, as a detail page's

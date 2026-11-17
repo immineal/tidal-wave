@@ -1251,6 +1251,32 @@ TestCase {
         h.panel.close()
     }
 
+    // ── explicit or clean ────────────────────────────────────────────────
+
+    // Explicit first and showing, as Tidal's own apps start.
+    function test_the_version_picker_offers_explicit_then_clean() {
+        bridge.preferExplicit = true
+        var h = openPanel(1280, 1200)
+        var combo = findByName(h.panel.contentItem, "settingsPreferredVersion")
+        verify(combo, "there is no explicit or clean picker")
+        compare(valuesOf(combo.options).join(","), "explicit,clean")
+        compare(combo.currentIndex, 0, "explicit is the stored choice")
+        h.panel.close()
+    }
+
+    function test_picking_clean_writes_the_bridge() {
+        bridge.preferExplicit = true
+        var h = openPanel(1280, 1200)
+        var combo = findByName(h.panel.contentItem, "settingsPreferredVersion")
+        combo.activated(1)
+        settle(h.panel.contentItem)
+        compare(bridge.preferExplicit, false, "picking clean did not reach the bridge")
+        combo.activated(0)
+        settle(h.panel.contentItem)
+        compare(bridge.preferExplicit, true)
+        h.panel.close()
+    }
+
     // ── 5. hardware acceleration ─────────────────────────────────────────
 
     // prefs.softwareRendering is inverted: true means draw on the CPU, so the
