@@ -4,6 +4,8 @@
 // threshold is measured on each ramp, as written and in black. What each switch
 // may touch is pinned on its own, and the two must compose in either order.
 
+#include <cmath>
+
 #include <QTest>
 #include <QColor>
 #include <QHash>
@@ -83,6 +85,21 @@ const QStringList kColourTokens = {
     // things drawn over arbitrary cover art, which is neither light nor dark
     "scrim", "artScrim", "artScrimStrong", "artInk", "artBorder",
 };
+
+// OKLCH hue in degrees (Ottosson 2020), where hue spacing reads evenly.
+double okHue(const QColor &c) {
+    auto lin = [](double v) {
+        return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    const double r = lin(c.redF()), g = lin(c.greenF()), b = lin(c.blueF());
+    const double l = std::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const double m = std::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const double s = std::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    const double a  = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    const double bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    const double h = std::atan2(bb, a) * 180.0 / M_PI;
+    return h < 0 ? h + 360.0 : h;
+}
 
 } // namespace
 
@@ -540,6 +557,29 @@ private slots:
                     }
                 }
             }
+        }
+    }
+
+    // Red is the error colour, so an accent must not read as one. Rust and
+    // Clay are warm: their accents sit at least 20 OKLCH degrees round from
+    // the red, and short of 60, where orange turns ochre.
+    void theAccentIsNotRed_data() { themeRows(); }
+    void theAccentIsNotRed() {
+        QFETCH(QString, name);
+        QFETCH(bool, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
+        for (const char *k : {"accent", "accentDim", "accentText"}) {
+            const double h = okHue(p.value(QLatin1String(k)).value<QColor>());
+            const double red = okHue(p.value(QStringLiteral("red")).value<QColor>());
+            double gap = std::abs(h - red);
+            if (gap > 180.0) gap = 360.0 - gap;
+            const QString where = name + "." + QLatin1String(k)
+                                + QStringLiteral(" at hue %1, red at %2")
+                                      .arg(h, 0, 'f', 1).arg(red, 0, 'f', 1);
+            QVERIFY2(gap >= 20.0, qPrintable(where + ": reads as the error red"));
+            if (h < 90.0)
+                QVERIFY2(h <= 60.0, qPrintable(where + ": reads as ochre"));
         }
     }
 
