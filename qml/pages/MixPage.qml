@@ -184,7 +184,8 @@ Rectangle {
 
             TrackListHeader {
                 objectName: "mixTracksHeader"
-                x: 16
+                // At x 0 with the rows' width: a vertical ListView puts its
+                // rows at its left edge, whatever x they ask for.
                 width: tracksList.width - 32
                 sort: trackSort
                 showAlbum: width - root.sidebarReclaim >= albumBreakpoint
@@ -193,7 +194,6 @@ Rectangle {
 
         delegate: TrackRow {
             width: tracksList.width - 32
-            x: 16
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.

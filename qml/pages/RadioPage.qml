@@ -105,7 +105,8 @@ Rectangle {
 
             TrackListHeader {
                 objectName: "radioTracksHeader"
-                x: 16
+                // At x 0 with the rows' width: a vertical ListView puts its
+                // rows at its left edge, whatever x they ask for.
                 width: trackList.width - 32
                 sort: trackSort
             }
@@ -115,7 +116,6 @@ Rectangle {
             required property var modelData
             required property int index
             width: trackList.width - 32
-            x: 16
             trackNum:    index + 1
             title:       modelData.title
             artists:     modelData.artists
