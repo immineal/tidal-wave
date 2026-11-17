@@ -7,6 +7,7 @@
 // Header-only and no QObject, so no moc. It reports through a std::function
 // and has no tr(): user-visible wording stays with the callers.
 #include <QByteArray>
+#include <QDateTime>
 #include <QDeadlineTimer>
 #include <QDebug>
 #include <QDir>
@@ -277,6 +278,7 @@ private:
     {
         std::weak_ptr<char> alive = m_alive;
         ++m_active;
+        qInfo() << "[dash] PROBE asking" << index << "at" << QDateTime::currentMSecsSinceEpoch() % 100000;
         QNetworkReply *reply = m_client->fetchRawWithStatus(QUrl(m_urls.at(index)),
             [this, alive, index](const TidalApi::RawAnswer &a) {
                 if (alive.expired() || m_settled) return;
