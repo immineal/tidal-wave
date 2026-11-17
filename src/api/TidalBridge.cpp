@@ -147,6 +147,8 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["isrc"]        = t.isrc;
     m["streamable"]  = t.streamable;
     m["durationStr"] = Track::clockText(t.duration);
+    // Liked or put on the playlist, ms since epoch; 0 when not known.
+    m["addedAt"]     = t.addedAt;
     return m;
 }
 
@@ -462,6 +464,8 @@ void TidalBridge::addTrackFavorite(qlonglong trackId, QJSValue cb) {
             emit favoriteTracksChanged();
             m_client->fetchTrack(trackId, [this](Track t, QString err) {
                 if (err.isEmpty() && t.id > 0) {
+                    // tracks/<id> has no like date; the like is now.
+                    if (t.addedAt == 0) t.addedAt = QDateTime::currentMSecsSinceEpoch();
                     // The track may already be in the list from paging.
                     const bool exists = std::any_of(
                         m_favoriteTracks.cbegin(), m_favoriteTracks.cend(),

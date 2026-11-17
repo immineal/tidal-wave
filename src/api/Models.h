@@ -161,8 +161,13 @@ struct Track {
     // False where Tidal lists the track and does not stream it. An answer
     // that says nothing about it is about a track that is streamed.
     bool    streamable = true;
+    // When it was liked or put on the playlist, in ms since epoch; 0 when the
+    // answer said nothing. The liked list has it on the favourites row.
+    qint64  addedAt = 0;
 
-    static Track fromJson(const QJsonObject &j) {
+    // `wrapper` is the favourites row the track arrived in, if any; its
+    // "created" is the like. A playlist's tracks carry "dateAdded" themselves.
+    static Track fromJson(const QJsonObject &j, const QJsonObject &wrapper = QJsonObject()) {
         Track t;
         t.id           = j["id"].toVariant().toLongLong();
         t.title        = j["title"].toString();
@@ -178,6 +183,8 @@ struct Track {
         t.isrc         = j["isrc"].toString();
         // Either flag as an explicit false. A missing one reads as true.
         t.streamable   = j["allowStreaming"].toBool(true) && j["streamReady"].toBool(true);
+        t.addedAt      = isoToMSecs(wrapper["created"].toString());
+        if (t.addedAt == 0) t.addedAt = isoToMSecs(j["dateAdded"].toString());
         if (j.contains("album"))
             t.album    = Album::fromJson(j["album"].toObject());
         for (const auto &v : j["artists"].toArray())
