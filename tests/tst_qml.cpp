@@ -16,7 +16,9 @@ class QmlTestSetup : public QObject {
     Q_OBJECT
 
 public:
-    QmlTestSetup() = default;
+    // Built before QtQuickTest makes any engine, so the tests collect
+    // garbage the way the app does.
+    QmlTestSetup() { Application::useWholeHeapQmlCollector(); }
 
 public slots:
     // Called by QtQuickTest once per QML test file, before that file is loaded.

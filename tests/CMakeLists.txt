@@ -105,6 +105,19 @@ set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
 set_tests_properties(${CORE_TEST_TARGETS} PROPERTIES TIMEOUT 300)
 set_tests_properties(tst_qml PROPERTIES TIMEOUT 2700)
 
+# Main built again and again under tst_qml, which collects as the app does.
+# Qt 6.11+ cross-checks every incremental collection when asked and logs that
+# step, so it must never show while collections do.
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.11)
+    add_test(NAME tst_qml_gc_whole_heap
+             COMMAND tst_qml -input "${CMAKE_CURRENT_SOURCE_DIR}/qml-gc")
+    set_tests_properties(tst_qml_gc_whole_heap PROPERTIES
+        ENVIRONMENT "${TW_TEST_ENVIRONMENT};QV4_MM_CROSS_VALIDATE_INCREMENTAL_GC=1;QT_LOGGING_RULES=qt.qml.gc.stateTransitions=true"
+        PASS_REGULAR_EXPRESSION "Transitioning to the MarkGlobalObject state"
+        FAIL_REGULAR_EXPRESSION "CrossValidateIncrementalMarkPhase;Cross Validation Error;FAIL!;Received signal;Totals: [0-9]+ passed, [1-9]"
+        TIMEOUT 300)
+endif()
+
 # The colour switch's rainbow is a committed picture; this fails when it no
 # longer matches tools/make-rainbow.py. Skipped where there is no Python.
 find_package(Python3 COMPONENTS Interpreter QUIET)
