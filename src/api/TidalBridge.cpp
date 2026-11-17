@@ -124,6 +124,8 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     QVariantMap m;
     m["id"]          = t.id;
     m["title"]       = t.title;
+    // "" for most tracks; see Track::version.
+    m["version"]     = t.version;
     m["artists"]     = t.artistNames();
     m["artistId"]    = t.artists.isEmpty() ? 0LL : t.artists[0].id;
     m["artistList"]  = artistsToVariantList(t.artists);

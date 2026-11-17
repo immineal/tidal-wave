@@ -1,0 +1,76 @@
+// What a track row says beside its title: the version that tells two
+// recordings of one title apart. Every id and title is invented.
+
+import QtQuick
+import QtQuick.Window
+import QtTest
+import TidalWave
+
+TestCase {
+    id: testCase
+    name: "TrackRowBadges"
+    when: windowShown
+    visible: true
+    width: 900
+    height: 300
+
+    Component { id: rowC; TrackRow { width: 700 } }
+
+    function init() {
+        app.setReducedMotionForTest(true)
+    }
+
+    function findByName(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            var hit = findByName(kids[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+
+    function makeRow(extra, width) {
+        var track = { id: 9301, title: "Abendlied", artists: "Ein Chor", artistId: 7,
+                      albumTitle: "Lieder", albumId: 42, coverUrl: "", coverUrl80: "",
+                      duration: 200 }
+        for (var k in extra) track[k] = extra[k]
+        var row = createTemporaryObject(rowC, testCase, {
+            trackData: track, title: track.title, artists: track.artists,
+            width: width || 700
+        })
+        verify(row, "TrackRow did not load")
+        waitForRendering(row)
+        return row
+    }
+
+    function test_a_version_is_shown_after_the_title() {
+        var row = makeRow({ version: "Live in Bremen" })
+        var title = findByName(row, "trackTitle")
+        var version = findByName(row, "trackVersion")
+        verify(version, "the row has no version label")
+        verify(version.visible, "the version is not shown")
+        compare(version.text, "(Live in Bremen)")
+        var t = title.mapToItem(row, 0, 0), v = version.mapToItem(row, 0, 0)
+        verify(v.x >= t.x + title.width, "the version does not follow the title")
+        compare(Math.round(v.y + version.height / 2), Math.round(t.y + title.height / 2),
+                "the version is not on the title's line")
+    }
+
+    function test_no_version_no_label() {
+        var row = makeRow({})
+        var version = findByName(row, "trackVersion")
+        verify(!version || !version.visible, "a label is shown for a track without a version")
+    }
+
+    // The title gives way last: a narrow row cuts the version first.
+    function test_the_title_keeps_its_room_before_the_version() {
+        var row = makeRow({ title: "Ein recht langer Titel für eine schmale Zeile",
+                            version: "Remastered 2011 Deluxe Edition" }, 420)
+        var title = findByName(row, "trackTitle")
+        var version = findByName(row, "trackVersion")
+        verify(!title.truncated || version.width <= 64,
+               "the title was cut while the version kept its room")
+    }
+}

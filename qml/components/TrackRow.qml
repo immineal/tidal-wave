@@ -50,6 +50,9 @@ Item {
         return Theme.clock(secs * 1000)
     }
     readonly property string coverText:   textOf(root.coverUrl)
+    // "Live", "Remastered 2011": what tells this recording from another of
+    // the same title. Most tracks have none.
+    readonly property string versionText: root.trackData ? textOf(root.trackData.version) : ""
 
     // ── this track's radio, as a mix id ─────────────────────────────────
     // "" when the payload carried none, which is normal: not every listing
@@ -289,7 +292,9 @@ Item {
     // names. Press is what a click does.
     Accessible.role: Accessible.ListItem
     Accessible.name: qsTr("%1, %2", "track row for a screen reader: title, artists")
-                         .arg(root.titleText).arg(root.artistsText)
+                         .arg(root.versionText.length > 0 ? root.titleText + " " + versionLabel.text
+                                                          : root.titleText)
+                         .arg(root.artistsText)
     Accessible.description: root.albumText.length > 0
                             ? qsTr("%1, %2", "track row for a screen reader: album, length")
                                   .arg(root.albumText).arg(root.durationText)
@@ -403,13 +408,38 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space1
-                Text {
-                    objectName: "trackTitle"
+                // The title and, after it, the version. The title gives way
+                // last: past a short stub the version is cut first.
+                Item {
+                    id: titleLine
                     Layout.fillWidth: true
-                    text: root.titleText
-                    color: root.isCurrent ? Theme.accentText : Theme.textPrimary
-                    font.pixelSize: Theme.fontBody
-                    elide: Text.ElideRight
+                    implicitHeight: titleLabel.implicitHeight
+                    readonly property real gap: Theme.space1
+                    readonly property real versionStub: versionLabel.visible
+                        ? Math.min(versionLabel.implicitWidth, Theme.space16) + gap : 0
+
+                    Text {
+                        id: titleLabel
+                        objectName: "trackTitle"
+                        width: Math.max(0, Math.min(implicitWidth, titleLine.width - titleLine.versionStub))
+                        text: root.titleText
+                        color: root.isCurrent ? Theme.accentText : Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        id: versionLabel
+                        objectName: "trackVersion"
+                        visible: root.versionText.length > 0
+                        x: titleLabel.width + titleLine.gap
+                        anchors.baseline: titleLabel.baseline
+                        width: Math.max(0, Math.min(implicitWidth, titleLine.width - x))
+                        text: qsTr("(%1)", "a track's version after its title, e.g. (Live)")
+                                  .arg(root.versionText)
+                        color: Theme.textSec
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
                 }
                 // One hover target and one tab stop per artist. The row's
                 // MouseArea is declared before the RowLayout holding this, so a

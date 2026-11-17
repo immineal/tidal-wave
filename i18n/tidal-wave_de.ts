@@ -2559,6 +2559,11 @@
         <comment>track row for a screen reader: album, length</comment>
         <translation>%1, %2</translation>
     </message>
+    <message>
+        <source>(%1)</source>
+        <comment>a track&apos;s version after its title, e.g. (Live)</comment>
+        <translation>(%1)</translation>
+    </message>
 </context>
 <context>
     <name>TrayMenu</name>
