@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tidal-wave VERSION 0.4.3 LANGUAGES CXX)
+project(tidal-wave VERSION 0.5.0 LANGUAGES CXX)
 
 # The macOS media controls are Objective-C++.
 if(APPLE)
@@ -75,6 +75,7 @@ set(SOURCES
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
     src/ui/Shortcuts.cpp
+    src/ui/SvgGlyph.cpp
     src/ui/SignalWatcher.cpp
     src/ui/TrayMenu.cpp
     src/ui/RemoteControl.cpp
@@ -115,6 +116,7 @@ set(HEADERS
     src/ui/I18n.h
     src/ui/PinStore.h
     src/ui/Shortcuts.h
+    src/ui/SvgGlyph.h
     src/ui/SignalWatcher.h
     src/ui/TrayMenu.h
     src/ui/RemoteControl.h
