@@ -107,7 +107,7 @@ Popup {
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusLarge
+        radius: Theme.radiusPopup
     }
 
     // The field is the only thing in here anyone wants, so it takes the focus
@@ -154,7 +154,7 @@ Popup {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusMedium
+                    radius: Theme.radiusButton
                     color: "transparent"
                     border.width: dialogClose.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -183,7 +183,7 @@ Popup {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            radius: Theme.radiusLarge
+            radius: Theme.radiusField
             color: Theme.surface
             border.width: 1
             border.color: nameField.activeFocus ? Theme.accent : Theme.border

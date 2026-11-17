@@ -75,7 +75,7 @@ MenuBase {
             }
         }
         background: Rectangle {
-            radius: Theme.radiusMedium
+            radius: Theme.radiusRow
             color: entry.highlighted ? Theme.hoverFill : "transparent"
         }
     }

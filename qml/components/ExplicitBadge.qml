@@ -10,7 +10,7 @@ Rectangle {
 
     implicitWidth: 16
     implicitHeight: 16
-    radius: Theme.radiusSmall
+    radius: Theme.radiusBadge
     color: Theme.textSec
 
     Accessible.role: Accessible.StaticText

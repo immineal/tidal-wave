@@ -75,7 +75,7 @@ Item {
                     x: Theme.space16
                     anchors.verticalCenter: parent.verticalCenter
                     width: 200; height: 200
-                    radius: Theme.radiusSmall
+                    radius: Theme.radiusArt
                     color: skel.block
                 }
                 Column {
@@ -84,7 +84,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Theme.space3
                     Rectangle { width: 64;  height: 10; radius: height / 2; color: skel.block }
-                    Rectangle { width: Math.min(360, heroBox.width * 0.4); height: 28; radius: Theme.radiusSmall; color: skel.block }
+                    Rectangle { width: Math.min(360, heroBox.width * 0.4); height: 28; radius: Theme.radiusBadge; color: skel.block }
                     Rectangle { width: 180; height: 12; radius: height / 2; color: skel.block }
                     Item { width: 1; height: Theme.space2 }
                     Row {
@@ -120,7 +120,7 @@ Item {
                             anchors.left: num.right
                             anchors.leftMargin: Theme.space4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 36; height: 36; radius: Theme.radiusSmall; color: skel.block
+                            width: 36; height: 36; radius: Theme.radiusArt; color: skel.block
                         }
                         Column {
                             anchors.left: rowArt.right
@@ -150,14 +150,14 @@ Item {
             spacing: Theme.space8
             Rectangle {
                 x: Theme.space6
-                width: 220; height: 28; radius: Theme.radiusSmall; color: skel.block
+                width: 220; height: 28; radius: Theme.radiusBadge; color: skel.block
             }
             Repeater {
                 model: Math.max(1, Math.ceil(shapes.height / (skel.cardSize + 110)))
                 Column {
                     x: Theme.space6
                     spacing: Theme.space3
-                    Rectangle { width: 140; height: 18; radius: Theme.radiusSmall; color: skel.block }
+                    Rectangle { width: 140; height: 18; radius: Theme.radiusBadge; color: skel.block }
                     Row {
                         spacing: skel.cardGap
                         Repeater {
@@ -165,7 +165,7 @@ Item {
                             Column {
                                 objectName: "skeletonCard"
                                 spacing: Theme.space2
-                                Rectangle { width: skel.cardSize; height: skel.cardSize; radius: Theme.radiusLarge; color: skel.block }
+                                Rectangle { width: skel.cardSize; height: skel.cardSize; radius: Theme.radiusCard; color: skel.block }
                                 Rectangle { width: skel.cardSize * 0.7; height: 11; radius: height / 2; color: skel.block }
                                 Rectangle { width: skel.cardSize * 0.45; height: 9; radius: height / 2; color: skel.block }
                             }
@@ -189,7 +189,7 @@ Item {
                 Column {
                     objectName: "skeletonCard"
                     spacing: Theme.space2
-                    Rectangle { width: skel.cardSize; height: skel.cardSize; radius: Theme.radiusLarge; color: skel.block }
+                    Rectangle { width: skel.cardSize; height: skel.cardSize; radius: Theme.radiusCard; color: skel.block }
                     Rectangle { width: skel.cardSize * 0.7; height: 11; radius: height / 2; color: skel.block }
                     Rectangle { width: skel.cardSize * 0.45; height: 9; radius: height / 2; color: skel.block }
                 }

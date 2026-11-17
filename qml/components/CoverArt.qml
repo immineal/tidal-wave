@@ -17,7 +17,7 @@ Rectangle {
     // So a test can reach the image by the name it always had.
     property alias imageName: img.objectName
 
-    radius: Theme.radiusSmall
+    radius: Theme.radiusArt
     color: Theme.surfaceHigh
     clip: true
 

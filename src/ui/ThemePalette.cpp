@@ -293,10 +293,15 @@ QVariantMap palette(const QString &name, bool oledBlack, bool tintedGreys) {
 
 QVariantMap radii() {
     return {
-        {QStringLiteral("small"),  4},    // covers, thumbnails, tags
-        {QStringLiteral("medium"), 8},    // rows, buttons, menu entries
-        {QStringLiteral("large"),  12},   // cards, fields, dialogs, menus
-        {QStringLiteral("full"),   999},  // pills, chips, toggles: fully round
+        {QStringLiteral("chip"),   999},  // pills and filter toggles, fully round
+        {QStringLiteral("field"),  14},   // the sidebar search field
+        {QStringLiteral("row"),    7},    // nav rows, hover fills, list rows
+        {QStringLiteral("button"), 8},
+        {QStringLiteral("art"),    5},    // covers and thumbnails
+        {QStringLiteral("card"),   11},
+        {QStringLiteral("popup"),  14},   // dialogs and panels
+        {QStringLiteral("badge"),  4},    // the quality tag and friends
+        {QStringLiteral("mark"),   14},   // the app icon tile
     };
 }
 

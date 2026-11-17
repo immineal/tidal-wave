@@ -110,7 +110,7 @@ Item {
         // that loads into it may move it or its neighbours.
         width:  root.cardSize
         height: root.cardSize
-        radius: root.roundArt ? width / 2 : Theme.radiusLarge
+        radius: root.roundArt ? width / 2 : Theme.radiusCard
         color: Theme.surfaceHigh
         clip: true
         // No focus ring here: a Rectangle paints its border under its own

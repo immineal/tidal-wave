@@ -266,7 +266,7 @@ Rectangle {
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
                         readonly property bool chosen: root.sortMode === index
                         // Sized for the bold label, so choosing one moves nothing.
-                        height: 30; width: sortBoldWidth.implicitWidth + Theme.space4; radius: Theme.radiusMedium
+                        height: 30; width: sortBoldWidth.implicitWidth + Theme.space4; radius: Theme.radiusButton
                         color: sortHov.hovered && !chosen ? Theme.hoverFill : "transparent"
                         // One of three, so it reads as a radio button.
                         activeFocusOnTab: true
@@ -281,7 +281,7 @@ Rectangle {
                         Accessible.onToggleAction: root.sortMode = index
                         Rectangle {
                             anchors.fill: parent
-                            radius: Theme.radiusMedium
+                            radius: Theme.radiusButton
                             color: "transparent"
                             border.width: sortPill.activeFocus ? 2 : 0
                             border.color: Theme.accent

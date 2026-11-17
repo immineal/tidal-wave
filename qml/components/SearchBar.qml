@@ -7,7 +7,7 @@ import TidalWave
 Rectangle {
     id: root
     implicitHeight: 40
-    radius: Theme.radiusLarge
+    radius: Theme.radiusField
     color: Theme.surfaceHigh
     border.color: focused ? Theme.accent : "transparent"
     border.width: 1
@@ -94,7 +94,7 @@ Rectangle {
             Accessible.name: qsTr("Clear search", "button, empties the search field")
             Accessible.onPressAction: input.text = ""
             Rectangle {
-                anchors.centerIn: parent; width: 22; height: 22; radius: Theme.radiusMedium; color: "transparent"
+                anchors.centerIn: parent; width: 22; height: 22; radius: Theme.radiusButton; color: "transparent"
                 border.width: clearBtn.activeFocus ? 2 : 0
                 border.color: Theme.accent
             }

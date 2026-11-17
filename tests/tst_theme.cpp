@@ -995,11 +995,16 @@ private slots:
     // The scale is a design decision, so drifting off it fails here.
     void radiusScale() {
         const QVariantMap r = theme::radii();
-        QCOMPARE(r.value("small").toInt(), 4);
-        QCOMPARE(r.value("medium").toInt(), 8);
-        QCOMPARE(r.value("large").toInt(), 12);
-        QCOMPARE(r.value("full").toInt(), 999);
-        QCOMPARE(r.size(), 4);
+        QCOMPARE(r.value("chip").toInt(), 999);
+        QCOMPARE(r.value("field").toInt(), 14);
+        QCOMPARE(r.value("row").toInt(), 7);
+        QCOMPARE(r.value("button").toInt(), 8);
+        QCOMPARE(r.value("art").toInt(), 5);
+        QCOMPARE(r.value("card").toInt(), 11);
+        QCOMPARE(r.value("popup").toInt(), 14);
+        QCOMPARE(r.value("badge").toInt(), 4);
+        QCOMPARE(r.value("mark").toInt(), 14);
+        QCOMPARE(r.size(), 9);
     }
 
     // ── the QML-facing object ────────────────────────────────────────────

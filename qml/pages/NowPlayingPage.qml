@@ -800,7 +800,7 @@ Rectangle {
                         objectName: "nowPlayingLyricsPanel"
                         anchors.fill: parent
                         // Takes the cover's slot, so it takes the cover's corner too
-                        radius: Theme.radiusSmall
+                        radius: Theme.radiusArt
                         // A box in a window. In the reading view the fill and
                         // the border fade out on the same clock, leaving the
                         // lines on the cover gradient.
@@ -942,7 +942,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottomMargin: Theme.space3
-                            width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusFull
+                            width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusChip
                             color: Theme.artScrimStrong
                             border.color: Theme.artBorder
                             Text {
@@ -1022,7 +1022,7 @@ Rectangle {
                         id: creditsPanel
                         objectName: "nowPlayingCreditsPanel"
                         anchors.fill: parent
-                        radius: Theme.radiusSmall
+                        radius: Theme.radiusArt
                         color: Qt.rgba(Theme.surface.r, Theme.surface.g,
                                        Theme.surface.b,
                                        Theme.surface.a * (1 - root.readingness))
@@ -1304,7 +1304,7 @@ Rectangle {
                                     x: -4; y: -4
                                     width:  Math.min(parent.width, parent.contentWidth) + 8
                                     height: parent.height + 8
-                                    radius: Theme.radiusMedium; color: "transparent"
+                                    radius: Theme.radiusButton; color: "transparent"
                                     border.width: titleLink.activeFocus ? 2 : 0
                                     border.color: Theme.accent
                                 }
@@ -1344,7 +1344,7 @@ Rectangle {
                                     x: -4; y: -4
                                     width:  Math.min(parent.width, parent.contentWidth) + 8
                                     height: parent.height + 8
-                                    radius: Theme.radiusMedium; color: "transparent"
+                                    radius: Theme.radiusButton; color: "transparent"
                                     border.width: albumLink.activeFocus ? 2 : 0
                                     border.color: Theme.accent
                                 }
@@ -1450,11 +1450,11 @@ Rectangle {
                             // ring round the glyph is a whole number of pixels:
                             // anchor centring rounds.
                             height: 30
-                            // What the pill actually draws: Theme.radiusFull is
+                            // What the pill actually draws: Theme.radiusChip is
                             // a "round it all the way" sentinel, and Qt clamps
                             // it to half the shorter side.
                             readonly property real cornerRadius:
-                                Math.min(Theme.radiusFull, height / 2)
+                                Math.min(Theme.radiusChip, height / 2)
                             // The clock's box. Everything below is derived from
                             // it and the height. VectorIcon paints its glyph at
                             // 85% of the box.
@@ -1654,7 +1654,7 @@ Rectangle {
                             color: Theme.surfaceHigh
                             border.color: Theme.border
                             border.width: 1
-                            radius: Theme.radiusLarge
+                            radius: Theme.radiusPopup
                         
                             MouseArea {
                                 anchors.fill: parent
@@ -1722,7 +1722,7 @@ Rectangle {
                                     objectName: "nowPlayingSleepEndOfTrack"
                                     Layout.fillWidth: true
                                     height: 32
-                                    radius: Theme.radiusMedium
+                                    radius: Theme.radiusButton
                                     color: maEndOfTrack.containsMouse ? Qt.tint(Theme.surface, Theme.hoverFill) : Theme.surface
                                     border.color: activeFocus ? Theme.accent : Theme.border
                                     border.width: activeFocus ? 2 : 1
@@ -1825,7 +1825,7 @@ Rectangle {
                                     color: Theme.accentSoft
                                     border.color: Theme.accentDim
                                     border.width: 1
-                                    radius: Theme.radiusLarge
+                                    radius: Theme.radiusCard
                                 
                                     ColumnLayout {
                                         anchors.centerIn: parent
@@ -2107,7 +2107,7 @@ Rectangle {
         signal toggled()
 
         width: chipLabel.implicitWidth + 16
-        height: 26; radius: Theme.radiusFull
+        height: 26; radius: Theme.radiusChip
         color: chip.on ? Theme.accent : Theme.artScrimStrong
         // The focus ring is the text colour, not the accent: an "on" chip is
         // already filled with the accent.
@@ -2206,7 +2206,7 @@ Rectangle {
                 Keys.onUpPressed:   volFlyout.slider.stepBy(volFlyout.slider.stepSize)
                 Keys.onDownPressed: volFlyout.slider.stepBy(-volFlyout.slider.stepSize)
                 Rectangle {
-                    anchors.fill: parent; anchors.margins: -Theme.space1; radius: Theme.radiusMedium; color: "transparent"
+                    anchors.fill: parent; anchors.margins: -Theme.space1; radius: Theme.radiusButton; color: "transparent"
                     border.width: muteBtn.activeFocus ? 2 : 0
                     border.color: Theme.accent
                 }

@@ -55,7 +55,7 @@ Popup {
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusLarge
+        radius: Theme.radiusPopup
     }
 
     // Cancel takes the focus: Return on a dialog that just opened keeps things.

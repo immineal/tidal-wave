@@ -82,7 +82,7 @@ Popup {
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusLarge
+        radius: Theme.radiusPopup
     }
 
     contentItem: ColumnLayout {
