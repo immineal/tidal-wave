@@ -62,13 +62,46 @@ Rectangle {
         root.loadOffline = bridge.offline === true
     }
 
+    // The words typed into the field over the list, and the place in
+    // root.tracks of each row shown. A track in the playlist twice is two
+    // places, so each row keeps its own for removal.
+    property string trackFilter: ""
+    readonly property var shownIndexes: {
+        var words = root.fold(root.trackFilter).split(/\s+/).filter(function (w) { return w.length > 0 })
+        var out = []
+        for (var i = 0; i < root.tracks.length; ++i) {
+            var t = root.tracks[i]
+            var hay = words.length > 0 ? root.fold([t.title, t.artists, t.albumTitle].join(" ")) : ""
+            if (words.every(function (w) { return hay.indexOf(w) >= 0 })) out.push(i)
+        }
+        return out
+    }
+    readonly property var shownTracks: root.trackFilter.trim().length === 0
+        ? root.tracks : root.shownIndexes.map(function (i) { return root.tracks[i] })
+
+    // A row can be bound before shownIndexes catches up with a new list.
+    function placeOf(row) {
+        var i = root.shownIndexes[row]
+        return i === undefined ? row : i
+    }
+
+    // Case and accents do not count, as in Search; see SearchPage.fold().
+    function fold(s) {
+        if (typeof s !== "string" || s.length === 0) return ""
+        var d = (typeof s.normalize === "function") ? s.normalize("NFD") : s
+        return d.replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/ß/g, "ss")
+    }
+
     // Records this playlist as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("playlist", root.playlistUuid, root.playlistTitle)
         player.playTracks(list, i)
     }
 
-    onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
+    onPlaylistUuidChanged: {
+        root.trackFilter = ""
+        if (playlistUuid.length > 0) loadPlaylist()
+    }
 
     // An undo, or a change Tidal did not confirm, moved rows this page did
     // not move itself: the rows are read again.
@@ -185,7 +218,7 @@ Rectangle {
         id: tracksList
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
 
         header: DetailHero {
@@ -229,6 +262,18 @@ Rectangle {
                 font.pixelSize: Theme.fontBody
                 Layout.fillWidth: true
                 elide: Text.ElideRight
+            }
+
+            // Narrows the list to the tracks whose title, artists or album
+            // hold every word typed. Play and Shuffle still take them all.
+            SearchBar {
+                objectName: "playlistFilter"
+                visible: root.tracks.length > 0
+                Layout.preferredWidth: 280
+                Layout.topMargin: Theme.space1
+                placeholder: qsTr("Find in this playlist…")
+                text: root.trackFilter
+                onTextEdited: (txt) => { root.trackFilter = txt }
             }
 
             actions: [
@@ -295,7 +340,7 @@ Rectangle {
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
             showAlbum:      width - root.sidebarReclaim >= albumBreakpoint
-            trackNum:       index + 1
+            trackNum:       root.placeOf(index) + 1
             title:          modelData.title
             artists:        modelData.artists
             albumTitle:     modelData.albumTitle
@@ -303,10 +348,11 @@ Rectangle {
             coverUrl:       modelData.coverUrl80
             trackData:      modelData
             playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
-            trackItemIndex: index
+            trackItemIndex: root.placeOf(index)
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
-                root.playFrom(root.tracks, index)
+                // What is shown, so a filtered list plays only its matches.
+                root.playFrom(tracksList.model, index)
             }
             // The row leaves the page only on the server's word. The count
             // beside the title reads root.tracks.length, and the bridge repairs

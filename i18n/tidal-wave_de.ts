@@ -1558,6 +1558,10 @@
         <comment>verb, confirm the edits in this dialog</comment>
         <translation>Speichern</translation>
     </message>
+    <message>
+        <source>Find in this playlist…</source>
+        <translation>In dieser Playlist suchen…</translation>
+    </message>
 </context>
 <context>
     <name>QueuePanel</name>
