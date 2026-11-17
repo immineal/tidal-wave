@@ -604,7 +604,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin:  root.rowInset
                     anchors.rightMargin: root.rowInset
-                    radius: Theme.radiusMedium
+                    radius: Theme.radiusRow
                     color: newPlaylistHov.hovered ? Theme.hoverFill : "transparent"
                     border.width: newPlaylistRow.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -623,7 +623,7 @@ Item {
                         x: Math.round(root.coverLeft + (root.coverSize - width) / 2)
                            - root.rowInset
                         anchors.verticalCenter: parent.verticalCenter
-                        radius: Theme.radiusSmall
+                        radius: Theme.radiusArt
                         color: "transparent"
                         border.width: 1
                         border.color: newPlaylistHov.hovered ? Theme.accent : Theme.border
@@ -784,7 +784,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: Theme.spaceHalf
                     anchors.rightMargin: Theme.spaceHalf
-                    radius: Theme.radiusMedium
+                    radius: Theme.radiusRow
                     color: settingsHover.hovered ? Theme.hoverFill : "transparent"
                     border.width: settingsRow.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -1102,7 +1102,7 @@ Item {
             anchors.leftMargin: root.rowInset
             anchors.rightMargin: root.rowInset
             height: root.libRowHeight
-            radius: Theme.radiusMedium
+            radius: Theme.radiusRow
             // Marked while its menu is open too, so the menu says which row.
             color: rowItem.dragging || rowHov.hovered || rowItem.menuOpen
                    ? Theme.hoverFill : "transparent"
@@ -1143,7 +1143,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.coverSize
                 height: root.coverSize
-                radius: Theme.radiusSmall
+                radius: Theme.radiusArt
                 color: Theme.surfaceHigh
                 clip: true
 
@@ -1177,7 +1177,7 @@ Item {
                     anchors.bottomMargin: root.coverBadgeInset
                     width:  root.coverBadge
                     height: root.coverBadge
-                    radius: Theme.radiusSmall
+                    radius: Theme.radiusBadge
                     color: Theme.surface
                 }
 
@@ -1338,7 +1338,7 @@ Item {
             anchors.rightMargin: Theme.space2
             anchors.topMargin: Theme.spaceHalf
             anchors.bottomMargin: Theme.spaceHalf
-            radius: Theme.radiusMedium
+            radius: Theme.radiusRow
             color: navItem.current
                    ? Theme.selectedFill
                    : sideHov.hovered ? Theme.hoverFill : "transparent"

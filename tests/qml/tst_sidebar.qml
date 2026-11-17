@@ -986,7 +986,7 @@ TestCase {
         // rounded container.
         var field = findByName(finder, "finderField")
         verify(field, "the finder has no input field")
-        compare(finder.radius, Theme.radiusLarge, "the field wants the generous rounding")
+        compare(finder.radius, Theme.radiusField, "the field wants the generous rounding")
         for (i = 0; i < chips.length; ++i) {
             var topLeft = chips[i].mapToItem(finder, 0, 0)
             verify(topLeft.x >= -0.5 && topLeft.x + chips[i].width <= finder.width + 0.5,
@@ -1084,6 +1084,9 @@ TestCase {
                    where + " shrank to " + c.width.toFixed(1) + "x"
                    + c.height.toFixed(1) + ", past the " + minChipWidth + "x"
                    + minChipHeight + " floor")
+            // Chosen value: the pill is a fixed 30px wide at every sidebar
+            // width. Do not change without asking.
+            compare(findByName(c, "finderChipFill").width, 30, where + " is not 30px wide")
 
             // Inside the finder block, which is the item that clips.
             var at = c.mapToItem(finder, 0, 0)

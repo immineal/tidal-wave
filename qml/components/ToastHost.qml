@@ -40,7 +40,7 @@ Item {
         anchors.bottomMargin: Theme.space6
         width: Math.min(row.implicitWidth + 2 * Theme.space4, host.width - 2 * Theme.space6)
         height: Math.max(44, row.implicitHeight + 2 * Theme.space2)
-        radius: Theme.radiusLarge
+        radius: Theme.radiusPopup
         color: Theme.surfaceHigh
         border.color: Theme.border
         opacity: Toasts.shown ? 1 : 0
@@ -78,7 +78,7 @@ Item {
                 visible: Toasts.actionLabel.length > 0
                 Layout.preferredWidth: actionLabel.implicitWidth + 2 * Theme.space3
                 Layout.preferredHeight: 32
-                radius: Theme.radiusMedium
+                radius: Theme.radiusButton
                 color: actionHov.hovered ? Theme.hoverFill : "transparent"
                 border.width: activeFocus ? 2 : 0
                 border.color: Theme.accent

@@ -144,7 +144,7 @@ Item {
         Rectangle {
             anchors.fill: inner
             anchors.margins: -Theme.space1
-            radius: Theme.radiusSmall
+            radius: Theme.radiusButton
             color: "transparent"
             border.width: cell.activeFocus ? 2 : 0
             border.color: Theme.accent

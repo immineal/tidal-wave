@@ -98,7 +98,7 @@ Popup {
         picker.chosen(uuid, title)
     }
 
-    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
+    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
     Column {
         width: parent.width
@@ -130,7 +130,7 @@ Popup {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusMedium
+                    radius: Theme.radiusButton
                     color: "transparent"
                     border.width: pickerClose.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -187,7 +187,7 @@ Popup {
             Rectangle {
                 anchors.fill: parent
                 anchors.margins: Theme.space1
-                radius: Theme.radiusMedium
+                radius: Theme.radiusRow
                 color: newPlHov.hovered ? Theme.hoverFill : "transparent"
                 border.width: pickerNewRow.activeFocus ? 2 : 0
                 border.color: Theme.accent
@@ -208,7 +208,7 @@ Popup {
                     Rectangle {
                         width: 28
                         height: 28
-                        radius: Theme.radiusSmall
+                        radius: Theme.radiusArt
                         color: "transparent"
                         border.width: 1
                         border.color: newPlHov.hovered ? Theme.accent : Theme.border
@@ -265,7 +265,7 @@ Popup {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: Theme.space1
-                    radius: Theme.radiusMedium
+                    radius: Theme.radiusRow
                     color: plHov2.hovered ? Theme.hoverFill : "transparent"
                     border.width: pickRow.activeFocus ? 2 : 0
                     border.color: Theme.accent

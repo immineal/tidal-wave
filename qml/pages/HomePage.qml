@@ -370,7 +370,7 @@ Rectangle {
                 Layout.leftMargin: Theme.space6
                 Layout.rightMargin: Theme.space6
                 Layout.preferredHeight: 104
-                radius: Theme.radiusLarge
+                radius: Theme.radiusCard
                 color: continueHov.hovered ? Theme.surfaceHigh : Theme.surface
                 border.color: continueCard.activeFocus ? Theme.accent : Theme.border
                 border.width: continueCard.activeFocus ? 2 : 1

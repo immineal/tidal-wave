@@ -46,7 +46,7 @@ Item {
     Rectangle {
         id: track
         anchors.fill: parent
-        radius: Theme.radiusFull
+        radius: Theme.radiusChip
         // The picture paints its own soft edge, so no fill or resting border
         // may sit on it. Focus still draws its ring.
         color: tg.showingRainbow ? "transparent"
@@ -58,7 +58,7 @@ Item {
         Rectangle {
             width: parent.height - 6
             height: width
-            radius: Theme.radiusFull
+            radius: Theme.radiusChip
             y: 3
             x: tg.checked ? parent.width - width - 3 : 3
             color: tg.checked ? Theme.accentInk : Theme.textSec
