@@ -59,9 +59,11 @@ Item {
                 PathSvg { path: root._pathFor(root.name) }
             }
 
-            // Solid detail drawn on top of a stroked glyph.
+            // Solid detail drawn on top of a stroked glyph. No stroke colour:
+            // on Qt 6.6 and older a width of 0 still draws a 1 px white line.
             ShapePath {
                 strokeWidth: 0
+                strokeColor: "transparent"
                 fillColor: root.color
                 PathSvg { path: root._accentFor(root.name) }
             }
