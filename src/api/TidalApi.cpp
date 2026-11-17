@@ -138,6 +138,10 @@ int TidalApi::rateLimitedFor(const QUrl &url) const {
     return int(qMax<qint64>(1, (it->until.remainingTime() + 999) / 1000));
 }
 
+int TidalApi::rateLimitedFor(const char *base, const QString &endpoint) const {
+    return rateLimitedFor(QUrl(baseUrl(QString::fromLatin1(base)) + endpoint));
+}
+
 void TidalApi::noteReachable(bool reachable) {
     if (m_reachable == reachable) return;
     m_reachable = reachable;
@@ -267,6 +271,25 @@ void TidalApi::getWithStatus(const QString &endpoint, const QUrlQuery &params, S
 
 void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
     getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, withoutStatus(std::move(cb)));
+}
+
+void TidalApi::getV2Web(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    QUrl url(baseUrl(QString::fromLatin1(kApiBaseV2)) + endpoint);
+    QUrlQuery q = params;
+    if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
+    url.setQuery(q);
+
+    send(url, [this, url] {
+        QNetworkRequest req = makeRequest(url);
+        req.setRawHeader("x-tidal-client-version", kWebClientVersion);
+        return m_nam->get(req);
+    }, [cb](const Answer &a) {
+        if (a.failed) { cb({}, a.error); return; }
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(a.body, &err);
+        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
+        cb(doc.object(), {});
+    });
 }
 
 void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
@@ -448,6 +471,11 @@ void TidalApi::sendDelete(const QString &endpoint, const QUrlQuery &params, cons
 }
 
 void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb) {
+    postApiFormEtagWithStatus(endpoint, form, etag, writeWithoutStatus(std::move(cb)));
+}
+
+void TidalApi::postApiFormEtagWithStatus(const QString &endpoint, const QUrlQuery &form,
+                                         const QString &etag, StatusCallback cb) {
     const QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     const QByteArray body = form.toString(QUrl::FullyEncoded).toUtf8();
     send(url, [this, url, body, etag] {
@@ -456,10 +484,14 @@ void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, c
         if (!etag.isEmpty())
             req.setRawHeader("If-None-Match", etag.toLatin1());
         return m_nam->post(req, body);
-    }, writeAnswer(writeWithoutStatus(std::move(cb)), true));
+    }, writeAnswer(std::move(cb), true));
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
+    return getRawWithStatus(url, [cb](const RawAnswer &a) { cb(a.body, a.error); });
+}
+
+QNetworkReply* TidalApi::getRawWithStatus(const QUrl &url, RawStatusCallback cb) {
     QNetworkRequest req = makeRequest(url);
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     // Older Qt's HTTP/2 header compression falls out of step with the audio
@@ -470,11 +502,21 @@ QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
     auto *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
         reply->deleteLater();
+        RawAnswer a;
+        a.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
-            cb({}, redactedError(reply->errorString()));
-            return;
+            a.error = redactedError(reply->errorString());
+            if (a.httpStatus == 429)
+                a.retryAfterSecs = retryAfterSecs(reply->rawHeader("Retry-After"),
+                                                  QDateTime::currentDateTimeUtc());
+            // The transfer timeout: TimeoutError, or a cancel on older Qt.
+            a.timedOut = a.httpStatus == 0
+                      && (reply->error() == QNetworkReply::TimeoutError
+                          || reply->error() == QNetworkReply::OperationCanceledError);
+        } else {
+            a.body = reply->readAll();
         }
-        cb(reply->readAll(), {});
+        cb(a);
     });
     return reply;
 }

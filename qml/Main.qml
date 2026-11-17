@@ -389,6 +389,7 @@ ApplicationWindow {
                 root.pageParams = p
         }
         currentPage = page
+        root._rememberPage(page, p)
         root._pruneDetailViews()
         if (page === "search") {
             searchLoader.forceActiveFocus()
@@ -463,7 +464,7 @@ ApplicationWindow {
         target: auth
         function onStateChanged(state) {
             if (state === 2) {
-                root.navigate("home")
+                root.openStartPage()
             } else {
                 // Signing out lands on the login page, where every way out of
                 // fullscreen is gated on being signed in.
@@ -554,6 +555,17 @@ ApplicationWindow {
         Shortcut { sequence: Shortcuts.sequence("mute");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setMuted(!player.muted) }
         Shortcut { sequence: Shortcuts.sequence("shuffle");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setShuffle(!player.shuffle) }
         Shortcut { sequence: Shortcuts.sequence("repeat");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setRepeatMode((player.repeatMode + 1) % 3) }
+        // The heart's own call, so the write is read back and the notice and Undo follow.
+        Shortcut {
+            sequence: Shortcuts.sequence("like")
+            context: Qt.ApplicationShortcut
+            enabled: auth.state === 2
+            onActivated: {
+                var t = player.currentTrack
+                if (t && t.id > 0) likeShortcutAction.toggleTrack(t.id, bridge.isTrackFavorite(t.id), null)
+            }
+        }
+        ContextMenu.FavoriteAction { id: likeShortcutAction }
 
         // Navigation Shortcuts
         Shortcut { sequence: Shortcuts.sequence("home"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("home") }
@@ -792,7 +804,39 @@ ApplicationWindow {
 
     // The cached answer is already in UpdateCheck when the engine runs.
     // Whatever the network says afterwards is for the next launch.
-    Component.onCompleted: updatePrompt.showIfAvailable()
+    Component.onCompleted: {
+        updatePrompt.showIfAvailable()
+        root._startPage = app.startPage()
+        if (auth.state === 2) root.openStartPage()
+    }
+
+    // ─── The page a restart opens on ───────────────────────────────────
+    // Now Playing is left out: it needs a track, and a restart starts
+    // paused. Only plain values are kept, and a search is not run again.
+    readonly property var restorablePages:
+        ["home", "search", "collection", "album", "artist", "playlist", "mix", "radio"]
+    property string _startPage: ""
+    function _rememberPage(page, params) {
+        if (root.restorablePages.indexOf(page) === -1) return
+        var kept = {}
+        for (var k in params) {
+            var v = params[k]
+            if (k === "requestedQuery") continue
+            if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") kept[k] = v
+        }
+        prefs.lastPage = JSON.stringify({ page: page, params: kept })
+    }
+    // Once per run: a later sign-in is a new session and starts at Home.
+    function openStartPage() {
+        var saved = root._startPage
+        root._startPage = ""
+        var entry = null
+        try { entry = saved.length > 0 ? JSON.parse(saved) : null } catch (e) { entry = null }
+        if (entry && typeof entry.page === "string" && root.restorablePages.indexOf(entry.page) !== -1)
+            root.navigate(entry.page, entry.params || {})
+        else
+            root.navigate("home")
+    }
 
     CastErrorTip { }
 
@@ -810,6 +854,9 @@ ApplicationWindow {
     // Asks before a track goes into a playlist that holds it already.
     DuplicateAddDialog { }
 
+    // Answers Edits.pickPlaylist(): the queue's rows, an album, the queue.
+    PlaylistPickerHost { }
+
     // A Tidal link from the command line or the desktop. Track links arrive
     // as their album; each page loads its header from the id.
     Connections {
@@ -821,6 +868,31 @@ ApplicationWindow {
             case "playlist": root.navigate("playlist", { playlistUuid: id }); break
             case "mix":      root.navigate("mix",      { mixId: id }); break
             }
+        }
+    }
+
+    // ─── A link dropped on the window ───────────────────────────────────
+    // A link dragged from a browser comes as a URL, or as text from the
+    // address bar. Only a Tidal link is taken; the cursor says so on entry.
+    function _droppedLink(urls, text) {
+        for (var i = 0; urls && i < urls.length; ++i)
+            if (app.isTidalLink(String(urls[i]))) return String(urls[i])
+        var t = (text || "").trim()
+        return app.isTidalLink(t) ? t : ""
+    }
+    function takesDrop(urls, text) { return _droppedLink(urls, text) !== "" }
+    function openDropped(urls, text) {
+        var link = _droppedLink(urls, text)
+        if (link !== "") app.openLink(link)
+    }
+    DropArea {
+        anchors.fill: parent
+        enabled: auth.state === 2
+        onEntered: (drag) => { drag.accepted = root.takesDrop(drag.urls, drag.text) }
+        onDropped: (drop) => {
+            if (!root.takesDrop(drop.urls, drop.text)) return
+            root.openDropped(drop.urls, drop.text)
+            drop.acceptProposedAction()
         }
     }
 

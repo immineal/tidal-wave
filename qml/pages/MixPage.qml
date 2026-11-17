@@ -34,9 +34,10 @@ Rectangle {
     // this machine: the pill is this, the right-click menu is PinStore.
     property bool isSaved: false
 
-    // The heading over the title: "Radio" for a track's radio station, "Mix"
-    // for everything else.
+    // The heading over the title: "Radio" for a track's or an artist's radio
+    // station, "Mix" for everything else.
     readonly property bool isTrackRadio: root.mixType === "TRACK_MIX"
+                                         || root.mixType === "ARTIST_MIX"
 
     function updateSavedState() {
         isSaved = mixId.length > 0 ? bridge.isMixFavorite(mixId) : false
@@ -59,6 +60,28 @@ Rectangle {
     // and a video mix both legitimately have no tracks.
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
+
+    // The order the column headings ask for: only what is shown and what
+    // plays from here. root.tracks keeps the order it came in.
+    TrackListHeader.Sort { id: trackSort }
+    readonly property var shownTracks: trackSort.sorted(root.tracks)
+
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (root.mixId.length === 0) return
+        if (bridge.offline) bridge.retryConnection()
+        loadMix()
+    }
+
+    Connections {
+        target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
+    }
 
     // Records this mix as the "playing from" source, then starts playback.
     function playFrom(list, i) {
@@ -85,6 +108,7 @@ Rectangle {
     function loadMix() {
         loading = true
         loadError = ""
+        loadOffline = false
         // Which mix this reply is about. mixId can change while it is in
         // flight, and a slow reply for the mix just left would otherwise
         // retitle the one now on screen.
@@ -94,7 +118,7 @@ Rectangle {
             // left is not a failure and must draw nothing.
             if (requested !== root.mixId) return
             loading = false
-            if (err) { root.loadError = err; return }
+            if (err) { root.loadError = err; root.loadOffline = bridge.offline === true; return }
             if (header) {
                 if (header.title)    root.title    = header.title
                 if (header.subtitle) root.subtitle = header.subtitle
@@ -111,71 +135,109 @@ Rectangle {
         id: tracksList
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: DetailHero {
-            id: hero
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
+        header: Item {
             width: tracksList.width
-            kind: root.isTrackRadio ? qsTr("Radio", "noun, a track's radio station")
-                                    : qsTr("Mix", "noun, a Tidal mix")
-            title: root.title
-            artSource: root.coverUrl
-            artIcon: "mix"
-            onPinRequested: (x, y) => {
-                var p = hero.mapToItem(root, x, y)
-                root.showHeroPinMenu(p.x, p.y)
-            }
+            z: 2
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
-            Text {
-                visible: root.subtitle.length > 0
-                Layout.fillWidth: true
-                text: root.subtitle
-                color: Theme.textSec
-                font.pixelSize: Theme.fontBody
-                wrapMode: Text.WordWrap
-            }
+            DetailHero {
+                id: hero
+                width: tracksList.width
+                kind: root.isTrackRadio ? qsTr("Radio", "noun, a track's radio station")
+                                        : qsTr("Mix", "noun, a Tidal mix")
+                title: root.title
+                artSource: root.coverUrl
+                artIcon: "mix"
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
+                }
 
-            actions: [
-                PillButton {
-                    text: qsTr("Play", "verb, button label")
-                    icon: "play"
-                    accent: true
-                    onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
-                },
-                PillButton {
-                    text: qsTr("Shuffle")
-                    icon: "shuffle"
-                    accent: false
-                    onClicked: {
-                        if (root.tracks.length > 0) {
-                            player.setShuffle(true)
-                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                Text {
+                    visible: root.subtitle.length > 0
+                    Layout.fillWidth: true
+                    text: root.subtitle
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                    wrapMode: Text.WordWrap
+                }
+
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: if (root.tracks.length > 0) root.playFrom(root.shownTracks, 0)
+                    },
+                    PillButton {
+                        text: qsTr("Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                player.setShuffle(true)
+                                root.playFrom(root.shownTracks, Math.floor(Math.random() * root.tracks.length))
+                            }
+                        }
+                    },
+                    // The account-wide favourite, a heart and the words as on
+                    // AlbumPage. The local pin is on the right-click menu and
+                    // writes nothing to Tidal.
+                    PillButton {
+                        objectName: "mixSavePill"
+                        // Dead until the page knows which mix it is: a MixPage can
+                        // be constructed with no id at all.
+                        enabled: root.mixId.length > 0
+                        text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
+                                           : qsTr("Save", "verb, add mix to the library")
+                        icon: root.isSaved ? "heart-filled" : "heart"
+                        accent: root.isSaved
+                        // On the action row, which has clear space above.
+                        onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
+                                                                hero.actionRow)
+                    },
+                    // The hero's menu, which right-click also opens: the queue
+                    // actions, Pin and Copy link.
+                    IconButton {
+                        objectName: "heroMoreButton"
+                        icon: "more"
+                        label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                        size: 20
+                        pad: Theme.space5
+                        backed: true
+                        onClicked: {
+                            var p = mapToItem(root, 0, height)
+                            root.showHeroPinMenu(p.x, p.y)
                         }
                     }
-                },
-                // The account-wide favourite, a heart and the words as on
-                // AlbumPage. The local pin is on the right-click menu and
-                // writes nothing to Tidal.
-                PillButton {
-                    objectName: "mixSavePill"
-                    // Dead until the page knows which mix it is: a MixPage can
-                    // be constructed with no id at all.
-                    enabled: root.mixId.length > 0
-                    text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
-                                       : qsTr("Save", "verb, add mix to the library")
-                    icon: root.isSaved ? "heart-filled" : "heart"
-                    accent: root.isSaved
-                    // On the action row, which has clear space above.
-                    onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
-                                                            hero.actionRow)
-                }
-            ]
+                ]
+            }
+
+            TrackListHeader {
+                id: headings
+                objectName: "mixTracksHeader"
+                y: hero.height
+                pinIn: tracksList
+                pinBelow: detailBar.height
+                // At x 0 with the rows' width: a vertical ListView puts its
+                // rows at its left edge, whatever x they ask for.
+                width: tracksList.width - 32
+                sort: trackSort
+                showAlbum: width - root.sidebarReclaim >= albumBreakpoint
+            }
         }
 
         delegate: TrackRow {
             width: tracksList.width - 32
-            x: 16
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
@@ -187,67 +249,46 @@ Rectangle {
             durationStr: modelData.durationStr
             coverUrl:    modelData.coverUrl80
             trackData:   modelData
-            onPlayRequested: root.playFrom(root.tracks, index)
+            onPlayRequested: root.playFrom(root.shownTracks, index)
         }
 
         // The footer, so on a mix with no tracks the message sits directly
         // beneath the header and scrolls with it.
         footer: Item {
             width: tracksList.width
-            height: root.loadFailed ? 200 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
 
-            ColumnLayout {
+            ErrorState {
+                id: loadErrorState
                 objectName: "mixLoadError"
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: Theme.space3
-
-                VectorIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    // A Layout owns the size of its direct children, so a plain
-                    // width would be overwritten.
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    name: "mix"
-                    color: Theme.textDim
-                }
-
-                Text {
-                    objectName: "mixLoadErrorText"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("This mix could not be loaded")
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSection
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Not the server's own string; see AlbumPage's panel for why.
+                namePrefix: "mixLoadError"
+                icon: "mix"
+                offline: root.loadOffline
+                title: qsTr("This mix could not be loaded")
                 // One long literal, since lupdate cannot read a concatenation.
-                Text {
-                    objectName: "mixLoadErrorDetail"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.")
-                    color: Theme.textSec
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.WordWrap
-                }
+                detail: qsTr("Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.")
+                onRetry: root.retryLoad()
             }
         }
 
         ScrollBar.vertical: ScrollBar {
+            objectName: "mixScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
         }
+        WheelStep { view: tracksList }
     }
 
     DetailBar {
+        id: detailBar
         objectName: "mixStickyHeader"
         flickable: tracksList
-        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.heroHeight : 280
         title: root.title
     }
 

@@ -23,6 +23,15 @@ public:
     // error.
     using ArrayCallback = std::function<void(QJsonArray, QString /*error*/)>;
     using RawCallback  = std::function<void(QByteArray, QString /*error*/)>;
+    // What getRawWithStatus() hands a caller that retries.
+    struct RawAnswer {
+        QByteArray body;
+        QString    error;
+        int        httpStatus = 0;       // 0 when no answer came
+        int        retryAfterSecs = -1;  // a 429's Retry-After, -1 when none
+        bool       timedOut = false;     // silent for kTransferTimeoutMs
+    };
+    using RawStatusCallback = std::function<void(const RawAnswer &)>;
     // For a caller that acts on the HTTP status. It is 0 when no answer came.
     // Beside an error the object is the body of the refusal, if that was JSON.
     using StatusCallback = std::function<void(QJsonObject, QString /*error*/, int /*httpStatus*/)>;
@@ -47,6 +56,10 @@ public:
     // The same GET against the v2 host. Its endpoints are cursor-paged, so
     // they are no drop-in replacements for their v1 siblings.
     void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // getV2() with the web player's client version, which v2/home/feed
+    // answers 400 without. Virtual as a test seam only.
+    virtual void getV2Web(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    static constexpr auto kWebClientVersion = "2025.7.16";
     // A v2 PUT with its arguments in the query string and an empty body, which
     // is what v2/favorites/mixes/add and .../remove require. A 200 is no proof
     // of success: see TidalClient::mixFavoriteAccepted().
@@ -81,7 +94,11 @@ public:
     void deleteApiEtagWithStatus(const QString &endpoint, const QUrlQuery &params,
                                  const QString &etag, StatusCallback cb);
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
+    // The same with the HTTP status, for a move refused over a stale ETag.
+    void postApiFormEtagWithStatus(const QString &endpoint, const QUrlQuery &form,
+                                   const QString &etag, StatusCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
+    QNetworkReply* getRawWithStatus(const QUrl &url, RawStatusCallback cb);
 
     // The request every call above except post() sends. Public for
     // tst_request_headers.
@@ -109,6 +126,8 @@ public:
     static int retryAfterSecs(const QByteArray &header, const QDateTime &now);
     // How long requests to `url` are held, 0 when they are not.
     int rateLimitedFor(const QUrl &url) const;
+    // The same for an endpoint of one of the base URLs above.
+    int rateLimitedFor(const char *base, const QString &endpoint) const;
 
     // Qt's error sentence with the query cut off every URL in it.
     static QString redactedError(const QString &errorString);

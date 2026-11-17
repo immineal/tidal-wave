@@ -32,7 +32,8 @@ inline constexpr auto VideoDailyMix  = "VIDEO_DAILY_MIX";
 // A track's radio station. `tracks/<id>` carries its id under
 // `mixes.TRACK_MIX`, so a radio can open on MixPage and be saved.
 inline constexpr auto TrackMix       = "TRACK_MIX";
-// The other key `mixes` can carry. Nothing reads an artist radio yet.
+// An artist's radio station. `artists/<id>` carries its id under
+// `mixes.ARTIST_MIX`, and ArtistPage opens it on MixPage.
 inline constexpr auto ArtistMix      = "ARTIST_MIX";
 } // namespace MixTypes
 
@@ -141,6 +142,9 @@ struct Album {
 struct Track {
     qint64  id = 0;
     QString title;
+    // "Live", "Remastered 2011": what tells two recordings of a title apart.
+    // Most tracks answer null, which reads as "".
+    QString version;
     int     duration = 0;
     int     trackNumber = 0;
     int     discNumber  = 1;
@@ -158,11 +162,17 @@ struct Track {
     // False where Tidal lists the track and does not stream it. An answer
     // that says nothing about it is about a track that is streamed.
     bool    streamable = true;
+    // When it was liked or put on the playlist, in ms since epoch; 0 when the
+    // answer said nothing. The liked list has it on the favourites row.
+    qint64  addedAt = 0;
 
-    static Track fromJson(const QJsonObject &j) {
+    // `wrapper` is the favourites row the track arrived in, if any; its
+    // "created" is the like. A playlist's tracks carry "dateAdded" themselves.
+    static Track fromJson(const QJsonObject &j, const QJsonObject &wrapper = QJsonObject()) {
         Track t;
         t.id           = j["id"].toVariant().toLongLong();
         t.title        = j["title"].toString();
+        t.version      = j["version"].toString();
         t.duration     = j["duration"].toInt();
         t.trackNumber  = j["trackNumber"].toInt();
         t.discNumber   = j["volumeNumber"].toInt(1);
@@ -174,6 +184,8 @@ struct Track {
         t.isrc         = j["isrc"].toString();
         // Either flag as an explicit false. A missing one reads as true.
         t.streamable   = j["allowStreaming"].toBool(true) && j["streamReady"].toBool(true);
+        t.addedAt      = isoToMSecs(wrapper["created"].toString());
+        if (t.addedAt == 0) t.addedAt = isoToMSecs(j["dateAdded"].toString());
         if (j.contains("album"))
             t.album    = Album::fromJson(j["album"].toObject());
         for (const auto &v : j["artists"].toArray())
@@ -368,6 +380,8 @@ struct ArtistDetail {
     QString picture;
     QString bio;
     int popularity = 0;
+    // The artist's radio as a mix id, from `mixes.ARTIST_MIX`; may be "".
+    QString artistMixId;
     QList<Album> albums;
     QList<Track> topTracks;
 
@@ -423,6 +437,15 @@ struct SearchResults {
     int totalPlaylists = 0;
     // The count before the video filter, so it bounds paging. Never shown.
     int totalMixes     = 0;
+
+    // The server's one best match, from `topHit`: "track", "album", "artist"
+    // or "playlist", and "" when the reply named none or a kind the app
+    // cannot open (a video). Only the member of that kind is filled.
+    QString  topHitKind;
+    Track    topTrack;
+    Album    topAlbum;
+    Artist   topArtist;
+    Playlist topPlaylist;
 };
 
 } // namespace Tidal

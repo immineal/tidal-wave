@@ -1,0 +1,53 @@
+{
+  "uuid": "00000000-0000-4000-8000-000000000002",
+  "page": { "cursor": null },
+  "header": { "vibes": { "items": [
+    { "name": "For you", "type": "STATIC" },
+    { "name": "Staff Picks", "type": "EDITORIAL" },
+    { "name": "Uploads", "type": "UPLOADS" }
+  ] } },
+  "items": [
+    { "type": "HORIZONTAL_LIST", "moduleId": "ALBUM_RECOMMENDATIONS", "title": "Albums you’ll enjoy", "icons": [],
+      "items": [
+        { "type": "ALBUM", "following": false,
+          "data": { "id": 9200006, "title": "Enjoyable", "cover": "bbbb0006-0000-4000-8000-000000000006",
+                    "numberOfTracks": 13, "duration": 3100, "type": "ALBUM", "explicit": false,
+                    "artists": [ { "id": 8200006, "name": "Pleasant Act", "main": true } ] } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "YOUR_FAVORITE_ARTISTS", "title": "Your favorite artists", "icons": [],
+      "items": [
+        { "type": "ARTIST", "following": true,
+          "data": { "id": 8100001, "name": "Invented Band", "picture": "dddd0002-0000-4000-8000-000000000002" } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "SUGGESTED_ESSENTIAL_PLAYLISTS", "title": "Essentials to explore", "icons": [],
+      "items": [
+        { "type": "PLAYLIST", "following": false,
+          "data": { "uuid": "cccc0003-0000-4000-8000-000000000003", "type": "EDITORIAL", "title": "Someone: Essentials",
+                    "squareImage": "cccc0003-0000-4000-8000-0000000000bb", "numberOfTracks": 30, "duration": 7000 } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "MY_PLAYLISTS", "title": "Your top playlists", "icons": [],
+      "items": [
+        { "type": "PLAYLIST", "following": true,
+          "data": { "uuid": "cccc0004-0000-4000-8000-000000000004", "type": "USER", "title": "Own List",
+                    "numberOfTracks": 5, "duration": 1000 } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "POPULAR_PLAYLISTS", "title": "Popular playlists on TIDAL", "icons": [],
+      "items": [
+        { "type": "PLAYLIST", "following": false,
+          "data": { "uuid": "cccc0005-0000-4000-8000-000000000005", "type": "EDITORIAL", "title": "Big Hits",
+                    "squareImage": "cccc0005-0000-4000-8000-0000000000bb", "numberOfTracks": 50, "duration": 10000 } }
+      ] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "LOCAL_PLAYLISTS", "title": "Local playlists", "icons": [], "items": [] },
+    { "type": "HORIZONTAL_LIST", "moduleId": "HISTORY_MIXES", "title": "Your listening history", "icons": [],
+      "items": [
+        { "type": "MIX", "following": false,
+          "data": { "type": "HISTORY_MONTHLY_MIX", "id": "mx0000000000000000000000000002",
+                    "mixImages": [ { "size": "MEDIUM", "url": "https://images.tidal.com/0/mx2/640", "width": 640, "height": 640 } ],
+                    "titleTextInfo": { "text": "My October", "color": "#FFFFFF" },
+                    "subtitleTextInfo": { "text": "Placeholder subtitle", "color": "#FFFFFF" } } },
+        { "type": "MIX", "following": false,
+          "data": { "type": "VIDEO_DAILY_MIX", "id": "mx0000000000000000000000000003",
+                    "titleTextInfo": { "text": "My Video Mix", "color": "#FFFFFF" } } }
+      ] }
+  ]
+}

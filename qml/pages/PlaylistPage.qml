@@ -38,10 +38,64 @@ Rectangle {
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (root.playlistUuid.length === 0) return
+        if (bridge.offline) bridge.retryConnection()
+        loadPlaylist()
+    }
+
+    Connections {
+        target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
+    }
+
     // The first reason is kept; see ArtistPage.noteLoadError().
     function noteLoadError(err) {
-        if (root.loadError.length === 0) root.loadError = err
+        if (root.loadError.length > 0) return
+        root.loadError = err
+        root.loadOffline = bridge.offline === true
     }
+
+    // The words typed into the field over the list.
+    property string trackFilter: ""
+
+    // A row can be bound before shownOrder catches up with a new list.
+    function placeOf(row) {
+        var i = root.shownOrder[row]
+        return i === undefined ? row : i
+    }
+
+    // Case and accents do not count, as in Search; see SearchPage.fold().
+    function fold(s) {
+        if (typeof s !== "string" || s.length === 0) return ""
+        var d = (typeof s.normalize === "function") ? s.normalize("NFD") : s
+        return d.replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/ß/g, "ss")
+    }
+
+    // The order the column headings ask for: only what is shown and what
+    // plays from here. root.tracks, and Tidal's copy, keep their order.
+    TrackListHeader.Sort { id: trackSort }
+    readonly property var sortedOrder: trackSort.order(root.tracks)
+    // Each shown row's index in root.tracks, which a removal names. A track
+    // in the playlist twice is two places, so each row keeps its own.
+    readonly property var shownOrder: {
+        var words = root.fold(root.trackFilter).split(/\s+/).filter(function (w) { return w.length > 0 })
+        if (words.length === 0) return root.sortedOrder
+        return root.sortedOrder.filter(function (i) {
+            var t = root.tracks[i]
+            var hay = root.fold([t.title, t.artists, t.albumTitle].join(" "))
+            return words.every(function (w) { return hay.indexOf(w) >= 0 })
+        })
+    }
+    readonly property var shownTracks: root.shownOrder.map(function (i) { return root.tracks[i] })
+    // Play and Shuffle take every track, in the order of the headings.
+    readonly property var sortedTracks: root.sortedOrder.map(function (i) { return root.tracks[i] })
 
     // Records this playlist as the "playing from" source, then starts playback.
     function playFrom(list, i) {
@@ -49,7 +103,10 @@ Rectangle {
         player.playTracks(list, i)
     }
 
-    onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
+    onPlaylistUuidChanged: {
+        root.trackFilter = ""
+        if (playlistUuid.length > 0) loadPlaylist()
+    }
 
     // An undo, or a change Tidal did not confirm, moved rows this page did
     // not move itself: the rows are read again.
@@ -115,6 +172,101 @@ Rectangle {
         })
     }
 
+    // ── reordering by drag ───────────────────────────────────────────────
+    // Only in the list's own order with every row shown, so a drop between
+    // two rows means the same place on Tidal; and one move at a time.
+    property bool moving: false
+    readonly property bool canReorder: root.playlistEditable && trackSort.key === ""
+        && root.trackFilter.trim().length === 0 && !root.moving && !root.loading
+        && root.tracks.length > 1
+    readonly property int rowHeight: 52
+    property int  dragFrom: -1
+    property real dragRowY: 0
+    property real dragPressY: 0
+    property real dragOffset: 0
+    property int  _currentBefore: -1
+    readonly property bool dragging: root.dragFrom >= 0
+    // The gap the drop aims at, 0 above the first row to n below the last,
+    // nearest the dragged row's middle; and the row's place after the drop.
+    readonly property int dropGap: !root.dragging ? -1
+        : Math.max(0, Math.min(root.tracks.length,
+              Math.round((root.dragRowY + root.dragOffset + root.rowHeight / 2
+                          - (root.dragRowY - root.dragFrom * root.rowHeight)) / root.rowHeight)))
+    readonly property int dropTo: root.dropGap > root.dragFrom ? root.dropGap - 1 : root.dropGap
+
+    function beginMove(row, index, pressY) {
+        root._currentBefore = tracksList.currentIndex
+        // Keeps the dragged row alive while the list scrolls under it.
+        tracksList.currentIndex = index
+        root.dragFrom = index
+        root.dragRowY = row.y
+        root.dragPressY = pressY
+        root.dragOffset = 0
+    }
+    // y is the pointer in the dragged row, which already carries the offset.
+    function followMove(y) {
+        if (root.dragging) root.dragOffset += y - root.dragPressY
+    }
+    function cancelMove() {
+        edgeScroll.stop()
+        if (!root.dragging) return
+        root.dragFrom = -1
+        root.dragOffset = 0
+        tracksList.currentIndex = root._currentBefore
+    }
+    function endMove() {
+        if (!root.dragging) return
+        var from = root.dragFrom, to = root.dropTo
+        root.cancelMove()
+        if (to < 0 || to === from || from >= root.tracks.length) return
+        var requested = root.playlistUuid
+        var trackId = Number(root.tracks[from].id)
+        root.moving = true
+        // The row moves on Tidal's word, as a removal leaves on it.
+        Edits.movePlaylistItem(requested, root.playlistTitle, trackId, from, to,
+                               function (ok, stale) {
+            if (requested !== root.playlistUuid) return
+            root.moving = false
+            if (stale === true) { Qt.callLater(root.reloadAfterStaleMove); return }
+            if (ok !== true || Number((root.tracks[from] || {}).id) !== trackId) return
+            var arr = root.tracks.slice()
+            arr.splice(to, 0, arr.splice(from, 1)[0])
+            root.tracks = arr
+        })
+    }
+    onTracksChanged: if (root.dragging) root.cancelMove()
+    onCanReorderChanged: if (!root.canReorder && root.dragging) root.cancelMove()
+
+    // Scrolls while the dragged row is held near the top or the bottom; the
+    // row stays under the pointer, so it travels with the list.
+    Timer {
+        id: edgeScroll
+        interval: 16
+        repeat: true
+        running: root.dragging
+        readonly property real band: 48
+        onTriggered: {
+            var y = root.dragRowY + root.dragOffset + root.dragPressY - tracksList.contentY
+            var top = detailBar.height + 40, bottom = tracksList.height
+            var step = y < top + band ? -Math.min(16, top + band - y)
+                     : y > bottom - band ? Math.min(16, y - (bottom - band)) : 0
+            if (step === 0) return
+            var lo = tracksList.originY
+            var hi = tracksList.originY + Math.max(0, tracksList.contentHeight - tracksList.height)
+            var next = Math.max(lo, Math.min(hi, tracksList.contentY + step))
+            root.dragOffset += next - tracksList.contentY
+            tracksList.contentY = next
+        }
+    }
+
+    readonly property string staleMoveText:
+        qsTr("This playlist was changed somewhere else, so nothing was moved. It has been reloaded.")
+    function reloadAfterStaleMove() {
+        Toasts.show(root.staleMoveText)
+        loadPlaylistHeader(root.playlistUuid)
+        reloadTracks()
+    }
+
     // A removal was refused because the playlist changed somewhere else since
     // this page read it. Nothing was removed; the page reads it again.
     readonly property string staleRemovalText:
@@ -128,6 +280,7 @@ Rectangle {
     function loadPlaylist() {
         loading = true
         loadError = ""
+        loadOffline = false
         playlistEditable = false
         // Which playlist these replies are about; see MixPage.loadMix().
         var requested = playlistUuid
@@ -163,105 +316,165 @@ Rectangle {
 
     ListView {
         id: tracksList
+        objectName: "playlistTracksList"
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: root.shownTracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: DetailHero {
-            id: hero
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
+        header: Item {
             width: tracksList.width
-            kind: qsTr("Playlist")
-            title: root.playlistTitle
-            artSource: root.coverUrl
-            // Without a cover of its own, the tracks' covers; see DetailHero.
-            artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
-            artIcon: "playlist"
-            onPinRequested: (x, y) => {
-                var p = hero.mapToItem(root, x, y)
-                root.showHeroPinMenu(p.x, p.y)
-            }
+            z: 2
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
-            Text {
-                visible: root.playlistDescription.length > 0
-                Layout.fillWidth: true
-                text: root.playlistDescription
-                color: Theme.textSec
-                font.pixelSize: Theme.fontMeta
-                wrapMode: Text.WordWrap
-                maximumLineCount: 3
-                elide: Text.ElideRight
-            }
-
-            Text {
-                text: {
-                    // One complete sentence per case rather than glued
-                    // fragments, so a translation can reorder it.
-                    var n = root.tracks.length
-                    var d = root.playlistDuration
-                    // The count is the tracklist's, still on its way.
-                    if (root.loading && n === 0)
-                        return d > 0 ? Theme.lengthText(d) : ""
-                    return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(Theme.lengthText(d))
-                                 : qsTr("%Ln track(s)", "", n)
+            DetailHero {
+                id: hero
+                width: tracksList.width
+                kind: qsTr("Playlist")
+                title: root.playlistTitle
+                artSource: root.coverUrl
+                // Without a cover of its own, the tracks' covers; see DetailHero.
+                artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
+                artIcon: "playlist"
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
                 }
-                color: Theme.textSec
-                font.pixelSize: Theme.fontBody
-                Layout.fillWidth: true
-                elide: Text.ElideRight
+
+                Text {
+                    visible: root.playlistDescription.length > 0
+                    Layout.fillWidth: true
+                    text: root.playlistDescription
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    text: {
+                        // One complete sentence per case rather than glued
+                        // fragments, so a translation can reorder it.
+                        var n = root.tracks.length
+                        var d = root.playlistDuration
+                        // The count is the tracklist's, still on its way.
+                        if (root.loading && n === 0)
+                            return d > 0 ? Theme.lengthText(d) : ""
+                        return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(Theme.lengthText(d))
+                                     : qsTr("%Ln track(s)", "", n)
+                    }
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                // Narrows the list to the tracks whose title, artists or album
+                // hold every word typed. Play and Shuffle still take them all.
+                SearchBar {
+                    objectName: "playlistFilter"
+                    visible: root.tracks.length > 0
+                    Layout.preferredWidth: 280
+                    Layout.topMargin: Theme.space1
+                    placeholder: qsTr("Find in this playlist…")
+                    text: root.trackFilter
+                    onTextEdited: (txt) => { root.trackFilter = txt }
+                }
+
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                bridge.markPlaylistPlayed(root.playlistUuid)
+                                root.playFrom(root.sortedTracks, 0)
+                            }
+                        }
+                    },
+                    PillButton {
+                        text: qsTr("Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                bridge.markPlaylistPlayed(root.playlistUuid)
+                                player.setShuffle(true)
+                                root.playFrom(root.sortedTracks, Math.floor(Math.random() * root.tracks.length))
+                            }
+                        }
+                    },
+                    PillButton {
+                        objectName: "playlistEditButton"
+                        visible: root.playlistEditable
+                        text: qsTr("Edit")
+                        icon: "edit"
+                        accent: false
+                        onClicked: {
+                            editTitleField.text         = root.playlistTitle
+                            editDescField.text          = root.playlistDescription
+                            editPlaylistPopup.errorText = ""
+                            editPlaylistPopup.busy      = false
+                            editPlaylistPopup.open()
+                        }
+                },
+                DownloadAction {
+                    kind: "playlist"
+                    itemId: root.playlistUuid
+                    folderName: root.playlistTitle
+                    trackSource: root.allTracks
+                },
+                // The hero's menu, which right-click also opens: the queue
+                // actions, Pin and Copy link.
+                IconButton {
+                    objectName: "heroMoreButton"
+                    icon: "more"
+                    label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                    size: 20
+                    pad: Theme.space5
+                    backed: true
+                    onClicked: {
+                        var p = mapToItem(root, 0, height)
+                        root.showHeroPinMenu(p.x, p.y)
+                    }
+                    }
+                ]
             }
 
-            actions: [
-                PillButton {
-                    text: qsTr("Play", "verb, button label")
-                    icon: "play"
-                    accent: true
-                    onClicked: {
-                        if (root.tracks.length > 0) {
-                            bridge.markPlaylistPlayed(root.playlistUuid)
-                            root.playFrom(root.tracks, 0)
-                        }
-                    }
-                },
-                PillButton {
-                    text: qsTr("Shuffle")
-                    icon: "shuffle"
-                    accent: false
-                    onClicked: {
-                        if (root.tracks.length > 0) {
-                            bridge.markPlaylistPlayed(root.playlistUuid)
-                            player.setShuffle(true)
-                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                        }
-                    }
-                },
-                PillButton {
-                    objectName: "playlistEditButton"
-                    visible: root.playlistEditable
-                    text: qsTr("Edit")
-                    icon: "edit"
-                    accent: false
-                    onClicked: {
-                        editTitleField.text         = root.playlistTitle
-                        editDescField.text          = root.playlistDescription
-                        editPlaylistPopup.errorText = ""
-                        editPlaylistPopup.busy      = false
-                        editPlaylistPopup.open()
-                    }
-                }
-            ]
+            TrackListHeader {
+                id: headings
+                objectName: "playlistTracksHeader"
+                y: hero.height
+                pinIn: tracksList
+                pinBelow: detailBar.height
+                // At x 0 with the rows' width: a vertical ListView puts its
+                // rows at its left edge, whatever x they ask for.
+                width: tracksList.width - 32
+                sort: trackSort
+                showAlbum: width - root.sidebarReclaim >= albumBreakpoint
+                showAdded: width - root.sidebarReclaim >= addedBreakpoint
+            }
         }
 
         delegate: TrackRow {
             id: playlistTrackRow
             objectName: "playlistTrackRow"
             width: tracksList.width - 32
-            x: 16
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
             showAlbum:      width - root.sidebarReclaim >= albumBreakpoint
-            trackNum:       index + 1
+            showAdded:      width - root.sidebarReclaim >= addedBreakpoint
+            // Its number on the playlist, filtered or sorted.
+            trackNum:       root.placeOf(index) + 1
             title:          modelData.title
             artists:        modelData.artists
             albumTitle:     modelData.albumTitle
@@ -269,10 +482,19 @@ Rectangle {
             coverUrl:       modelData.coverUrl80
             trackData:      modelData
             playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
-            trackItemIndex: index
+            // Its place on Tidal's list, which a sort does not move. A new
+            // list can make its rows before its order is worked out.
+            trackItemIndex: root.placeOf(index)
+            reorderable: root.canReorder
+            z: reordering ? 2 : 0
+            transform: Translate { y: playlistTrackRow.reordering ? root.dragOffset : 0 }
+            onReorderStarted: (x, y) => root.beginMove(playlistTrackRow, index, y)
+            onReorderMoved: (x, y) => root.followMove(y)
+            onReorderEnded: root.endMove()
+            onReorderCanceled: root.cancelMove()
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
-                root.playFrom(root.tracks, index)
+                root.playFrom(root.shownTracks, index)
             }
             // The row leaves the page only on the server's word. The count
             // beside the title reads root.tracks.length, and the bridge repairs
@@ -306,60 +528,80 @@ Rectangle {
         // scrolls with it, as on MixPage.
         footer: Item {
             width: tracksList.width
-            height: root.loadFailed ? 200 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12
+                  : noMatches.visible ? noMatches.implicitHeight + 2 * Theme.space12 : 32
 
+            // The filter left no rows: said in the list, as the collection
+            // says it, with the way back.
             ColumnLayout {
+                id: noMatches
+                objectName: "playlistNoMatches"
+                visible: !root.loadFailed && root.tracks.length > 0
+                         && root.trackFilter.trim().length > 0 && root.shownTracks.length === 0
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 96, 420)
+                spacing: Theme.space2
+                Text {
+                    objectName: "playlistNoMatchesText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("No tracks match \"%1\"").arg(root.trackFilter.trim())
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                }
+                Text {
+                    objectName: "playlistNoMatchesHint"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Clear the field above to see every track again.")
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                }
+            }
+
+            ErrorState {
+                id: loadErrorState
                 objectName: "playlistLoadError"
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: Theme.space3
-
-                VectorIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    // A Layout owns the size of its direct children, so a plain
-                    // width would be overwritten.
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    name: "playlist"
-                    color: Theme.textDim
-                }
-
-                Text {
-                    objectName: "playlistLoadErrorText"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("This playlist could not be loaded")
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSection
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Not the server's own string; see AlbumPage's panel for why.
+                namePrefix: "playlistLoadError"
+                icon: "playlist"
+                offline: root.loadOffline
+                title: qsTr("This playlist could not be loaded")
                 // One long literal, since lupdate cannot read a concatenation.
-                Text {
-                    objectName: "playlistLoadErrorDetail"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
-                    color: Theme.textSec
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.WordWrap
-                }
+                detail: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
+                onRetry: root.retryLoad()
             }
         }
 
         ScrollBar.vertical: ScrollBar {
+            objectName: "playlistScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
+        }
+        WheelStep { view: tracksList }
+
+        // Where the dragged row would land: a line in the gap.
+        Rectangle {
+            objectName: "playlistDropIndicator"
+            visible: root.dragging && root.dropTo !== root.dragFrom
+            x: Theme.space2
+            width: tracksList.width - 32 - 2 * Theme.space2
+            height: 2
+            color: Theme.accent
+            y: root.dragRowY + (root.dropGap - root.dragFrom) * root.rowHeight - tracksList.contentY - 1
+            z: 3
         }
     }
 
     DetailBar {
+        id: detailBar
         objectName: "playlistStickyHeader"
         flickable: tracksList
-        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.heroHeight : 280
         title: root.playlistTitle
     }
 

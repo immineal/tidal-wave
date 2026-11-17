@@ -600,6 +600,30 @@ Popup {
                     onPicked: function (value) { bridge.preferredQuality = value }
                 }
 
+                // Where Tidal has a release explicit and clean, which one lists
+                // show. Explicit by default, as in Tidal's own apps.
+                Text {
+                    Layout.topMargin: Theme.space2
+                    text: qsTr("Version of records with explicit lyrics")
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+                SettingSelect {
+                    objectName: "settingsPreferredVersion"
+                    options: [
+                        { value: "explicit", label: qsTr("Explicit", "the version of a record with its lyrics as recorded") },
+                        { value: "clean",    label: qsTr("Clean", "the version of a record with its lyrics edited") }
+                    ]
+                    value: bridge.preferExplicit ? "explicit" : "clean"
+                    onPicked: function (value) { bridge.preferExplicit = value === "explicit" }
+                }
+                Text {
+                    objectName: "settingsPreferredVersionNote"
+                    text: qsTr("Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.")
+                    color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space2
@@ -1283,6 +1307,7 @@ Popup {
                         { ids: ["mute"],                            d: qsTr("Mute") },
                         { ids: ["shuffle"],                         d: qsTr("Toggle shuffle") },
                         { ids: ["repeat"],                          d: qsTr("Cycle repeat mode") },
+                        { ids: ["like"],                            d: qsTr("Like or unlike the playing track") },
                         { ids: ["home", "search", "collection"],    d: qsTr("Home / Search / Collection") },
                         { ids: ["nowPlaying"],                      d: qsTr("Now Playing") },
                         { ids: ["find", "findAlt"],                 d: qsTr("Find", "shortcut, puts the keyboard in the search field") },

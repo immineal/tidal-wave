@@ -13,6 +13,7 @@
 #include <QAudioBuffer>
 #include <QAudioOutput>
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QHash>
@@ -184,6 +185,18 @@ constexpr auto kLiveManifest = R"MPD(<MPD type="dynamic">
 </MPD>
 )MPD";
 
+// Ten media segments, more than are asked for at once. The bytes served are
+// stand-ins: joining is concatenation, so they need not decode.
+constexpr auto kTenSegmentManifest = R"MPD(<MPD mediaPresentationDuration="PT5.0S">
+  <Period><AdaptationSet><Representation id="0">
+    <SegmentTemplate timescale="1000"
+                     initialization="@BASE@i.mp4" media="@BASE@$Number$.mp4">
+      <SegmentTimeline><S d="500" r="9"/></SegmentTimeline>
+    </SegmentTemplate>
+  </Representation></AdaptationSet></Period>
+</MPD>
+)MPD";
+
 // The BTS manifest is JSON. A manifestMimeType the app does not recognise comes
 // down the DASH branch, so this is reachable.
 constexpr auto kBtsManifestJson =
@@ -230,6 +243,10 @@ public:
     QHash<QString, QByteArray> files;     // request path, query stripped -> bytes
     QHash<QString, int>        delaysMs;  // path -> ms to wait before answering
     QStringList                requested; // request targets, query and all, in order
+    // path -> statuses answered, one per request, before the file is served
+    QHash<QString, QList<int>> failFirst;
+    QHash<QString, QByteArray> retryAfter;  // path -> Retry-After sent with its 429
+    QVector<std::pair<qint64, QString>> arrivals;  // ms since the first request, path
     bool                       holdAnswers = false; // nothing is answered until release()
 
     // Answers every held request in one go.
@@ -264,6 +281,8 @@ private:
                 requested << target;
                 const int q = target.indexOf(QLatin1Char('?'));
                 const QString path = q < 0 ? target : target.left(q);
+                if (!m_clock.isValid()) m_clock.start();
+                arrivals.append({m_clock.elapsed(), path});
                 if (holdAnswers) { m_held.append({sock, path}); return; }
                 QTimer::singleShot(delaysMs.value(path, 0), sock,
                                    [this, sock, path] { answer(sock, path); });
@@ -274,7 +293,14 @@ private:
 
     void answer(QTcpSocket *sock, const QString &path)
     {
-        if (!files.contains(path)) {
+        QList<int> &fails = failFirst[path];
+        if (!fails.isEmpty()) {
+            const int status = fails.takeFirst();
+            QByteArray head = "HTTP/1.0 " + QByteArray::number(status) + " Refused\r\n";
+            if (status == 429 && retryAfter.contains(path))
+                head += "Retry-After: " + retryAfter.value(path) + "\r\n";
+            sock->write(head + "Content-Length: 0\r\n\r\n");
+        } else if (!files.contains(path)) {
             sock->write("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n");
         } else {
             const QByteArray body = files.value(path);
@@ -287,6 +313,7 @@ private:
     }
 
     QVector<std::pair<QPointer<QTcpSocket>, QString>> m_held;
+    QElapsedTimer m_clock;
 };
 
 // Counts Qt's complaint about a reply that was handed a second error.
@@ -442,6 +469,21 @@ QString joinThroughFetcher(TidalClient *client, const QString &mpd, QString *err
     if (!QTest::qWaitFor([&done] { return done; }, 20000))
         *error = QStringLiteral("timed out waiting for the segments");
     return path;
+}
+
+// Serves kPackagerManifest's four parts.
+void servePackagerFiles(SegmentServer &srv)
+{
+    srv.files[QStringLiteral("/init-stream0.m4s")]        = initSegment();
+    srv.files[QStringLiteral("/chunk-stream0-00001.m4s")] = mediaSegment1();
+    srv.files[QStringLiteral("/chunk-stream0-00002.m4s")] = mediaSegment2();
+    srv.files[QStringLiteral("/chunk-stream0-00003.m4s")] = mediaSegment3();
+}
+
+QByteArray readAll(const QString &path)
+{
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
 }
 
 } // namespace
@@ -762,10 +804,141 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY2(!gotFile, "a 404 on a segment produced a file anyway");
         QVERIFY2(!err.isEmpty(), "the failure came back with nothing to tell the user");
+        // A 404 does not go away by asking again.
+        QCOMPARE(srv.requested.count(QStringLiteral("/chunk-stream0-00002.m4s")), 1);
         // Whatever segments did arrive before the gap are not a half track to
         // leave lying in /tmp.
         QVERIFY2(!QFile::exists(halfWritten),
                  qPrintable(QStringLiteral("%1 was left behind").arg(halfWritten)));
+    }
+
+    // One dropped segment used to fail the whole track. It is asked again,
+    // and the join comes out the same as one that never failed.
+    void aSegmentThatFailsOnceIsAskedAgainAndTheTrackJoins_data()
+    {
+        QTest::addColumn<int>("status");
+        QTest::newRow("503") << 503;
+        QTest::newRow("500") << 500;
+        QTest::newRow("408") << 408;
+    }
+
+    void aSegmentThatFailsOnceIsAskedAgainAndTheTrackJoins()
+    {
+        QFETCH(int, status);
+        SegmentServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        servePackagerFiles(srv);
+        srv.failFirst[QStringLiteral("/chunk-stream0-00002.m4s")] = {status};
+
+        TidalApi api;
+        TidalClient client{&api};
+        QString err;
+        const QString path = joinThroughFetcher(&client, withBase(kPackagerManifest, srv.base()), &err);
+        QVERIFY2(!path.isEmpty(), qPrintable(QStringLiteral("no join: ") + err));
+        const QByteArray joined = readAll(path);
+        QFile::remove(path);
+        QCOMPARE(joined, joinedByHand());
+        QCOMPARE(srv.requested.count(QStringLiteral("/chunk-stream0-00002.m4s")), 2);
+        QCOMPARE(int(srv.requested.size()), 5);
+    }
+
+    // A segment that keeps failing still ends the join, after a few tries
+    // and no more, and leaves nothing behind.
+    void aSegmentThatKeepsFailingEndsTheJoinAfterAFewTries()
+    {
+        SegmentServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        servePackagerFiles(srv);
+        srv.failFirst[QStringLiteral("/chunk-stream0-00002.m4s")] = QList<int>(50, 503);
+
+        TidalApi api;
+        TidalClient client{&api};
+        DashFetcher fetcher(&client, withBase(kPackagerManifest, srv.base()));
+        QVERIFY(fetcher.isValid() && fetcher.openedTempFile());
+        const QString tempPath = fetcher.tempFilePath();
+        bool done = false, gotFile = true;
+        QString err;
+        fetcher.start([&](QTemporaryFile *file, const QString &e) {
+            done = true; gotFile = file != nullptr; err = e; delete file;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
+        QVERIFY(!gotFile);
+        QVERIFY(!err.isEmpty());
+        QCOMPARE(srv.requested.count(QStringLiteral("/chunk-stream0-00002.m4s")),
+                 1 + DashFetcher::kSegmentRetries);
+        QCOMPARE(fetcher.rateLimitedSecs(), 0);
+        QVERIFY(!QFile::exists(tempPath));
+        // Nothing is still waiting to ask again.
+        const int asked = int(srv.requested.size());
+        QTest::qWait(2500);
+        QCOMPARE(int(srv.requested.size()), asked);
+    }
+
+    // A 429 holds every request of the join for its Retry-After, not only
+    // the one it answered, and the join then goes on.
+    void a429HoldsTheWholeJoinForItsRetryAfter()
+    {
+        SegmentServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.files[QStringLiteral("/i.mp4")] = "init;";
+        QByteArray expected = "init;";
+        for (int n = 1; n <= 10; ++n) {
+            const QString p = QStringLiteral("/%1.mp4").arg(n);
+            srv.files[p] = "seg" + QByteArray::number(n) + ";";
+            expected += srv.files[p];
+            srv.delaysMs[p] = 200;
+        }
+        srv.delaysMs[QStringLiteral("/i.mp4")] = 200;
+        srv.delaysMs.remove(QStringLiteral("/1.mp4"));
+        srv.failFirst[QStringLiteral("/1.mp4")]  = {429};
+        srv.retryAfter[QStringLiteral("/1.mp4")] = "2";
+
+        TidalApi api;
+        TidalClient client{&api};
+        QString err;
+        const QString path = joinThroughFetcher(&client, withBase(kTenSegmentManifest, srv.base()), &err);
+        QVERIFY2(!path.isEmpty(), qPrintable(QStringLiteral("no join: ") + err));
+        const QByteArray joined = readAll(path);
+        QFile::remove(path);
+        QCOMPARE(joined, expected);
+
+        // The first six went out together; the 429 came back at once, so
+        // nothing after them may be sent sooner than two seconds on.
+        QCOMPARE(int(srv.arrivals.size()), 12);
+        const qint64 refusedAt = srv.arrivals.at(0).first;
+        for (int i = 6; i < srv.arrivals.size(); ++i)
+            QVERIFY2(srv.arrivals.at(i).first - refusedAt >= 1900,
+                     qPrintable(QStringLiteral("%1 was asked for %2 ms after the 429")
+                                .arg(srv.arrivals.at(i).second)
+                                .arg(srv.arrivals.at(i).first - refusedAt)));
+        QCOMPARE(srv.requested.count(QStringLiteral("/1.mp4")), 2);
+    }
+
+    // A 429 that asks for a long wait ends the join at once and says so, so
+    // the caller can stop rather than sit on a stalled track.
+    void aLong429EndsTheJoinAtOnceAndSaysHowLong()
+    {
+        SegmentServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        servePackagerFiles(srv);
+        srv.failFirst[QStringLiteral("/chunk-stream0-00001.m4s")]  = {429};
+        srv.retryAfter[QStringLiteral("/chunk-stream0-00001.m4s")] = "1200";
+
+        TidalApi api;
+        TidalClient client{&api};
+        DashFetcher fetcher(&client, withBase(kPackagerManifest, srv.base()));
+        QVERIFY(fetcher.isValid() && fetcher.openedTempFile());
+        bool done = false, gotFile = true;
+        QElapsedTimer t;
+        t.start();
+        fetcher.start([&](QTemporaryFile *file, const QString &) {
+            done = true; gotFile = file != nullptr; delete file;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+        QVERIFY(t.elapsed() < 3000);
+        QVERIFY(!gotFile);
+        QCOMPARE(fetcher.rateLimitedSecs(), 1200);
+        QCOMPARE(srv.requested.count(QStringLiteral("/chunk-stream0-00001.m4s")), 1);
     }
 
     // Dropping a fetcher mid-flight is what every track change does. It must not

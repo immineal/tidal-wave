@@ -1053,9 +1053,7 @@ TestCase {
         return null
     }
 
-    // The queue row's menu is per delegate. Reached through the delegate,
-    // with findChild() for the last step because a Popup is a QObject and
-    // not in any item's children.
+    // The queue has one row menu for every row, opened for a queued row.
     function test_every_entry_of_the_queue_menu_carries_an_icon() {
         var holder = createTemporaryObject(holderC, testCase, { width: 420, height: 700 })
         player.setCurrentTrackForTest(makeTrack())
@@ -1064,12 +1062,16 @@ TestCase {
         var panel = createTemporaryObject(queueC, holder, {})
         settle(holder)
 
-        var row = firstItemNamed(panel, "queueEntry")
-        verify(row, "the queue drew no rows, so nothing was asserted")
-        var menu = findChild(row, "queueRowMenu")
-        verify(menu, "the queue row menu was not found, so nothing was asserted")
-        menu.popup()
+        var row = null
+        for (var i = 0; i < panel.queueList.count && !row; ++i) {
+            var it = panel.queueList.itemAtIndex(i)
+            if (it && it.kind === "manual") row = it
+        }
+        verify(row, "the queue drew no queued row, so nothing was asserted")
+        var menu = panel.rowMenu
+        panel.openRowMenu(row, false)
         settle(holder)
+        verify(menu.visible, "the queue row menu did not open")
         checkEveryEntryCarriesAnIcon(menu, "the queue menu", 1)
         menu.close()
     }

@@ -487,6 +487,30 @@
     </message>
 </context>
 <context>
+    <name>DownloadAction</name>
+    <message numerus="yes">
+        <source>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minute(s).</source>
+        <translation>
+            <numerusform>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minute.</numerusform>
+            <numerusform>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minutes.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 of %2 saved. %Ln track(s) could not be downloaded.</source>
+        <translation>
+            <numerusform>%1 of %2 saved. %Ln track could not be downloaded.</numerusform>
+            <numerusform>%1 of %2 saved. %Ln tracks could not be downloaded.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln track(s) saved</source>
+        <translation>
+            <numerusform>%Ln track saved</numerusform>
+            <numerusform>%Ln tracks saved</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>Downloader</name>
     <message>
         <source>ffmpeg was not found on PATH. Install ffmpeg to enable downloads.</source>
@@ -1346,10 +1370,6 @@
     </message>
     <message>
         <source>Search Tidal</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Find tracks, albums, artists and more</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
