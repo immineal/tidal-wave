@@ -757,6 +757,25 @@ public:
         if (m_removeFromPlaylistOk) refreshPlaylistMeta(uuid);
     }
 
+    // ── moveTrackInPlaylist: toIndex is where the row ends ───────────────
+    // Answers (ok, stale) as the real bridge; setMoveAnswerForTest() picks
+    // "ok", "stale" or "fail", and deferMovesForTest() holds the answer
+    // until answerMoveForTest(). Each call is noted as "from>to".
+    Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                         QJSValue cb) {
+        m_moves << QStringLiteral("%1>%2").arg(fromIndex).arg(toIndex);
+        if (m_deferMoves) { m_pendingMoves.append({cb, uuid, fromIndex, toIndex}); return; }
+        deliverMove(cb, uuid, fromIndex, toIndex);
+    }
+    Q_INVOKABLE QStringList movesForTest() const { return m_moves; }
+    Q_INVOKABLE void setMoveAnswerForTest(const QString &a) { m_moveAnswer = a; }
+    Q_INVOKABLE void deferMovesForTest(bool on) { m_deferMoves = on; }
+    Q_INVOKABLE void answerMoveForTest() {
+        if (m_pendingMoves.isEmpty()) return;
+        PendingMove m = m_pendingMoves.takeFirst();
+        deliverMove(m.cb, m.uuid, m.from, m.to);
+    }
+
     // ── editPlaylist, as TidalBridge::editPlaylist behaves ───────────────
     // On a success the row in the favourites cache is edited in place, so the
     // list keeps its order, and playlistUpdated carries uuid, title and
@@ -1050,6 +1069,10 @@ public:
         m_lastAddedTrackId   = 0;
         m_addToPlaylistCalls = 0;
         m_addWrites.clear();
+        m_moves.clear();
+        m_moveAnswer = QStringLiteral("ok");
+        m_deferMoves = false;
+        m_pendingMoves.clear();
         m_lastRestored.clear();
         m_addToPlaylistOk    = true;
     }
@@ -1596,6 +1619,27 @@ private:
         // playlist wants the confirmation even when the cache had nothing to learn.
         emit playlistStatsRefreshed(uuid);
     }
+
+    // A move's answer, inline or when a held one is released.
+    struct PendingMove { QJSValue cb; QString uuid; int from; int to; };
+    void deliverMove(QJSValue cb, const QString &uuid, int from, int to) {
+        const bool ok = m_moveAnswer == QLatin1String("ok");
+        if (ok) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            if (from >= 0 && from < rows.size()) {
+                const QVariant v = rows.takeAt(from);
+                rows.insert(qBound(0, to, int(rows.size())), v);
+            }
+        }
+        if (cb.isCallable())
+            cb.call({ QJSValue(ok), QJSValue(m_moveAnswer == QLatin1String("stale")) });
+        if (ok) refreshPlaylistMeta(uuid);
+    }
+    QStringList        m_moves;
+    QString            m_moveAnswer = QStringLiteral("ok");
+    bool               m_deferMoves = false;
+    QList<PendingMove> m_pendingMoves;
 
     // The body of a createPlaylist reply, inline or when a held one is released.
     void deliverCreate(QJSValue &cb, const QString &title) {

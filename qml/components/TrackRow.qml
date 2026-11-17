@@ -310,6 +310,14 @@ Item {
     signal playRequested()
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
+    // A press that travels drags the row, for a list that can be reordered.
+    // The points are the row's own; the list does the rest.
+    property bool reorderable: false
+    signal reorderStarted(real x, real y)
+    signal reorderMoved(real x, real y)
+    signal reorderEnded()
+    signal reorderCanceled()
+    property bool reordering: false
 
     // A list is one tab stop and the arrows walk it. In a ListView that is
     // the current row; rows laid out by a Repeater share a rowGroup
@@ -399,9 +407,11 @@ Item {
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusMedium
-        color: root.isCurrent ? Theme.accentSoft
+        // A dragged row is lifted: opaque, so the rows it passes stay under it.
+        color: root.reordering ? Theme.surfaceHigh
+               : root.isCurrent ? Theme.accentSoft
                : hov.hovered || root.menuOpen ? Theme.hoverFill : "transparent"
-        border.width: root.activeFocus ? 2 : 0
+        border.width: root.activeFocus || root.reordering ? 2 : 0
         border.color: Theme.accent
 
         // The row's hover, as a handler and not the MouseArea's containsMouse:
@@ -413,10 +423,32 @@ Item {
             id: hov
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: root.reordering ? Qt.ClosedHandCursor : Qt.PointingHandCursor
             readonly property bool hovered: rowHover.hovered
+            // A drag on a row moves it rather than scrolling the list; the
+            // wheel and the scroll bar still scroll.
+            preventStealing: root.reorderable
+            property point pressAt
+            property bool travelled: false
+            onPressed: (mouse) => { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
+            onPositionChanged: (mouse) => {
+                var at = hov.mapToItem(root, mouse.x, mouse.y)
+                if (root.reordering) { root.reorderMoved(at.x, at.y); return }
+                if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
+                        || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
+                    travelled = true
+                if (travelled && root.reorderable && (mouse.buttons & Qt.LeftButton)) {
+                    var from = hov.mapToItem(root, pressAt.x, pressAt.y)
+                    root.reordering = true
+                    root.reorderStarted(from.x, from.y)
+                    root.reorderMoved(at.x, at.y)
+                }
+            }
+            onReleased: if (root.reordering) { root.reordering = false; root.reorderEnded() }
+            onCanceled: if (root.reordering) { root.reordering = false; root.reorderCanceled() }
 
             onClicked: (mouse) => {
+                if (travelled && root.reorderable) return
                 if (mouse.button === Qt.RightButton) {
                     root.openMenu()
                 } else {

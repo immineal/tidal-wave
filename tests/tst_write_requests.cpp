@@ -292,6 +292,8 @@ private slots:
         QTest::newRow("put a song back")  << 12 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101&onArtifactNotFound=FAIL&onDupes=ADD&toIndex=3}";
         // An album or the queue: every id in one write, in order.
         QTest::newRow("add an album")     << 13 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101,102,103&onArtifactNotFound=FAIL&onDupes=SKIP}";
+        // The row at 2 ends at 5, against the version the page read.
+        QTest::newRow("move a song")      << 15 << "POST /api/playlists/pl-tape-1/items/2 [If-None-Match: \"v1\"] {toIndex=5}";
         QTest::newRow("add them again")   << 14 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101,102&onArtifactNotFound=FAIL&onDupes=ADD}";
     }
 
@@ -320,6 +322,7 @@ private slots:
         case 12: c.restoreTrackToPlaylist(kUuid, 101, 3, answered); break;
         case 13: c.addTracksToPlaylist(kUuid, {101, 102, 103}, false, answered); break;
         case 14: c.addTracksToPlaylist(kUuid, {101, 102}, true, answered); break;
+        case 15: c.moveTrackInPlaylist(kUuid, 2, 5, [&](TidalClient::PlaylistWrite) { answered(true); }); break;
         }
         QTRY_VERIFY_WITH_TIMEOUT(done && rig.settled(), 5000);
         QCOMPARE(rig.tidal.writes(), QStringList{line});

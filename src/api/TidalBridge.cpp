@@ -897,6 +897,19 @@ void TidalBridge::nextRemoval(const QString &uuid) {
     });
 }
 
+void TidalBridge::moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                      QJSValue cb) {
+    const qint64 uid = m_client->userId();
+    m_client->moveTrackInPlaylist(uuid, fromIndex, toIndex,
+        [this, uuid, uid, cb](TidalClient::PlaylistWrite result) mutable {
+        if (uid != m_client->userId()) return;
+        using W = TidalClient::PlaylistWrite;
+        call(cb, { result == W::Done, result == W::Stale });
+        // Brings the new version's ETag for the next write.
+        if (result == W::Done) refreshPlaylistMeta(uuid);
+    });
+}
+
 void TidalBridge::deletePlaylist(const QString &uuid, QJSValue cb) {
     m_client->deletePlaylist(uuid, [this, uuid, cb](bool success) mutable {
         // The answer first: playlistDeleted can close the page whose dialog
