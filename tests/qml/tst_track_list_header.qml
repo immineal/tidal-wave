@@ -244,28 +244,31 @@ TestCase {
     // Each page with its list filled, the list and its headings.
     function openPage(which) {
         var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
-        var page = null, listName = "", headName = ""
+        var page = null, listName = "", headName = "", barName = ""
         if (which === "collection") {
             bridge.setFavoriteTracksListForTest(manyTracks(40))
             page = createTemporaryObject(collectionC, holder, {})
             page.activeTab = 0
             listName = "collectionTracksList"; headName = "collectionTracksHeader"
+            barName = "collectionTracksScrollBar"
         } else if (which === "playlist") {
             bridge.setPlaylistTracksForTest(manyTracks(40))
             page = createTemporaryObject(playlistC, holder, {})
             page.playlistUuid = "11111111-2222-3333-4444-555555555555"
             listName = "playlistTracksList"; headName = "playlistTracksHeader"
+            barName = "playlistScrollBar"
         } else if (which === "mix") {
             bridge.setMixPageForTest({ id: "mx-1", title: "Eine Mischung", subtitle: "",
                                        coverUrl: "", mixType: "DISCOVERY_MIX" }, manyTracks(40))
             page = createTemporaryObject(mixC, holder, {})
             page.mixId = "mx-1"
-            headName = "mixTracksHeader"
+            headName = "mixTracksHeader"; barName = "mixScrollBar"
         } else {
             bridge.setTrackRadioForTest(manyTracks(40))
             page = createTemporaryObject(radioC, holder, {})
             page.trackId = 900000022
             listName = "radioTracksList"; headName = "radioTracksHeader"
+            barName = "radioScrollBar"
         }
         var head = null, list = null
         tryVerify(function () {
@@ -274,7 +277,7 @@ TestCase {
             return head && list && list.count === 40 && list.itemAtIndex(0) !== null
         }, 3000, which + " never filled")
         waitForRendering(page)
-        return { page: page, head: head, list: list }
+        return { page: page, head: head, list: list, barName: barName }
     }
     // The ListView a heading sits in, for a page that names none.
     function viewOf(item) {
@@ -306,11 +309,25 @@ TestCase {
                      what + ": the length heading does not end where the lengths do")
         // The line under the headings spans the row's ground, end to end.
         var rule = findByName(p.head, "trackListHeaderRule"), ground = findByName(row, "trackRowGround")
-        fuzzyCompare(xOn(rule), xOn(ground), 0.5,
-                     what + ": the heading line starts at " + xOn(rule) + ", the row at " + xOn(ground))
-        fuzzyCompare(xOn(rule) + rule.width, xOn(ground) + ground.width, 0.5,
-                     what + ": the heading line ends at " + (xOn(rule) + rule.width)
+        var lineL = xOn(rule), lineR = xOn(rule) + rule.width
+        fuzzyCompare(lineL, xOn(ground), 0.5,
+                     what + ": the heading line starts at " + lineL + ", the row at " + xOn(ground))
+        fuzzyCompare(lineR, xOn(ground) + ground.width, 0.5,
+                     what + ": the heading line ends at " + lineR
                      + ", the row at " + (xOn(ground) + ground.width))
+        // Symmetric: as far from the list's left edge as from the scroll
+        // bar's inner edge, and as far before "#" as after the lengths.
+        var bar = findByName(p.page, p.barName)
+        verify(bar, what + ": no scroll bar named " + p.barName)
+        var leftGap = lineL - xOn(p.list), rightGap = xOn(bar) + bar.leftPadding - lineR
+        fuzzyCompare(rightGap, leftGap, 1,
+                     what + ": the line is " + leftGap + " px from the left edge and "
+                     + rightGap + " px from the scroll bar")
+        var hash = findByName(findByName(p.head, "trackListHeadingNumber"), "trackListHeadingLabel")
+        var before = xOn(hash) - lineL, after = lineR - (xOn(len) + len.width)
+        fuzzyCompare(after, before, 1,
+                     what + ": the line starts " + before + " px before \"#\" and ends "
+                     + after + " px after the lengths")
     }
 
     // ── the rows' inset ──────────────────────────────────────────────────
@@ -332,7 +349,8 @@ TestCase {
     function openRows(which) {
         if (which !== "album" && which !== "search") {
             var p = openPage(which)
-            return { page: p.page, frame: p.list, row: p.list.itemAtIndex(0) }
+            return { page: p.page, frame: p.list, row: p.list.itemAtIndex(0),
+                     bar: findByName(p.page, p.barName) }
         }
         var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
         var page = null
@@ -353,7 +371,8 @@ TestCase {
                  frame: which === "album" ? findByName(page, "albumTracksList") : row.parent }
     }
 
-    // 16 px from the list's left edge and as far from its right.
+    // 16 px from the list's left edge and as far from its right; a list
+    // with headings keeps its scroll bar's lane clear as well.
     function test_every_track_list_insets_its_rows_data() {
         return pagesWithHeadings().concat([{ tag: "album", which: "album" },
                                            { tag: "search", which: "search" }])
@@ -362,7 +381,8 @@ TestCase {
         var r = openRows(data.which)
         var left = r.row.mapToItem(r.frame, 0, 0).x
         fuzzyCompare(left, Theme.space4, 0.5, data.tag + ": the rows sit at " + left)
-        fuzzyCompare(r.frame.width - left - r.row.width, Theme.space4, 0.5,
+        var lane = r.bar ? r.bar.width - r.bar.leftPadding : 0
+        fuzzyCompare(r.frame.width - left - r.row.width, Theme.space4 + lane, 0.5,
                      data.tag + ": the rows' right inset is not their left one")
     }
 

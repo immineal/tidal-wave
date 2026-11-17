@@ -325,7 +325,9 @@ Rectangle {
         // x 0 whatever x they ask for, so the view's margins inset them. The
         // header and footer step back out to the view's edges.
         leftMargin: Theme.space4
-        rightMargin: Theme.space4
+        // Plus the scroll bar's lane, so the rows end as far from its inner
+        // edge as they start from the left edge.
+        rightMargin: Theme.space4 + Math.round(vbar.width - vbar.leftPadding)
         readonly property real rowWidth: width - leftMargin - rightMargin
 
         // The hero, then the column headings, which stay under the bar once
@@ -584,6 +586,7 @@ Rectangle {
         }
 
         ScrollBar.vertical: ScrollBar {
+            id: vbar
             objectName: "playlistScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
