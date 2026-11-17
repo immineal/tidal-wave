@@ -32,6 +32,7 @@ TestCase {
     Component { id: radioC;    RadioPage    { anchors.fill: parent } }
     Component { id: mixC;      MixPage      { anchors.fill: parent } }
     Component { id: playlistC; PlaylistPage { anchors.fill: parent } }
+    Component { id: albumC;    AlbumPage    { anchors.fill: parent } }
 
     function makeHolder() {
         var holder = createTemporaryObject(holderC, testCase)
@@ -97,6 +98,7 @@ TestCase {
 
     function cleanup() {
         bridge.resetHeadersForTest()
+        bridge.setOfflineForTest(false)
     }
 
     // ── ArtistPage: the page that went blank ─────────────────────────────
@@ -560,5 +562,103 @@ TestCase {
                 "a top-up for the playlist the user left replaced the tracks on screen")
         compare(findChild(page, "heroTitle").text, "Zweite Liste",
                 "the second playlist lost its header")
+    }
+
+    // ── one error state: offline or gone, and Try again ──────────────────
+    // A drop in the connection is not the item being taken down. The page
+    // says which it is, offers Try again either way, and loads by itself once
+    // Tidal answers again.
+
+    function pageCases() {
+        return [
+            { tag: "album",    c: albumC,    prefix: "albumLoadError",
+              open: function (p) { p.albumId = 900000031 },
+              fetches: function () { return bridge.albumFetchesForTest() } },
+            { tag: "artist",   c: artistC,   prefix: "artistLoadError",
+              open: function (p) { p.artistId = testCase.deadArtistId },
+              fetches: function () { return bridge.artistFetchesForTest() } },
+            { tag: "playlist", c: playlistC, prefix: "playlistLoadError",
+              open: function (p) { p.playlistUuid = "pl-dead-9" },
+              fetches: function () { return bridge.playlistFetchCountForTest() } },
+            { tag: "mix",      c: mixC,      prefix: "mixLoadError",
+              open: function (p) { p.mixId = "mx-dead-9" },
+              fetches: function () { return bridge.mixPageFetchCountForTest() } },
+            { tag: "radio",    c: radioC,    prefix: "radioLoadError",
+              open: function (p) { p.trackId = testCase.deadTrackId },
+              fetches: function () { return bridge.trackRadioFetchesForTest() } }
+        ]
+    }
+
+    function test_offline_is_not_called_gone_data() { return pageCases() }
+    function test_offline_is_not_called_gone(row) {
+        bridge.setOfflineForTest(true)
+        bridge.setHeaderErrorForTest("Host unreachable")
+        var page = makePage(row.c)
+        row.open(page)
+        settle(page)
+
+        verify(page.loadFailed, "the page did not call itself failed")
+        verify(page.loadOffline, "the page did not notice Tidal was out of reach")
+        var heading = findChild(page, row.prefix + "Text")
+        verify(heading && heading.visible, "the failure says nothing")
+        compare(heading.text, "Tidal cannot be reached",
+                "an offline failure is worded as a refusal")
+        var detail = findChild(page, row.prefix + "Detail")
+        verify(detail.text.indexOf("taken down") < 0 && detail.text.indexOf("deleted") < 0
+               && detail.text.indexOf("no longer exist") < 0,
+               "an offline failure blames the item: " + detail.text)
+        verify(findChild(page, row.prefix + "Retry").visible, "no Try again while offline")
+    }
+
+    function test_a_refusal_keeps_its_own_words_and_offers_try_again_data() { return pageCases() }
+    function test_a_refusal_keeps_its_own_words_and_offers_try_again(row) {
+        bridge.setHeaderErrorForTest("server replied: Not Found")
+        var page = makePage(row.c)
+        row.open(page)
+        settle(page)
+
+        verify(page.loadFailed)
+        verify(!page.loadOffline, "a refusal from a reachable Tidal was called offline")
+        var heading = findChild(page, row.prefix + "Text")
+        verify(heading.text !== "Tidal cannot be reached", "a refusal is worded as offline")
+        var retry = findChild(page, row.prefix + "Retry")
+        verify(retry && retry.visible, "a failed page has no Try again")
+
+        var before = row.fetches()
+        bridge.setHeaderErrorForTest("")
+        mouseClick(retry)
+        settle(page)
+        verify(row.fetches() > before, "Try again asked Tidal for nothing")
+        verify(!page.loadFailed, "the page stayed failed after a successful try")
+    }
+
+    function test_the_page_loads_again_once_tidal_answers_data() { return pageCases() }
+    function test_the_page_loads_again_once_tidal_answers(row) {
+        bridge.setOfflineForTest(true)
+        bridge.setHeaderErrorForTest("Host unreachable")
+        var page = makePage(row.c)
+        row.open(page)
+        settle(page)
+        verify(page.loadFailed)
+
+        var before = row.fetches()
+        bridge.setHeaderErrorForTest("")
+        bridge.setOfflineForTest(false)
+        settle(page)
+        verify(row.fetches() > before, "coming back online did not reload the page")
+        verify(!page.loadFailed, "the page still shows the failure")
+    }
+
+    // Try again while offline also asks the bridge to probe at once.
+    function test_try_again_while_offline_probes_the_connection() {
+        bridge.setOfflineForTest(true)
+        bridge.setHeaderErrorForTest("Host unreachable")
+        var page = makePage(albumC)
+        page.albumId = 900000032
+        settle(page)
+        var before = bridge.retryConnectionCallsForTest()
+        mouseClick(findChild(page, "albumLoadErrorRetry"))
+        compare(bridge.retryConnectionCallsForTest(), before + 1,
+                "Try again offline did not ask the connection to be checked")
     }
 }

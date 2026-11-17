@@ -39,9 +39,29 @@ Rectangle {
         loadError.length > 0 && !loading && !artistData.name
         && topTracks.length === 0 && albums.length === 0
 
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
     // The first reason is kept: all three calls fail with the same message.
     function noteLoadError(err) {
-        if (root.loadError.length === 0) root.loadError = err
+        if (root.loadError.length > 0) return
+        root.loadError = err
+        root.loadOffline = bridge.offline === true
+    }
+
+    function retryLoad() {
+        if (!(root.artistId > 0)) return
+        if (bridge.offline) bridge.retryConnection()
+        loadArtist()
+    }
+
+    // The artist's radio as a mix id; "" where Tidal names none.
+    readonly property string artistMixId: artistData.artistMixId || ""
+
+    function startRadio() {
+        if (root.artistMixId.length === 0) return
+        navigateTo("mix", { mixId: root.artistMixId, title: root.artistData.name || "",
+                            mixType: "ARTIST_MIX" })
     }
 
     // Records this artist as the "playing from" source, then plays.
@@ -64,11 +84,15 @@ Rectangle {
     Connections {
         target: bridge
         function onFavoriteArtistsChanged() { root.updateFollowState() }
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
     }
 
     function loadArtist() {
         loading = true
         loadError = ""
+        loadOffline = false
         bioExpanded = false
         similarArtists = []
         // Which artist these three replies are about. artistId can change while
@@ -207,6 +231,30 @@ Rectangle {
                         // On the action row, which has clear space above.
                         onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
                                                                   hero.actionRow)
+                    },
+                    // The artist's station, where Tidal names one. Opens on
+                    // MixPage, as a track's radio does, so it can be saved.
+                    PillButton {
+                        objectName: "artistRadioPill"
+                        visible: root.artistMixId.length > 0
+                        text: qsTr("Artist radio")
+                        icon: "waves"
+                        accent: false
+                        onClicked: root.startRadio()
+                    },
+                    // The hero's menu, which right-click also opens: Pin and
+                    // Copy link.
+                    IconButton {
+                        objectName: "heroMoreButton"
+                        icon: "more"
+                        label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                        size: 20
+                        pad: Theme.space5
+                        backed: true
+                        onClicked: {
+                            var p = mapToItem(root, 0, height)
+                            root.showHeroPinMenu(p.x, p.y)
+                        }
                     }
                 ]
             }
@@ -497,44 +545,16 @@ Rectangle {
         visible: root.loadFailed
         color: Theme.bg
 
-        ColumnLayout {
+        ErrorState {
             anchors.centerIn: parent
             width: Math.min(parent.width - 96, 420)
-            spacing: Theme.space3
-
-            VectorIcon {
-                Layout.alignment: Qt.AlignHCenter
-                // A Layout owns the size of its direct children, so a plain
-                // width would be overwritten.
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
-                name: "artist"
-                color: Theme.textDim
-            }
-
-            Text {
-                objectName: "artistLoadErrorText"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("This artist is not available")
-                color: Theme.textPrimary
-                font.pixelSize: Theme.fontSection
-                font.bold: true
-                wrapMode: Text.WordWrap
-            }
-
-            // Not the server's own string, which is a Qt network error with the
-            // request URL in it.
-            Text {
-                objectName: "artistLoadErrorDetail"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                // One long literal: lupdate cannot read a concatenation.
-                text: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
-                color: Theme.textSec
-                font.pixelSize: Theme.fontMeta
-                wrapMode: Text.WordWrap
-            }
+            namePrefix: "artistLoadError"
+            icon: "artist"
+            offline: root.loadOffline
+            title: qsTr("This artist is not available")
+            // One long literal: lupdate cannot read a concatenation.
+            detail: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
+            onRetry: root.retryLoad()
         }
     }
 

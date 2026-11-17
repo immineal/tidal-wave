@@ -38,7 +38,10 @@ TestCase {
         Window {
             width: 1280; height: 800
             property int backs: 0
-            function navigate(page, params) {}
+            property var navCalls: []
+            function navigate(page, params) {
+                navCalls = navCalls.concat([{ page: page, params: params }])
+            }
             function goBack() { backs++ }
         }
     }
@@ -136,5 +139,196 @@ TestCase {
         list.contentY = list.originY + 2000
         tryVerify(function () { return bar.reveal === 1 }, 2000,
                   "the bar did not bring the title in, reveal " + bar.reveal)
+    }
+
+    function findByName(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        for (var i = 0; i < item.children.length; ++i) {
+            var hit = findByName(item.children[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+
+    // ── an artist's radio ────────────────────────────────────────────────
+
+    function test_an_artist_with_a_radio_offers_it() {
+        bridge.setArtistForTest({ id: 61, name: "Erika Mustermann", bio: "",
+                                  artistMixId: "00aa11bb22cc33dd44ee55ff6677" },
+                                tracks(3), [])
+        var s = page(artistC)
+        s.page.artistId = 61
+        frame(s.host.contentItem)
+        var pill = findByName(s.page, "artistRadioPill")
+        verify(pill && pill.visible, "an artist Tidal names a radio for offers none")
+        mouseClick(pill)
+        compare(s.host.navCalls.length, 1, "the radio pill opened nothing")
+        compare(s.host.navCalls[0].page, "mix")
+        compare(s.host.navCalls[0].params.mixId, "00aa11bb22cc33dd44ee55ff6677")
+        compare(s.host.navCalls[0].params.mixType, "ARTIST_MIX")
+    }
+
+    function test_an_artist_without_a_radio_offers_none() {
+        bridge.setArtistForTest({ id: 62, name: "Erika Mustermann", bio: "" }, tracks(3), [])
+        var s = page(artistC)
+        s.page.artistId = 62
+        frame(s.host.contentItem)
+        var pill = findByName(s.page, "artistRadioPill")
+        verify(!pill || !pill.visible, "a radio pill for an artist with no radio")
+    }
+
+    function test_an_artist_radio_is_headed_radio() {
+        var s = page(mixC, { mixId: "00aa11bb22cc33dd44ee55ff6677", mixType: "ARTIST_MIX",
+                             title: "Erika Mustermann" })
+        compare(findByType(s.page, "DetailHero").kind, "Radio",
+                "an artist's station is headed as a mix")
+    }
+
+    // ── Copy link, from the hero's menu ─────────────────────────────────
+
+    function test_the_hero_menu_copies_the_link_data() {
+        return [
+            { tag: "album",    c: albumC,    props: { albumId: 7788 },
+              link: "https://tidal.com/album/7788" },
+            { tag: "playlist", c: playlistC, props: { playlistUuid: "0c1d2e3f-aaaa-bbbb-cccc-000000000001",
+                                                      playlistTitle: "Liste" },
+              link: "https://tidal.com/playlist/0c1d2e3f-aaaa-bbbb-cccc-000000000001" },
+            { tag: "mix",      c: mixC,      props: { mixId: "0123abcd", title: "Mix" },
+              link: "https://tidal.com/mix/0123abcd" },
+            { tag: "artist",   c: artistC,   props: { artistId: 11 },
+              link: "https://tidal.com/artist/11" },
+        ]
+    }
+
+    function test_the_hero_menu_copies_the_link(row) {
+        var s = page(row.c, row.props)
+        frame(s.host.contentItem)
+        var more = findByName(s.page, "heroMoreButton")
+        verify(more && more.visible, row.tag + "'s hero has no menu button")
+        mouseClick(more)
+        var menu = s.page.pinMenu
+        tryVerify(function () { return menu.opened }, 2000, "the menu button opened no menu")
+        verify(menu.copyLinkItem.visible, row.tag + "'s menu has no Copy link")
+        compare(menu.copyLinkItem.text, "Copy link")
+        menu.copyLinkItem.triggered()
+        compare(bridge.lastClipboardTextForTest(), row.link,
+                row.tag + " copied the wrong link")
+        menu.close()
+    }
+
+    // The radio list has no identity on Tidal, so nothing to link to.
+    function test_a_track_radio_list_has_no_menu_button() {
+        var s = page(radioC, { radioTitle: "Radio" })
+        s.page.tracks = tracks(3)
+        frame(s.host.contentItem)
+        verify(!findByName(s.page, "heroMoreButton"), "the radio list offers a menu with nothing in it")
+    }
+
+    // ── the filter inside a playlist ────────────────────────────────────
+
+    function playlistRows(p) {
+        var out = []
+        function walk(item) {
+            if (!item) return
+            if (item.objectName === "playlistTrackRow" && item.visible) out.push(item)
+            for (var i = 0; i < item.children.length; ++i) walk(item.children[i])
+        }
+        walk(p)
+        out.sort(function (a, b) { return a.y - b.y })
+        return out
+    }
+
+    function filteredPlaylist() {
+        var list = tracks(4)
+        list[1].title = "Café am Hafen"
+        list[3].artists = "Jürgen Beispiel"
+        // The same track a second time, as a playlist may hold it.
+        var again = track(1)
+        again.title = "Café am Hafen"
+        list.push(again)
+        // Loaded the way the app loads it, so the rows are the bridge's own
+        // copies and no row can be found by identity.
+        bridge.setPlaylistTracksForTest(list)
+        var s = page(playlistC, { playlistUuid: "0c1d2e3f-aaaa-bbbb-cccc-000000000002",
+                                  playlistTitle: "Liste", playlistEditable: true })
+        tryCompare(s.page, "loading", false)
+        compare(s.page.tracks.length, 5)
+        frame(s.host.contentItem)
+        return s
+    }
+
+    function test_the_filter_narrows_the_rows() {
+        var s = filteredPlaylist()
+        var field = findByName(s.page, "playlistFilter")
+        verify(field && field.visible, "a playlist with tracks has no filter field")
+        compare(playlistRows(s.page).length, 5)
+        field.text = "cafe"
+        field.textEdited("cafe")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 2, "case and accents must not count")
+        field.text = "jurgen"
+        field.textEdited("jurgen")
+        frame(s.host.contentItem)
+        var rows = playlistRows(s.page)
+        compare(rows.length, 1, "the artist is not searched")
+        compare(rows[0].trackNum, 4, "a filtered row lost its number in the playlist")
+        field.text = ""
+        field.textEdited("")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 5)
+    }
+
+    // The second copy is its own row: removal and play hit that one.
+    function test_a_track_twice_keeps_each_row_its_own_place() {
+        var s = filteredPlaylist()
+        var field = findByName(s.page, "playlistFilter")
+        field.text = "hafen"
+        field.textEdited("hafen")
+        frame(s.host.contentItem)
+        var rows = playlistRows(s.page)
+        compare(rows.length, 2)
+        compare(rows[0].trackItemIndex, 1)
+        compare(rows[1].trackItemIndex, 4, "the second copy points at the first")
+        rows[1].playRequested()
+        compare(player.queueCount, 2, "the filtered list did not play as shown")
+        compare(player.queueIndex, 1)
+
+        // Removing the second copy sends its own place and takes that row.
+        rows[1].removeFromPlaylistRequested(rows[1].trackItemIndex)
+        tryCompare(s.page.tracks, "length", 4)
+        compare(bridge.lastRemovedIndexForTest(), 4, "the removal was sent for the first copy")
+        compare(s.page.tracks[1].title, "Café am Hafen", "the first copy was taken")
+        compare(s.page.tracks[3].artists, "Jürgen Beispiel")
+    }
+
+    // A filter that matches nothing says so and how to get the list back,
+    // and clearing the field brings the rows and no line.
+    function test_a_filter_that_matches_nothing_says_so() {
+        var s = filteredPlaylist()
+        var none = findByName(s.page, "playlistNoMatches")
+        verify(!none || !none.visible, "a no-match line over a full list")
+        var field = findByName(s.page, "playlistFilter")
+        field.text = "zzz"
+        field.textEdited("zzz")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 0)
+        none = findByName(s.page, "playlistNoMatches")
+        verify(none && none.visible, "a filter that matches nothing leaves a blank list")
+        var head = findByName(none, "playlistNoMatchesText")
+        compare(head.text, "No tracks match \"zzz\"")
+        verify(findByName(none, "playlistNoMatchesHint").text.indexOf("Clear the field") >= 0,
+               "the line does not say how to get the tracks back")
+        field.text = ""
+        field.textEdited("")
+        frame(s.host.contentItem)
+        compare(playlistRows(s.page).length, 5)
+        verify(!none.visible, "the no-match line stayed after the field was cleared")
+    }
+
+    function test_an_empty_playlist_has_no_filter() {
+        var s = page(playlistC, { playlistUuid: "", playlistTitle: "Liste" })
+        var field = findByName(s.page, "playlistFilter")
+        verify(!field || !field.visible, "a filter over no tracks")
     }
 }

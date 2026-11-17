@@ -24,6 +24,8 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
     QSettings settings;
     QString saved = settings.value(QStringLiteral("audio/preferredQuality"), QStringLiteral("LOSSLESS")).toString();
     setPreferredQuality(saved);
+    m_client->setPreferExplicit(
+        settings.value(QStringLiteral("content/preferExplicit"), true).toBool());
 
     m_probeTimer.setSingleShot(true);
     connect(&m_probeTimer, &QTimer::timeout, this, &TidalBridge::probe);
@@ -98,6 +100,32 @@ void TidalBridge::setPreferredQuality(const QString &q) {
     QSettings settings;
     settings.setValue(QStringLiteral("audio/preferredQuality"), preferredQuality());
     emit preferredQualityChanged();
+}
+
+bool TidalBridge::preferExplicit() const { return m_client->preferExplicit(); }
+
+void TidalBridge::setPreferExplicit(bool on) {
+    if (on == m_client->preferExplicit()) return;
+    m_client->setPreferExplicit(on);
+    QSettings settings;
+    settings.setValue(QStringLiteral("content/preferExplicit"), on);
+    emit preferExplicitChanged();
+}
+
+QList<Album> TidalBridge::shownVersions(const QList<Album> &albums) const {
+    QList<Album> out;
+    for (const Album &a : albums)
+        if (isAlbumFavorite(a.id) || preferredCounterpart(a, albums, preferExplicit()) < 0)
+            out.append(a);
+    return out;
+}
+
+QList<Track> TidalBridge::shownVersions(const QList<Track> &tracks) const {
+    QList<Track> out;
+    for (const Track &t : tracks)
+        if (isTrackFavorite(t.id) || preferredCounterpart(t, tracks, preferExplicit()) < 0)
+            out.append(t);
+    return out;
 }
 
 void TidalBridge::call(QJSValue &cb, const QJSValueList &args) {
@@ -323,6 +351,7 @@ void TidalBridge::fetchArtistDetail(qlonglong artistId, QJSValue cb) {
         m["id"]      = d.id;
         m["name"]    = d.name;
         m["bio"]     = d.bio;
+        m["artistMixId"] = d.artistMixId;
         if (!d.picture.isEmpty()) {
             QString u = d.picture; u.replace('-', '/');
             m["coverUrl"]    = QStringLiteral("https://resources.tidal.com/images/%1/480x480.jpg").arg(u);
@@ -348,7 +377,7 @@ void TidalBridge::fetchAlbumOtherVersions(qlonglong albumId, QJSValue cb) {
 
 void TidalBridge::fetchArtistTopTracks(qlonglong artistId, QJSValue cb) {
     m_client->fetchArtistTopTracks(artistId, [this, cb](QList<Track> tracks, QString err) mutable {
-        call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
+        call(cb, { qjsEngine(this)->toScriptValue(tracksToList(shownVersions(tracks))),
                    qjsEngine(this)->toScriptValue(err) });
     });
 }
@@ -363,8 +392,9 @@ void TidalBridge::fetchSimilarArtists(qlonglong artistId, QJSValue cb) {
 void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
     m_client->search(q, [this, cb](SearchResults r, QString err) mutable {
         QVariantMap res;
-        res["tracks"]    = tracksToList(r.tracks);
-        res["albums"]    = albumsToList(r.albums);
+        // A release in both versions shows as the one preferred.
+        res["tracks"]    = tracksToList(shownVersions(r.tracks));
+        res["albums"]    = albumsToList(shownVersions(r.albums));
         res["artists"]   = artistsToList(r.artists);
         res["playlists"] = playlistsList(r.playlists);
         res["mixes"]     = mixesList(r.mixes);
@@ -374,6 +404,17 @@ void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
         res["totalArtists"]   = r.totalArtists;
         res["totalPlaylists"] = r.totalPlaylists;
         res["totalMixes"]     = r.totalMixes;
+        // {kind, item}, the item in the shape its own list uses. Absent when
+        // the reply named none.
+        if (!r.topHitKind.isEmpty()) {
+            QVariantMap hit;
+            hit["kind"] = r.topHitKind;
+            if      (r.topHitKind == QLatin1String("track"))  hit["item"] = trackToMap(r.topTrack);
+            else if (r.topHitKind == QLatin1String("album"))  hit["item"] = albumToMap(r.topAlbum);
+            else if (r.topHitKind == QLatin1String("artist")) hit["item"] = artistToMap(r.topArtist);
+            else                                               hit["item"] = playlistToMap(r.topPlaylist);
+            res["topHit"] = hit;
+        }
         call(cb, { qjsEngine(this)->toScriptValue(res), qjsEngine(this)->toScriptValue(err) });
     }, limit, offset);
 }

@@ -7,6 +7,7 @@
 
 #include <QTest>
 #include <QCoreApplication>
+#include <QHash>
 #include <QJSEngine>
 #include <QJSValue>
 #include <QJsonArray>
@@ -166,6 +167,29 @@ public:
         cb(body, QString());
     }
 };
+
+// Answers by endpoint and filter, for the run that goes on to the artist's
+// own lists. Anything not set answers an empty object.
+class RoutedApi : public TidalApi {
+public:
+    QHash<QString, QJsonObject> bodies;   // "endpoint" or "endpoint?filter"
+    QStringList asked;
+    void get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) override {
+        const QString filter = params.queryItemValue(QStringLiteral("filter"));
+        const QString key = filter.isEmpty() ? endpoint : endpoint + QLatin1Char('?') + filter;
+        asked.append(key);
+        cb(bodies.value(key), QString());
+    }
+};
+
+QJsonObject albumList(const QList<QJsonObject> &items)
+{
+    QJsonArray list;
+    for (const QJsonObject &o : items) list.append(o);
+    return QJsonObject{{QStringLiteral("items"), list},
+                       {QStringLiteral("totalNumberOfItems"), int(items.size())},
+                       {QStringLiteral("limit"), 50}, {QStringLiteral("offset"), 0}};
+}
 
 // One fetchAlbumOtherVersions() run and what it delivered.
 struct Run {
@@ -358,6 +382,66 @@ private slots:
         QCOMPARE(run.replies, 1);
         QCOMPARE(run.err, QString());
         QVERIFY(run.albums.isEmpty());
+    }
+
+    // ── a counterpart the page does not name ─────────────────────────────────
+
+    // Tidal's page often lists the hi-res and Atmos products and leaves the
+    // clean edit out. It is then found in the artist's own lists: same title,
+    // same artists, same tracks, the other explicit flag.
+    void theCleanEditTheModuleLeavesOutIsFoundInTheArtistsLists() {
+        RoutedApi api;
+        api.bodies[QStringLiteral("pages/album")] =
+            fullPage({ product(kAtmosId, QStringLiteral("Salzwiesen"), true, kAtmos, kAtmos) });
+        api.bodies[QStringLiteral("artists/900400900/albums")] = albumList({
+            product(kAlbumId, QStringLiteral("Salzwiesen"), true, kStereo, kHiRes),
+            product(kCleanId, QStringLiteral("Salzwiesen"), false, kStereo, kHiRes),
+            product(900400101, QStringLiteral("Priel"), false, kStereo, kHiRes),
+        });
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+        QCOMPARE(run.replies, 1);
+        QCOMPARE(run.err, QString());
+        QCOMPARE(idsOf(run.albums), (QList<qint64>{kAtmosId, kCleanId}));
+    }
+
+    // A single on the EPs list is looked for there too.
+    void theCounterpartOnTheEpsListIsFound() {
+        RoutedApi api;
+        api.bodies[QStringLiteral("pages/album")] = page({ headerModule(), relatedAlbums() });
+        api.bodies[QStringLiteral("artists/900400900/albums?EPSANDSINGLES")] = albumList({
+            product(kCleanId, QStringLiteral("Salzwiesen"), false, kStereo, kHiRes) });
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+        QCOMPARE(idsOf(run.albums), (QList<qint64>{kCleanId}));
+    }
+
+    // Another record of the title, with other tracks, is no counterpart.
+    void aRecordOfTheTitleWithOtherTracksIsNoCounterpart() {
+        RoutedApi api;
+        api.bodies[QStringLiteral("pages/album")] = page({ headerModule() });
+        QJsonObject live = product(kCleanId, QStringLiteral("Salzwiesen"), false, kStereo, kHiRes);
+        live["numberOfTracks"] = 14;
+        live["duration"] = 3900;
+        api.bodies[QStringLiteral("artists/900400900/albums")] = albumList({ live });
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+        QCOMPARE(run.replies, 1);
+        QVERIFY(run.albums.isEmpty());
+    }
+
+    // Where the page names the counterpart, the artist's lists are not asked.
+    void aNamedCounterpartAsksNothingMore() {
+        RoutedApi api;
+        api.bodies[QStringLiteral("pages/album")] = fullPage(theOtherThree());
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+        QCOMPARE(api.asked, (QStringList{QStringLiteral("pages/album")}));
+        QCOMPARE(idsOf(run.albums), (QList<qint64>{kCleanId, kAtmosId, kCleanAtmosId}));
     }
 
     // ── the hop to QML ───────────────────────────────────────────────────────

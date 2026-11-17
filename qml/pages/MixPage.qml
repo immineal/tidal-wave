@@ -34,9 +34,10 @@ Rectangle {
     // this machine: the pill is this, the right-click menu is PinStore.
     property bool isSaved: false
 
-    // The heading over the title: "Radio" for a track's radio station, "Mix"
-    // for everything else.
+    // The heading over the title: "Radio" for a track's or an artist's radio
+    // station, "Mix" for everything else.
     readonly property bool isTrackRadio: root.mixType === "TRACK_MIX"
+                                         || root.mixType === "ARTIST_MIX"
 
     function updateSavedState() {
         isSaved = mixId.length > 0 ? bridge.isMixFavorite(mixId) : false
@@ -65,6 +66,23 @@ Rectangle {
     TrackListHeader.Sort { id: trackSort }
     readonly property var shownTracks: trackSort.sorted(root.tracks)
 
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (root.mixId.length === 0) return
+        if (bridge.offline) bridge.retryConnection()
+        loadMix()
+    }
+
+    Connections {
+        target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
+    }
+
     // Records this mix as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("mix", root.mixId, root.title)
@@ -90,6 +108,7 @@ Rectangle {
     function loadMix() {
         loading = true
         loadError = ""
+        loadOffline = false
         // Which mix this reply is about. mixId can change while it is in
         // flight, and a slow reply for the mix just left would otherwise
         // retitle the one now on screen.
@@ -99,7 +118,7 @@ Rectangle {
             // left is not a failure and must draw nothing.
             if (requested !== root.mixId) return
             loading = false
-            if (err) { root.loadError = err; return }
+            if (err) { root.loadError = err; root.loadOffline = bridge.offline === true; return }
             if (header) {
                 if (header.title)    root.title    = header.title
                 if (header.subtitle) root.subtitle = header.subtitle
@@ -185,6 +204,20 @@ Rectangle {
                         // On the action row, which has clear space above.
                         onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
                                                                 hero.actionRow)
+                    },
+                    // The hero's menu, which right-click also opens: the queue
+                    // actions, Pin and Copy link.
+                    IconButton {
+                        objectName: "heroMoreButton"
+                        icon: "more"
+                        label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                        size: 20
+                        pad: Theme.space5
+                        backed: true
+                        onClicked: {
+                            var p = mapToItem(root, 0, height)
+                            root.showHeroPinMenu(p.x, p.y)
+                        }
                     }
                 ]
             }
@@ -223,47 +256,21 @@ Rectangle {
         // beneath the header and scrolls with it.
         footer: Item {
             width: tracksList.width
-            height: root.loadFailed ? 200 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12 : 32
 
-            ColumnLayout {
+            ErrorState {
+                id: loadErrorState
                 objectName: "mixLoadError"
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: Theme.space3
-
-                VectorIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    // A Layout owns the size of its direct children, so a plain
-                    // width would be overwritten.
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    name: "mix"
-                    color: Theme.textDim
-                }
-
-                Text {
-                    objectName: "mixLoadErrorText"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("This mix could not be loaded")
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontSection
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Not the server's own string; see AlbumPage's panel for why.
+                namePrefix: "mixLoadError"
+                icon: "mix"
+                offline: root.loadOffline
+                title: qsTr("This mix could not be loaded")
                 // One long literal, since lupdate cannot read a concatenation.
-                Text {
-                    objectName: "mixLoadErrorDetail"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.")
-                    color: Theme.textSec
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.WordWrap
-                }
+                detail: qsTr("Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.")
+                onRetry: root.retryLoad()
             }
         }
 

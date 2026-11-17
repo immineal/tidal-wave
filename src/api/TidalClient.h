@@ -103,6 +103,10 @@ public:
     qint64 userId() const             { return m_userId; }
     void setAudioQuality(AudioQuality q) { m_quality = q; }
     AudioQuality audioQuality() const { return m_quality; }
+    // Which version of a record lists show where Tidal has it explicit and
+    // clean; see RecordVersions.h. Explicit unless set.
+    void setPreferExplicit(bool on) { m_preferExplicit = on; }
+    bool preferExplicit() const { return m_preferExplicit; }
 
     // Home page feeds
     void fetchHomeMixes   (MixesCallback cb);
@@ -236,6 +240,9 @@ public:
     // server's relevance order.
     static QList<Mix> parseSearchMixes(const QJsonObject &node);
 
+    // A whole search response, `topHit` included.
+    static SearchResults parseSearch(const QJsonObject &root);
+
     // The cursor for the next page of v2/favorites/mixes, or "" when the run
     // is over. `previous` is the cursor this page was fetched with. The
     // endpoint reports no total, so this alone ends a run.
@@ -253,13 +260,16 @@ public:
 
     // ── the other versions of a record ──────────────────────────────────
     // Tidal's own album page names them: `pages/album` has an ALBUM_LIST
-    // module titled "Other versions". Empty where the page names none.
+    // module titled "Other versions". Where it names no version with the
+    // other explicit flag, the artist's own lists are searched for one.
     void fetchAlbumOtherVersions(qint64 albumId, AlbumsCallback cb);
 
     // The albums of that module, without `albumId` itself and without
     // repeats. The page holds two more album lists and the title alone tells
     // them apart, so the page is asked for in kAlbumPageLocale.
     static QList<Album> parseAlbumOtherVersions(const QJsonObject &root, qint64 albumId);
+    // The album the page is about, from its ALBUM_HEADER module.
+    static Album parseAlbumPageHeader(const QJsonObject &root);
     static constexpr auto kAlbumPageLocale    = "en_US";
     static constexpr auto kOtherVersionsTitle = "Other versions";
 
@@ -328,6 +338,10 @@ private:
     // One of fetchArtistAlbums()'s three requests. An empty `filter` asks for
     // the albums. A failed page delivers what came before it and reports the
     // error only when nothing did.
+    // The page names no version with the other explicit flag: look for one
+    // in the artist's own lists and add it to `versions`.
+    void findVersionCounterparts(const Album &self, QList<Album> versions, AlbumsCallback cb);
+
     void fetchArtistAlbumPage(qint64 artistId, const QString &filter,
                               AlbumPages pages, AlbumsCallback cb,
                               int offset = 0, QList<Album> acc = {});
@@ -387,5 +401,6 @@ private:
     QHash<QString, QString> m_playlistEtags;
     qint64        m_userId  = 0;
     AudioQuality  m_quality = AudioQuality::Lossless;
+    bool          m_preferExplicit = true;
     int           m_listsParsing = 0;
 };
