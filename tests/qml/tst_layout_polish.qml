@@ -681,7 +681,8 @@ TestCase {
         settle(host)
         var chips = [findByName(page, "collectionSortDefault")]
             .concat(collectByName(page, "collectionSortPill", []))
-        verify(chips.length === 3 && chips[0], "the three sort chips were not found")
+        // Five on the albums tab: Default, A to Z, Z to A, Artist and Year.
+        verify(chips.length === 5 && chips[0], "the five sort chips were not found")
         var xs = chips.map(function (c) { return c.mapToItem(page, 0, 0).x })
         page.sortMode = 1
         settle(host)
