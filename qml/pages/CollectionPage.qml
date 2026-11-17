@@ -398,14 +398,14 @@ Rectangle {
 
         Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
 
-        // Over the rows, inset as they are.
+        // Over the rows as the list draws them: from its left edge, whatever
+        // x they ask for, and as wide as they are.
         TrackListHeader {
             id: tracksHeader
             objectName: "collectionTracksHeader"
             visible: root.activeTab === 0
             Layout.fillWidth: true
-            Layout.leftMargin: Theme.space4
-            Layout.rightMargin: Theme.space4
+            Layout.rightMargin: Theme.space8
             sort: trackSort
             showAdded: true
             opacity: root.contentIn
@@ -429,7 +429,6 @@ Rectangle {
             // them as `var` and decides what a missing or mistyped one shows.
             delegate: TrackRow {
                 width: tracksList.width - 32
-                x: 16
                 showAdded:   true
                 trackNum:    index + 1
                 title:       modelData.title

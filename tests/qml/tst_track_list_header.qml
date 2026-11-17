@@ -226,6 +226,92 @@ TestCase {
         verify(!number.activeFocusOnTab, "the number heading sorts nothing and is a tab stop")
     }
 
+    // ── every list with headings, on its page ────────────────────────────
+
+    Component { id: mixC;   MixPage   { anchors.fill: parent } }
+    Component { id: radioC; RadioPage { anchors.fill: parent } }
+
+    function manyTracks(n) {
+        var out = []
+        for (var i = 0; i < n; ++i)
+            out.push({ id: 300 + i, title: "Stück " + (i + 1), artists: "Eine Band",
+                       albumTitle: "Ein Album", albumId: 5, duration: 200 + i,
+                       durationStr: "3:2" + (i % 10), addedAt: 1000 * (i + 1),
+                       trackNumber: i + 1, coverUrl80: "" })
+        return out
+    }
+
+    // Each page with its list filled, the list and its headings.
+    function openPage(which) {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var page = null, listName = "", headName = ""
+        if (which === "collection") {
+            bridge.setFavoriteTracksListForTest(manyTracks(40))
+            page = createTemporaryObject(collectionC, holder, {})
+            page.activeTab = 0
+            listName = "collectionTracksList"; headName = "collectionTracksHeader"
+        } else if (which === "playlist") {
+            bridge.setPlaylistTracksForTest(manyTracks(40))
+            page = createTemporaryObject(playlistC, holder, {})
+            page.playlistUuid = "11111111-2222-3333-4444-555555555555"
+            listName = "playlistTracksList"; headName = "playlistTracksHeader"
+        } else if (which === "mix") {
+            bridge.setMixPageForTest({ id: "mx-1", title: "Eine Mischung", subtitle: "",
+                                       coverUrl: "", mixType: "DISCOVERY_MIX" }, manyTracks(40))
+            page = createTemporaryObject(mixC, holder, {})
+            page.mixId = "mx-1"
+            headName = "mixTracksHeader"
+        } else {
+            bridge.setTrackRadioForTest(manyTracks(40))
+            page = createTemporaryObject(radioC, holder, {})
+            page.trackId = 900000022
+            listName = "radioTracksList"; headName = "radioTracksHeader"
+        }
+        var head = null, list = null
+        tryVerify(function () {
+            head = findByName(page, headName)
+            list = listName ? findByName(page, listName) : viewOf(head)
+            return head && list && list.count === 40 && list.itemAtIndex(0) !== null
+        }, 3000, which + " never filled")
+        waitForRendering(page)
+        return { page: page, head: head, list: list }
+    }
+    // The ListView a heading sits in, for a page that names none.
+    function viewOf(item) {
+        for (var p = item; p; p = p.parent)
+            if (typeof p.itemAtIndex === "function") return p
+        return null
+    }
+    function pagesWithHeadings() {
+        return [{ tag: "Liked tracks", which: "collection" }, { tag: "playlist", which: "playlist" },
+                { tag: "mix", which: "mix" }, { tag: "track radio", which: "radio" }]
+    }
+
+    // Measured on the page, so an inset the page gives the headings and not
+    // the rows (or the other way round) shows.
+    function checkAligned(p, row, what) {
+        function xOn(item) { return item.mapToItem(p.page, 0, 0).x }
+        fuzzyCompare(xOn(findByName(p.head, "trackListHeadingTitle")),
+                     xOn(findByName(row, "trackRowCover")), 1, what + ": the title heading is off its column")
+        var pairs = [["trackListHeadingAlbum", "trackAlbumColumn", "album"],
+                     ["trackListHeadingAdded", "trackAddedColumn", "date"]]
+        for (var i = 0; i < pairs.length; ++i) {
+            var h = findByName(p.head, pairs[i][0]), c = findByName(row, pairs[i][1])
+            compare(h.visible, c.visible, what + ": the " + pairs[i][2] + " heading and its column disagree")
+            if (c.visible)
+                fuzzyCompare(xOn(h), xOn(c), 1, what + ": the " + pairs[i][2] + " heading is off its column")
+        }
+        var lh = findByName(p.head, "trackListHeadingLength"), len = findByName(row, "trackDuration")
+        fuzzyCompare(xOn(lh) + lh.width, xOn(len) + len.width, 1,
+                     what + ": the length heading does not end where the lengths do")
+    }
+
+    function test_every_page_lines_its_headings_up_with_its_rows_data() { return pagesWithHeadings() }
+    function test_every_page_lines_its_headings_up_with_its_rows(data) {
+        var p = openPage(data.which)
+        checkAligned(p, p.list.itemAtIndex(0), data.tag)
+    }
+
     // ── Liked tracks ─────────────────────────────────────────────────────
 
     function makeCollection() {
