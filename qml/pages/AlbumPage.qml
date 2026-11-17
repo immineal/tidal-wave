@@ -351,6 +351,13 @@ Rectangle {
                         onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
                                                                   hero.actionRow)
                     },
+                    DownloadAction {
+                        kind: "album"
+                        itemId: root.albumId > 0 ? "" + root.albumId : ""
+                        folderName: (albumData.artists ? albumData.artists + " - " : "")
+                                    + (albumData.title || "")
+                        trackSource: root.allTracks
+                    },
                     // The hero's menu, which right-click also opens: the queue
                     // actions, Pin and Copy link.
                     IconButton {

@@ -138,6 +138,10 @@ int TidalApi::rateLimitedFor(const QUrl &url) const {
     return int(qMax<qint64>(1, (it->until.remainingTime() + 999) / 1000));
 }
 
+int TidalApi::rateLimitedFor(const char *base, const QString &endpoint) const {
+    return rateLimitedFor(QUrl(baseUrl(QString::fromLatin1(base)) + endpoint));
+}
+
 void TidalApi::noteReachable(bool reachable) {
     if (m_reachable == reachable) return;
     m_reachable = reachable;

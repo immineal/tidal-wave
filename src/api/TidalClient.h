@@ -224,6 +224,8 @@ public:
     void fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb);
     QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
     QNetworkReply* fetchRawWithStatus(const QUrl &url, TidalApi::RawStatusCallback cb);
+    // Seconds Tidal asked stream requests at `quality` to wait, 0 when none.
+    int streamRequestsHeldFor(AudioQuality quality) const;
 
     // Playlist management
     virtual void createPlaylist  (const QString &title, std::function<void(Playlist,QString)> cb);
