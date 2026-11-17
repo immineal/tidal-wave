@@ -772,6 +772,17 @@ void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJ
     });
 }
 
+void TidalBridge::addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                         bool allowDupes, QJSValue cb) {
+    QList<qint64> ids;
+    for (const QVariant &v : trackIds)
+        if (v.toLongLong() > 0) ids << v.toLongLong();
+    m_client->addTracksToPlaylist(uuid, ids, allowDupes, [this, uuid, cb](bool success) mutable {
+        call(cb, { success });
+        if (success) refreshPlaylistMeta(uuid);
+    });
+}
+
 void TidalBridge::restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                          QJSValue cb) {
     m_client->restoreTrackToPlaylist(uuid, trackId, index, [this, uuid, cb](bool success) mutable {

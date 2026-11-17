@@ -262,6 +262,33 @@ TestCase {
         compare(Toasts.text, "2 tracks added to “Tape”")
     }
 
+    // An album or a whole queue goes out a hundred tracks a write, in order,
+    // not one write per track.
+    function test_a_long_add_goes_out_a_hundred_at_a_time() {
+        bridge.setServerPlaylistForTest("pl-1", [])
+        var ids = []
+        for (var i = 0; i < 250; i++) ids.push(5000 + i)
+        Edits.addTracksToPlaylist("pl-1", "Tape", ids)
+        settleEdits()
+        compare(bridge.addWritesForTest().join(","), "100,100,50",
+                "the add did not go out in writes of a hundred")
+        compare(bridge.serverPlaylistForTest("pl-1"), ids, "the tracks landed out of order")
+        Edits.undoLast()
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [], "the undo left some behind")
+    }
+
+    // Add all: the write that holds a duplicate asks Tidal to add it again.
+    function test_add_all_sends_the_duplicates_as_duplicates() {
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13, 14])
+        settleEdits()
+        Edits.answerDuplicates("all")
+        settleEdits()
+        compare(bridge.addWritesForTest().join(","), "3+", "the duplicate was sent to be skipped")
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 12, 13, 14])
+    }
+
     // The question as DuplicateAddDialog puts it, and its buttons.
     Component { id: dupDialogC; DuplicateAddDialog { } }
 

@@ -1201,13 +1201,23 @@ void TidalClient::editPlaylist(const QString &uuid, const QString &title,
 void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
     std::function<void(bool)> cb)
 {
+    addTracksToPlaylist(uuid, {trackId}, false, std::move(cb));
+}
+
+// python-tidal's add(): the ids comma-separated in one form field.
+void TidalClient::addTracksToPlaylist(const QString &uuid, const QList<qint64> &trackIds,
+    bool allowDupes, std::function<void(bool)> cb)
+{
+    if (uuid.isEmpty() || trackIds.isEmpty()) { cb(false); return; }
+    QStringList ids;
+    for (qint64 id : trackIds) ids << QString::number(id);
     m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
-        [this, uuid, trackId, cb](QString etag, QString err) {
+        [this, uuid, ids, allowDupes, cb](QString etag, QString err) {
             if (!err.isEmpty()) { cb(false); return; }
             QUrlQuery form;
-            form.addQueryItem("trackIds",           QString::number(trackId));
+            form.addQueryItem("trackIds",           ids.join(QLatin1Char(',')));
             form.addQueryItem("onArtifactNotFound", "FAIL");
-            form.addQueryItem("onDupes",            "SKIP");
+            form.addQueryItem("onDupes",            allowDupes ? "ADD" : "SKIP");
             m_api->postApiFormEtag(QStringLiteral("playlists/%1/items").arg(uuid), form, etag,
                 [this, uuid, cb](QJsonObject, QString e) {
                     if (e.isEmpty()) m_playlistEtags.remove(uuid);

@@ -164,6 +164,9 @@ public:
     // function(ok). On success both re-read the playlist's header and merge it
     // into both caches: see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist   (const QString &uuid, qlonglong trackId, QJSValue cb);
+    // Several in one write, in order; allowDupes adds those it holds again.
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb);
     // function(ok). Undoes a removal: the track goes back in at `index`.
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb);
