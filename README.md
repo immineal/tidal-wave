@@ -83,33 +83,33 @@ I used Claude Code to generate most of the code for this project, since I recent
 ## Keyboard shortcuts
 
 These are fixed; there is no rebinding UI yet. The table lives in
-`src/ui/Shortcuts.cpp`.
+`src/ui/Shortcuts.cpp`, and `tests/tst_shortcuts.cpp` checks this list
+against it.
 
 | Shortcut | Action |
 | --- | --- |
 | Space | Play / pause |
-| Ctrl + Right | Next track |
-| Ctrl + Left | Previous track |
-| Right | Seek forward 10 seconds |
-| Left | Seek backward 10 seconds |
-| Up | Volume up (5%) |
-| Down | Volume down (5%) |
+| Ctrl + Right / Ctrl + Left | Next / previous track |
+| Shift + Right / Shift + Left | Seek forward / back 10 seconds |
+| Ctrl + Up / Ctrl + Down | Volume up / down (5%) |
 | Ctrl + M | Mute / unmute |
 | Ctrl + S | Toggle shuffle |
 | Ctrl + R | Cycle repeat mode (off / all / one) |
-| Ctrl + 1 | Go to Home |
-| Ctrl + 2 | Go to Search |
-| Ctrl + 3 | Go to Collection |
-| Ctrl + N | Go to now playing |
-| F11 | Toggle fullscreen |
+| Alt + Shift + B | Like or unlike the playing track |
+| Ctrl + 1 / Ctrl + 2 / Ctrl + 3 | Go to Home / Search / Collection |
+| Ctrl + 4 | Open now playing, or go back from it |
+| Ctrl + F / Ctrl + L | Put the keyboard in the search field |
+| F11 | Toggle fullscreen now playing |
 | Ctrl + J | Toggle the queue panel |
-| Escape | Go back |
-| Alt + Left | Go back |
+| Alt + Left / Escape | Go back |
 | Ctrl + , | Open Settings |
+| Ctrl + Z | Undo the last change (a like, a removal or a cleared queue) |
+| Ctrl + N | New playlist |
+| Ctrl + Q | Quit |
 
-On macOS Qt maps Ctrl onto Command, so Ctrl + M collides with Minimize and F11
-with Mission Control. Both are left as they are, since Linux is where the app
-ships.
+On macOS Qt maps Ctrl onto Command and Alt onto Option, so Ctrl + M collides
+with Minimize and F11 with Mission Control. Both are left as they are, since
+Linux is where the app ships.
 
 ## Installation
 

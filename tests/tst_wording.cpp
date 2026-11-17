@@ -184,6 +184,20 @@ private slots:
                                            + bad.join("\n  ")));
     }
 
+    // Sentences, in both languages, are joined by a comma or a full stop.
+    // A dash between words is a pause the reader has to guess at.
+    void noDashBetweenWords() {
+        static const QRegularExpression dash(QStringLiteral("—|[\\p{L}\\d,] [-–] \\p{L}"));
+        QStringList bad;
+        for (const Entry &e : std::as_const(m_entries)) {
+            if (dash.match(e.source).hasMatch())
+                bad << show(e, e.source);
+            if (dash.match(e.german).hasMatch())
+                bad << show(e, e.german);
+        }
+        QVERIFY2(bad.isEmpty(), qPrintable("a dash between words:\n  " + bad.join("\n  ")));
+    }
+
     // A separator between two pieces belongs to the code that joins them,
     // and there is one: the middle dot.
     void separatorsStayOutOfStrings() {

@@ -99,21 +99,6 @@
     </message>
 </context>
 <context>
-    <name>Application</name>
-    <message>
-        <source>Show</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Hide</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Quit</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>ArtistLinks</name>
     <message>
         <source>, </source>
@@ -136,14 +121,6 @@
         <comment>verb, button label</comment>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>%1 hr %2 min</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1 min</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message numerus="yes">
         <source>%Ln track(s)</source>
         <translation>
@@ -161,6 +138,10 @@
     </message>
     <message>
         <source>Follow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Artist radio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -196,6 +177,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Read more</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Related artists</source>
         <translation type="unfinished"></translation>
     </message>
@@ -205,9 +190,17 @@
     </message>
 </context>
 <context>
+    <name>BackButton</name>
+    <message>
+        <source>Back</source>
+        <comment>button, returns to the previous page</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>CastManager</name>
     <message>
-        <source>Could not find a local network address for casting. Check that you are connected to a network.</source>
+        <source>Could not hand this track to the cast device. The local media server is not running.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -234,7 +227,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not read the lossless stream details for this track.</source>
+        <source>Could not read the stream details for this track.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -253,7 +246,19 @@
 <context>
     <name>CastSession</name>
     <message>
+        <source>The connection to the cast device was lost.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The connection to the cast device failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The cast device did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The cast device could not play this track.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -300,6 +305,28 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Artist</source>
+        <comment>sorts albums by artist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Year</source>
+        <comment>sorts albums by release, newest first</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default: most recently saved first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default: most recently followed first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default: most recently played or added first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Search saved tracks…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -316,7 +343,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Search mixes…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Search saved items…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Surprise me</source>
+        <comment>opens a random album, artist, playlist or mix of the tab</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -379,11 +415,42 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Nothing matches &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try other words, or clear the search to see everything.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mixes could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your collection could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal could not be reached. It loads again by itself once the connection is back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No followed artists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Follow artists to see them here</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ConfirmDialog</name>
+    <message>
+        <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -466,6 +533,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Link copied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play next</source>
         <comment>verb, play this right after the current track</comment>
         <translation type="unfinished"></translation>
@@ -487,13 +558,78 @@
     </message>
 </context>
 <context>
+    <name>DeletePlaylistDialog</name>
+    <message>
+        <source>Delete playlist?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>“%1” will be deleted from your Tidal account on every device. This cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <comment>verb, the button that deletes the playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deleting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not delete the playlist.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DetailHero</name>
+    <message>
+        <source>More</source>
+        <comment>button that opens the page&apos;s menu</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DownloadAction</name>
+    <message>
+        <source>Cancel download</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded album or playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download album</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download playlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for the other download to finish</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading %1 of %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download cancelled. %1 of %2 saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message numerus="yes">
         <source>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minute(s).</source>
         <translation>
             <numerusform>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minute.</numerusform>
             <numerusform>Tidal asked for a pause. %1 of %2 saved. Try again in about %Ln minutes.</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>None of the tracks could be downloaded. %1</source>
+        <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
         <source>%1 of %2 saved. %Ln track(s) could not be downloaded.</source>
@@ -549,11 +685,189 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Could not save the track in the download folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Download cancelled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Download to folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not make the folder %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Download folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DuplicateAddDialog</name>
+    <message>
+        <source>Some are already in “%1”</source>
+        <comment>dialog heading, some of the tracks to add are in the playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already in “%1”</source>
+        <comment>dialog heading, the track to add is in the playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln of these %1 tracks are in it already.</source>
+        <translation>
+            <numerusform>%Ln of these %1 tracks is in it already.</numerusform>
+            <numerusform>%Ln of these %1 tracks are in it already.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>All %Ln tracks are in it already. Add them anyway?</source>
+        <translation>
+            <numerusform>All %Ln tracks are in it already. Add them anyway?</numerusform>
+            <numerusform>All %Ln tracks are in it already. Add them anyway?</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Add anyway?</source>
+        <comment>the track is in the playlist already</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add all</source>
+        <comment>adds every track, the ones in the playlist again too</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add anyway</source>
+        <comment>adds a track the playlist holds already</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add new ones</source>
+        <comment>adds only the tracks the playlist does not hold</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Edits</name>
+    <message numerus="yes">
+        <source>%Ln track(s) added to “%1”</source>
+        <comment>confirmation after adding several tracks to a playlist</comment>
+        <translation>
+            <numerusform>%Ln track added to “%1”</numerusform>
+            <numerusform>%Ln tracks added to “%1”</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Still undoing the last change</source>
+        <comment>shown when Undo is asked again before the last one finished</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing to undo</source>
+        <comment>shown when Ctrl+Z finds no change to take back</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal did not confirm the change. Reloaded from Tidal.</source>
+        <comment>a write was accepted but a re-read did not show it</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not undo the change</source>
+        <comment>shown when an undo was refused</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back in your liked tracks</source>
+        <comment>after undoing an unlike</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added to your liked tracks</source>
+        <comment>confirmation after liking a track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album back in your collection</source>
+        <comment>after undoing an album&apos;s removal</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album saved to your collection</source>
+        <comment>confirmation after saving an album</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You follow this artist again</source>
+        <comment>after undoing an unfollow</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You now follow this artist</source>
+        <comment>confirmation after following an artist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mix back in your collection</source>
+        <comment>after undoing a mix&apos;s removal</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mix saved to your collection</source>
+        <comment>confirmation after saving a mix</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not add the tracks to “%1”</source>
+        <comment>shown when adding several tracks to a playlist failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Taken out of “%1” again</source>
+        <comment>after undoing an add to a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not move the track</source>
+        <comment>shown when reordering a playlist failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Moved back in “%1”</source>
+        <comment>after undoing a move in a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Put back in “%1”</source>
+        <comment>after undoing a removal from a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ErrorState</name>
+    <message>
+        <source>Tidal cannot be reached</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check the connection. The page loads by itself once Tidal answers again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ExplicitBadge</name>
+    <message>
+        <source>Explicit</source>
+        <comment>mark on a track whose lyrics are as recorded</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -637,6 +951,18 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Your mixes could not be loaded: Tidal cannot be reached.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your mixes could not be loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Saved albums</source>
         <translation type="unfinished"></translation>
     </message>
@@ -651,6 +977,11 @@
 </context>
 <context>
     <name>HorizontalSection</name>
+    <message>
+        <source>Show all: %1</source>
+        <comment>link to the full list of a section</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Scroll back</source>
         <comment>arrow on a row of cards</comment>
@@ -750,6 +1081,19 @@
         <source>%1 – %2 · Tidal Wave</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Casting ended on %1</source>
+        <comment>the cast device ended the cast itself</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MediaCard</name>
+    <message>
+        <source>%1, %2</source>
+        <comment>card for a screen reader: title, subtitle</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>MixPage</name>
@@ -807,6 +1151,11 @@
     </message>
     <message>
         <source>New playlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <comment>button, closes the dialog</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -936,6 +1285,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Custom length</source>
+        <comment>sleep timer slider, in minutes</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Start</source>
         <comment>verb, begins the sleep timer</comment>
         <translation type="unfinished"></translation>
@@ -969,11 +1323,20 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 minutes</source>
+        <comment>sleep timer option, for a screen reader</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1%</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Up next</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -984,6 +1347,21 @@
     <message>
         <source>Playing from: search “%1”</source>
         <comment>the track was started from the search results</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OfflineNotice</name>
+    <message>
+        <source>Tidal cannot be reached. Your collection is shown as last saved on this computer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached. Trying again by itself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try now</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1026,7 +1404,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>This track did not download far enough in time to play from there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This track could not be played. The audio format may not be supported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1-bit / %2 kHz FLAC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 kbps</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1097,12 +1487,62 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Shuffle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Previous track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repeat: one track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repeat: all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repeat: off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sleep timer: %1</source>
+        <comment>player bar, the time left or End of track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open now playing</source>
         <comment>player bar button, opens the full-page player</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>%1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Queue</source>
+        <comment>noun, opens the play queue</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1144,11 +1584,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 hr %2 min</source>
+        <source>This playlist was changed somewhere else, so nothing was moved. It has been reloaded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 min</source>
+        <source>This playlist was changed somewhere else, so nothing was removed. It has been reloaded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1170,6 +1610,10 @@
         </translation>
     </message>
     <message>
+        <source>Find in this playlist…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play</source>
         <comment>verb, button label</comment>
         <translation type="unfinished"></translation>
@@ -1180,6 +1624,14 @@
     </message>
     <message>
         <source>Edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No tracks match &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear the field above to see every track again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1203,6 +1655,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Delete</source>
+        <comment>verb, the button that deletes the playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1213,6 +1670,24 @@
     <message>
         <source>Save</source>
         <comment>verb, confirm the edits in this dialog</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PlaylistPicker</name>
+    <message>
+        <source>Find a playlist</source>
+        <comment>search field in the Add to playlist picker</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Has all of these already</source>
+        <comment>picker row: the playlist holds every track being added</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Has this track already</source>
+        <comment>picker row: the playlist holds the track being added</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1241,10 +1716,6 @@
         </translation>
     </message>
     <message>
-        <source>Played</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Next in queue</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1257,12 +1728,26 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Earlier in queue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Up next</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear queue</source>
+        <comment>button, empties the play queue</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Clear</source>
         <comment>verb, empties the play queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close queue</source>
+        <comment>button, hides the play queue</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1306,10 +1791,6 @@
         <source>Track radio</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>Play all</source>
-        <translation type="unfinished"></translation>
-    </message>
 </context>
 <context>
     <name>ScrobbleSink</name>
@@ -1327,6 +1808,14 @@
             <numerusform>%Ln listens kept until you connect again.</numerusform>
         </translation>
     </message>
+    <message>
+        <source>Waiting for %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking the token with %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message numerus="yes">
         <source>%Ln listen(s) kept until %1 connects again.</source>
         <translation>
@@ -1334,11 +1823,64 @@
             <numerusform>%Ln listens kept until %1 connects again.</numerusform>
         </translation>
     </message>
+    <message>
+        <source>Nothing is waiting to be sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 could not be reached. Try again in a moment.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 does not know this token. Copy it again from your %1 settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 turned down the sign-in. Try again later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Access to %1 has not been allowed yet. Allow it on the page in your browser, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This sign-in has run out. Connect with %1 again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 ended the connection, so nothing is sent. Connect again to go on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 no longer accepts this token, so nothing is sent. Paste a new token to go on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 asked to slow down. Listens wait here and go out later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 has a problem on its side. Listens wait here and go out later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 could not be reached. Listens wait here and go out later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 turned down the listen of &quot;%2&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SearchBar</name>
     <message>
         <source>Search…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear search</source>
+        <comment>button, empties the search field</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1373,7 +1915,34 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Results appear as you type. Searches that found something are kept here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove “%1” from recent searches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No results for &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>the kind of a search&apos;s top result</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <comment>the kind of a search&apos;s top result</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playlist</source>
+        <comment>the kind of a search&apos;s top result</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1432,6 +2001,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Top result</source>
+        <comment>heading over the one best match of a search</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Loading more…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1441,6 +2015,19 @@
     </message>
     <message>
         <source>Try again</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SeekBar</name>
+    <message>
+        <source>Position in track</source>
+        <comment>slider, seeks in the playing track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <comment>elapsed of total time</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1537,7 +2124,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.</source>
+        <source>Your desktop reports no scale for this high-density screen, so Tidal Wave uses %1x. Move the slider to change it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1605,7 +2192,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Let the colour in</source>
+        <source>Tinted greys</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1625,11 +2212,188 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Reduce motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>As the system says</source>
+        <comment>reduce motion: follow the desktop setting</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <comment>reduce motion: always animate less</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>reduce motion: always animate</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show a notification when a new track starts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not while the Tidal Wave window is in front.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Version of records with explicit lyrics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Explicit</source>
+        <comment>the version of a record with its lyrics as recorded</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean</source>
+        <comment>the version of a record with its lyrics edited</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Normalize loudness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plays every track about as loud as the others, by Tidal&apos;s own measure. An album played in its order keeps its own balance.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Autoplay similar tracks when the queue ends</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossfade between tracks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossfade length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Scrobbling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send what you play to ListenBrainz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to listenbrainz.org.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected to ListenBrainz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <comment>button that forgets the ListenBrainz token</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ListenBrainz user token</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <comment>button that masks the token again</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <comment>button that shows the token in plain text</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <comment>button that checks the ListenBrainz token</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your token is on your ListenBrainz settings page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <comment>link that deletes the listens kept for an account</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send what you play to Last.fm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A track counts once you have played half of it, or 4 minutes. Its title, first artist, album, length and the time you played it go to last.fm.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected to Last.fm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <comment>button that forgets the Last.fm session</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect with Last.fm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your browser opens Last.fm, where you allow Tidal Wave to scrobble for you.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow access on the Last.fm page in your browser, then come back here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I&apos;ve allowed access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <comment>button that stops connecting Last.fm</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the Last.fm page again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>At most once a day, using the GitHub releases page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Like or unlike the playing track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Find</source>
+        <comment>shortcut, puts the keyboard in the search field</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New playlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quit</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1657,7 +2421,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.</source>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, searches and every page and track you open or play, with your access token. resources.tidal.com serves cover art without the token. Only while casting, your local network sees mDNS discovery and a short-lived HTTP server that serves the playing track to the device. It has no password, so anything on your network can read it during the cast. api.github.com gets the update check, at most once a day, with no account data, and sees your IP address and app version. Lyrics sites get track details as described below: lrclib.net unless you switch it off, the others once you switch them on.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1665,11 +2429,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while the now playing page is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <source>Lyrics from other sites are looked up only for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked. It gets the artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in order: music.163.com (NetEase Cloud Music) with artist and title, lyrics.kugou.com (KuGou) with artist, title and length, genius.com with artist and title. music.163.com and lyrics.kugou.com are in China. The search stops at the first synced lyrics. Sites are asked only while the now playing page is open, and each sees your IP address and the app&apos;s name and version. Results are kept here. Synced lyrics are not looked up again, plain or missing ones after 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Syncing plain lyrics, on by default, happens on this machine: the track&apos;s audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
+        <source>Syncing plain lyrics is on by default and runs on this machine. The audio already downloaded for playback is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scrobbling works only once you switch it on and connect. api.listenbrainz.org then gets the track you start and, once it counts, a listen with the time you played it. Each carries the title, artists, album, length, track number, ISRC, Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token and unsent listens are kept here as plain JSON only you can read. Disconnecting or logging out of Tidal deletes the token, and the listens stay until the same account connects again. Connecting another account, or &quot;Discard&quot;, deletes them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last.fm also works only once you switch it on and connect. &quot;Connect with Last.fm&quot; opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you allow it, a session. It then gets the track you start and, once it counts, a scrobble with the time you played it. Each carries the title, first credited artist, album, length, track number, the app&apos;s own Last.fm key and your session key, and the site sees your IP address. The ISRC and Tidal link do not go to Last.fm. The session key, your Last.fm user name and unsent scrobbles are kept here as plain JSON only you can read. As with ListenBrainz, disconnecting or logging out of Tidal deletes the key and keeps the scrobbles.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1677,7 +2449,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.</source>
+        <source>Feedback: the two buttons above hand a URL to your browser or mail client and do nothing else. Tidal Wave opens no connection for them and sends nothing. Nothing leaves this machine until you send it from that program, to a public GitHub issue or the tidal-wave@linu.li mailbox, whichever you picked. The prefilled part holds the app version, the operating system and both Qt versions, with no account data and nothing about what you have played.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1775,6 +2547,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Log out?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playback stops and the queue is cleared. To listen again, log in with your Tidal account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Details</source>
         <comment>button that shows the full privacy notice</comment>
         <translation type="unfinished"></translation>
@@ -1791,6 +2571,10 @@
 </context>
 <context>
     <name>SideBar</name>
+    <message>
+        <source>Delete playlist…</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Home</source>
         <comment>noun, the home page</comment>
@@ -1814,6 +2598,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Your collection could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Nothing saved yet</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1822,7 +2610,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Settings (Ctrl+,)</source>
+        <source>Settings (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TidalApi</name>
+    <message>
+        <source>Tidal asked for a pause; try again in %1 s</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1834,6 +2629,52 @@
     </message>
     <message>
         <source>Tidal returned only a preview of this track, not the whole track.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Toasts</name>
+    <message>
+        <source>Undo</source>
+        <comment>button on a confirmation, takes back what was just done</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TrackListHeader</name>
+    <message>
+        <source>Date added</source>
+        <comment>column heading</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>#</source>
+        <comment>column heading over the track numbers</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>sorted descending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>sorted ascending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <comment>column heading</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>column heading</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Length</source>
+        <comment>column heading over the track lengths</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1909,6 +2750,21 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1, %2</source>
+        <comment>track row for a screen reader: title, artists</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, %2</source>
+        <comment>track row for a screen reader: album, length</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(%1)</source>
+        <comment>a track&apos;s version after its title, e.g. (Live)</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unlike</source>
         <comment>verb, remove from favourites</comment>
         <translation type="unfinished"></translation>
@@ -1916,6 +2772,21 @@
     <message>
         <source>Like</source>
         <comment>verb, add to favourites</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading…</source>
+        <comment>row download button, while saving</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <comment>row download button</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>More options</source>
+        <comment>button on a track row, opens its menu</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1948,6 +2819,42 @@
     </message>
 </context>
 <context>
+    <name>TrayMenu</name>
+    <message>
+        <source>%1 - %2</source>
+        <comment>tray tooltip: track title, then its artists</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Previous track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>UpdatePrompt</name>
     <message>
         <source>Update available</source>
@@ -1975,113 +2882,9 @@
     </message>
 </context>
 <context>
-    <name>DuplicateAddDialog</name>
-    <message numerus="yes">
-        <source>%Ln of these %1 tracks are in it already.</source>
-        <translation>
-            <numerusform>%Ln of these %1 tracks is in it already.</numerusform>
-            <numerusform>%Ln of these %1 tracks are in it already.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>All %Ln tracks are in it already. Add them anyway?</source>
-        <translation>
-            <numerusform>All %Ln tracks are in it already. Add them anyway?</numerusform>
-            <numerusform>All %Ln tracks are in it already. Add them anyway?</numerusform>
-        </translation>
-    </message>
-</context>
-<context>
-    <name>Edits</name>
-    <message numerus="yes">
-        <source>%Ln track(s) added to “%1”</source>
-        <comment>confirmation after adding several tracks to a playlist</comment>
-        <translation>
-            <numerusform>%Ln track added to “%1”</numerusform>
-            <numerusform>%Ln tracks added to “%1”</numerusform>
-        </translation>
-    </message>
+    <name>VolumeSlider</name>
     <message>
-        <source>Still undoing the last change</source>
-        <comment>shown when Undo is asked again before the last one finished</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Nothing to undo</source>
-        <comment>shown when Ctrl+Z finds no change to take back</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Tidal did not confirm the change. Reloaded from Tidal.</source>
-        <comment>a write was accepted but a re-read did not show it</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Could not undo the change</source>
-        <comment>shown when an undo was refused</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Back in your liked tracks</source>
-        <comment>after undoing an unlike</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Added to your liked tracks</source>
-        <comment>confirmation after liking a track</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Album back in your collection</source>
-        <comment>after undoing an album&apos;s removal</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Album saved to your collection</source>
-        <comment>confirmation after saving an album</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>You follow this artist again</source>
-        <comment>after undoing an unfollow</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>You now follow this artist</source>
-        <comment>confirmation after following an artist</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Mix back in your collection</source>
-        <comment>after undoing a mix&apos;s removal</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Mix saved to your collection</source>
-        <comment>confirmation after saving a mix</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Already in “%1”</source>
-        <comment>the track is in the playlist already; nothing was added</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Taken out of “%1” again</source>
-        <comment>after undoing an add to a playlist</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Put back in “%1”</source>
-        <comment>after undoing a removal from a playlist</comment>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>Toasts</name>
-    <message>
-        <source>Undo</source>
-        <comment>button on a confirmation, takes back what was just done</comment>
+        <source>Volume</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

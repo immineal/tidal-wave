@@ -17,8 +17,19 @@ Item {
     implicitWidth: 24
     implicitHeight: 24
 
+    // The software backend draws a Shape scrolled out of a clip without the
+    // clip (see VectorIcon), so there the ring is painted as SVG.
+    readonly property bool _software: GraphicsInfo.api === GraphicsInfo.Software
+
+    SvgGlyph {
+        anchors.fill: parent
+        visible: ring._software
+        svg: visible ? arc(width, height, ring.thickness, -90, 270, ring.color) : ""
+    }
+
     Shape {
         anchors.fill: parent
+        visible: !ring._software
         antialiasing: true
         ShapePath {
             fillColor: "transparent"

@@ -369,6 +369,50 @@ private slots:
                  "the Settings rows no longer derive their key text from Shortcuts.display()");
     }
 
+    // The README's table names every key in the Shortcuts table and no other,
+    // so it cannot drift from what the app binds. Rows read "| Ctrl + A / B | ... |".
+    void readmeListsEveryEntry() {
+        QFile f(QStringLiteral(TIDALWAVE_QML_DIR) + QStringLiteral("/../README.md"));
+        QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text), "README.md could not be read");
+        const QString readme = QString::fromUtf8(f.readAll());
+        const qsizetype start = readme.indexOf(QStringLiteral("\n## Keyboard shortcuts"));
+        QVERIFY2(start >= 0, "README.md has no \"## Keyboard shortcuts\" section");
+        const qsizetype end = readme.indexOf(QStringLiteral("\n## "), start + 1);
+        const QString section = readme.mid(start, end < 0 ? -1 : end - start);
+
+        QStringList listed;
+        QRegularExpression row(QStringLiteral("^\\|\\s*([^|]+?)\\s*\\|"),
+                               QRegularExpression::MultilineOption);
+        auto it = row.globalMatch(section);
+        while (it.hasNext()) {
+            const QString cell = it.next().captured(1);
+            if (cell == QLatin1String("Shortcut") || cell.startsWith(QLatin1String("---")))
+                continue;
+            for (QString key : cell.split(QStringLiteral(" / "))) {
+                key.replace(QStringLiteral(" + "), QStringLiteral("+"));
+                // Back to QKeySequence's portable spelling, so "Escape" matches "Esc".
+                listed << QKeySequence(key, QKeySequence::PortableText)
+                              .toString(QKeySequence::PortableText);
+            }
+        }
+
+        const Shortcuts shortcuts;
+        QStringList bound;
+        for (const QString &id : shortcuts.ids())
+            bound << QKeySequence(shortcuts.sequence(id), QKeySequence::PortableText)
+                         .toString(QKeySequence::PortableText);
+        const QSet<QString> a(listed.cbegin(), listed.cend());
+        const QSet<QString> b(bound.cbegin(), bound.cend());
+        QVERIFY2(a == b && listed.size() == bound.size(),
+                 qPrintable(QStringLiteral(
+                     "README.md's shortcut table and src/ui/Shortcuts.cpp disagree.\n"
+                     "  in the README only: %1\n"
+                     "  in the table only:  %2\n"
+                     "  rows %3, bindings %4")
+                                .arg(sorted(a - b), sorted(b - a))
+                                .arg(listed.size()).arg(bound.size())));
+    }
+
     // No QML file asks for a generic font family such as "monospace". Where the
     // name does not resolve, as on macOS, Qt populates its font-family alias
     // table on every launch, whichever missing family comes first.

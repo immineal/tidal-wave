@@ -363,7 +363,7 @@ Popup {
                         spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsTintedLabel"
-                            text: qsTr("Let the colour in")
+                            text: qsTr("Tinted greys")
                             color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -376,7 +376,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsTintedToggle"
-                        label: qsTr("Let the colour in")
+                        label: qsTr("Tinted greys")
                         rainbow: true
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.tintedGreys
@@ -1173,7 +1173,7 @@ Popup {
                             objectName: "settingsUiScaleAutoNote"
                             visible: app.scaleWasChosenAutomatically()
                                      && !app.scaleIsEnvironmentOverridden()
-                            text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
+                            text: qsTr("Your desktop reports no scale for this high-density screen, so Tidal Wave uses %1x. Move the slider to change it.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
                             color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -1464,7 +1464,7 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track's details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.")
+                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, searches and every page and track you open or play, with your access token. resources.tidal.com serves cover art without the token. Only while casting, your local network sees mDNS discovery and a short-lived HTTP server that serves the playing track to the device. It has no password, so anything on your network can read it during the cast. api.github.com gets the update check, at most once a day, with no account data, and sees your IP address and app version. Lyrics sites get track details as described below: lrclib.net unless you switch it off, the others once you switch them on.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
@@ -1472,19 +1472,19 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Sites are asked only while the now playing page is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.")
+                    text: qsTr("Lyrics from other sites are looked up only for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked. It gets the artist, title, album and length. With \"Lyrics from more sites\" on, these follow in order: music.163.com (NetEase Cloud Music) with artist and title, lyrics.kugou.com (KuGou) with artist, title and length, genius.com with artist and title. music.163.com and lyrics.kugou.com are in China. The search stops at the first synced lyrics. Sites are asked only while the now playing page is open, and each sees your IP address and the app's name and version. Results are kept here. Synced lyrics are not looked up again, plain or missing ones after 30 days.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Syncing plain lyrics, on by default, happens on this machine: the track's audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.")
+                    text: qsTr("Syncing plain lyrics is on by default and runs on this machine. The audio already downloaded for playback is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting, or logging out of Tidal, deletes the token; the listens stay until the same account connects again, and connecting another account or \"Discard\" deletes them.")
+                    text: qsTr("Scrobbling works only once you switch it on and connect. api.listenbrainz.org then gets the track you start and, once it counts, a listen with the time you played it. Each carries the title, artists, album, length, track number, ISRC, Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token and unsent listens are kept here as plain JSON only you can read. Disconnecting or logging out of Tidal deletes the token, and the listens stay until the same account connects again. Connecting another account, or \"Discard\", deletes them.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Last.fm, likewise only once you switch it on and connect: \"Connect with Last.fm\" opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you have allowed it, for a session. After that it gets the track you start playing and, once it counts, a scrobble with the time you played it. Both carry the title, the first credited artist, album, length and track number, the app's own Last.fm key and your session key, and the site sees your IP address; the ISRC and the Tidal link do not go to Last.fm. The session key and your Last.fm user name are kept here as plain JSON readable only by you, with the scrobbles not sent yet, and disconnecting or logging out of Tidal deletes the key and keeps the scrobbles as for ListenBrainz.")
+                    text: qsTr("Last.fm also works only once you switch it on and connect. \"Connect with Last.fm\" opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you allow it, a session. It then gets the track you start and, once it counts, a scrobble with the time you played it. Each carries the title, first credited artist, album, length, track number, the app's own Last.fm key and your session key, and the site sees your IP address. The ISRC and Tidal link do not go to Last.fm. The session key, your Last.fm user name and unsent scrobbles are kept here as plain JSON only you can read. As with ListenBrainz, disconnecting or logging out of Tidal deletes the key and keeps the scrobbles.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
@@ -1492,7 +1492,7 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.")
+                    text: qsTr("Feedback: the two buttons above hand a URL to your browser or mail client and do nothing else. Tidal Wave opens no connection for them and sends nothing. Nothing leaves this machine until you send it from that program, to a public GitHub issue or the tidal-wave@linu.li mailbox, whichever you picked. The prefilled part holds the app version, the operating system and both Qt versions, with no account data and nothing about what you have played.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
