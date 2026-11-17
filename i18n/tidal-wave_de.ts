@@ -585,7 +585,7 @@
     <name>DetailHero</name>
     <message>
         <source>More</source>
-        <comment>button that opens the page's menu</comment>
+        <comment>button that opens the page&apos;s menu</comment>
         <translation>Mehr</translation>
     </message>
 </context>
@@ -861,6 +861,14 @@
     <message>
         <source>Try again</source>
         <translation>Erneut versuchen</translation>
+    </message>
+</context>
+<context>
+    <name>ExplicitBadge</name>
+    <message>
+        <source>Explicit</source>
+        <comment>mark on a track whose lyrics are as recorded</comment>
+        <translation>Explizit</translation>
     </message>
 </context>
 <context>
@@ -1992,17 +2000,17 @@
     </message>
     <message>
         <source>Album</source>
-        <comment>the kind of a search's top result</comment>
+        <comment>the kind of a search&apos;s top result</comment>
         <translation>Album</translation>
     </message>
     <message>
         <source>Track</source>
-        <comment>the kind of a search's top result</comment>
+        <comment>the kind of a search&apos;s top result</comment>
         <translation>Titel</translation>
     </message>
     <message>
         <source>Playlist</source>
-        <comment>the kind of a search's top result</comment>
+        <comment>the kind of a search&apos;s top result</comment>
         <translation>Playlist</translation>
     </message>
     <message>
@@ -2633,6 +2641,44 @@
     </message>
 </context>
 <context>
+    <name>TrackListHeader</name>
+    <message>
+        <source>#</source>
+        <comment>column heading over the track numbers</comment>
+        <translation>#</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <comment>column heading</comment>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <comment>column heading</comment>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Date added</source>
+        <comment>column heading</comment>
+        <translation>Hinzugefügt am</translation>
+    </message>
+    <message>
+        <source>Length</source>
+        <comment>column heading over the track lengths</comment>
+        <translation>Länge</translation>
+    </message>
+    <message>
+        <source>sorted ascending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>aufsteigend sortiert</translation>
+    </message>
+    <message>
+        <source>sorted descending</source>
+        <comment>column heading state for a screen reader</comment>
+        <translation>absteigend sortiert</translation>
+    </message>
+</context>
+<context>
     <name>TrackRow</name>
     <message>
         <source>More options</source>
@@ -2840,52 +2886,6 @@
     <message>
         <source>Volume</source>
         <translation>Lautstärke</translation>
-    </message>
-</context>
-<context>
-    <name>ExplicitBadge</name>
-    <message>
-        <source>Explicit</source>
-        <comment>mark on a track whose lyrics are as recorded</comment>
-        <translation>Explizit</translation>
-    </message>
-</context>
-<context>
-    <name>TrackListHeader</name>
-    <message>
-        <source>#</source>
-        <comment>column heading over the track numbers</comment>
-        <translation>#</translation>
-    </message>
-    <message>
-        <source>Title</source>
-        <comment>column heading</comment>
-        <translation>Titel</translation>
-    </message>
-    <message>
-        <source>Album</source>
-        <comment>column heading</comment>
-        <translation>Album</translation>
-    </message>
-    <message>
-        <source>Date added</source>
-        <comment>column heading</comment>
-        <translation>Hinzugefügt am</translation>
-    </message>
-    <message>
-        <source>Length</source>
-        <comment>column heading over the track lengths</comment>
-        <translation>Länge</translation>
-    </message>
-    <message>
-        <source>sorted ascending</source>
-        <comment>column heading state for a screen reader</comment>
-        <translation>aufsteigend sortiert</translation>
-    </message>
-    <message>
-        <source>sorted descending</source>
-        <comment>column heading state for a screen reader</comment>
-        <translation>absteigend sortiert</translation>
     </message>
 </context>
 </TS>
