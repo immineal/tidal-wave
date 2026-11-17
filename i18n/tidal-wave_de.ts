@@ -1262,6 +1262,10 @@
         <comment>the track was started from the search results</comment>
         <translation>Wiedergabe von: Suche „%1“</translation>
     </message>
+    <message>
+        <source>Play a track, an album or a playlist and it shows here.</source>
+        <translation>Was du abspielst, erscheint hier. Starte einen Titel, ein Album oder eine Playlist.</translation>
+    </message>
 </context>
 <context>
     <name>OfflineNotice</name>
@@ -1469,6 +1473,11 @@
         <source>Queue</source>
         <comment>noun, opens the play queue</comment>
         <translation>Warteschlange</translation>
+    </message>
+    <message>
+        <source>Sleep timer: %1</source>
+        <comment>player bar, the time left or End of track</comment>
+        <translation>Sleep-Timer: %1</translation>
     </message>
 </context>
 <context>
@@ -2449,6 +2458,10 @@
     <message>
         <source>Search and artist pages show this version where both exist. The album page still lists the other one, and what you saved is always shown.</source>
         <translation>Suche und Künstlerseiten zeigen diese Version, wo es beide gibt. Die Albumseite führt die andere weiterhin auf, und was du gespeichert hast, wird immer gezeigt.</translation>
+    </message>
+    <message>
+        <source>Like or unlike the playing track</source>
+        <translation>„Gefällt mir“ für den laufenden Titel setzen oder entfernen</translation>
     </message>
 </context>
 <context>

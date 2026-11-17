@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QQmlEngine>
+#include <QRect>
 #include <QSettings>
 #include <QString>
 
@@ -66,6 +67,8 @@ class Prefs : public QObject {
     Q_PROPERTY(int crossfadeSeconds READ crossfadeSeconds WRITE setCrossfadeSeconds NOTIFY crossfadeSecondsChanged)
     // The crossfade rides on the gapless change, which needs Qt 6.5.
     Q_PROPERTY(bool crossfadeAvailable READ crossfadeAvailable CONSTANT)
+    // The page the window last showed, as JSON {page, params}; "" for Home.
+    Q_PROPERTY(QString lastPage READ lastPage WRITE setLastPage NOTIFY lastPageChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -124,6 +127,15 @@ public:
     void setCrossfade(bool v);
     void setCrossfadeSeconds(int v);
 
+    // The window as it was left. The geometry is the unmaximised one, and
+    // invalid until a window has been shown.
+    QRect   windowGeometry() const;
+    void    setWindowGeometry(const QRect &r);
+    bool    windowMaximized() const;
+    void    setWindowMaximized(bool v);
+    QString lastPage() const { return m_lastPage; }
+    void    setLastPage(const QString &v);
+
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
     Q_INVOKABLE int maxSidebar() const   { return maxSidebarWidth; }
@@ -153,9 +165,11 @@ signals:
     void autoplayChanged();
     void crossfadeChanged();
     void crossfadeSecondsChanged();
+    void lastPageChanged();
 
 private:
     QSettings m_settings;
+    QString   m_lastPage;
     QString   m_theme;
     bool      m_oledBlack;
     bool      m_tintedGreys;
