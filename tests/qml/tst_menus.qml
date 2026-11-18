@@ -95,7 +95,7 @@ TestCase {
             mediaType: "album", itemId: "42", title: "Glass Orchard", subtitle: "Kestrel Arcade"
         })
         settle(holder)
-        card.pinMenu.showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
+        card.ensureMenu().showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
         tryVerify(function () { return card.pinMenu.opened }, 2000)
         checkPaddingAndEntries(card.pinMenu, "pin menu")
         card.pinMenu.close()

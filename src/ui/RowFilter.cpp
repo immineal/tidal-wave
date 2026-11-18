@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "RowFilter.h"
+#include "api/Fold.h"
 
 #include <climits>
 
@@ -62,7 +63,7 @@ void RowFilter::rebuild() {
     for (int i = 0; i < n; ++i) {
         const QJSValue row = m_source.property(quint32(i));
         m_rows << row;
-        for (const QString &f : std::as_const(m_fields)) m_keys << textOf(row.property(f)).toLower();
+        for (const QString &f : std::as_const(m_fields)) m_keys << Tidal::foldForMatch(textOf(row.property(f)));
     }
     for (int i = 0; i < n; ++i)
         if (matches(i, m_needle)) m_match << i;
@@ -83,7 +84,7 @@ bool RowFilter::matches(qsizetype row, const QString &needle) const {
 void RowFilter::setPattern(const QString &pattern) {
     if (pattern == m_pattern) return;
     m_pattern = pattern;
-    const QString needle = pattern.toLower();
+    const QString needle = Tidal::foldForMatch(pattern);
     if (needle != m_needle) {
         // A needle that holds the last one can only narrow, so only the rows
         // still shown need looking at.

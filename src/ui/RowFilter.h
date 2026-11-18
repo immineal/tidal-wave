@@ -8,7 +8,7 @@
 #include <QStringList>
 
 // A JS array as a view model, narrowed by a typed pattern: a row stays when one
-// of `fields`, lower-cased, contains the pattern lower-cased. A key only removes
+// of `fields`, folded, contains the pattern folded (see api/Fold.h). A key only removes
 // and inserts rows, so the rows that stay keep their delegates and covers.
 class RowFilter : public QAbstractListModel {
     Q_OBJECT
@@ -57,9 +57,9 @@ private:
     QJSValue m_source;
     QStringList m_fields;
     QString m_pattern;
-    QString m_needle;                // m_pattern lower-cased
+    QString m_needle;                // m_pattern folded
     QList<QJSValue> m_rows;
-    QList<QString> m_keys;           // per row, each field lower-cased once
+    QList<QString> m_keys;           // per row, each field folded once
     QList<int> m_match;              // indices into m_rows the pattern lets through
     QList<int> m_shown;              // the view's rows; m_match while live
     bool m_live = true;

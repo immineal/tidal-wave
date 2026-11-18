@@ -689,6 +689,21 @@ Rectangle {
                      && root.tracks.length > 0
             implicitHeight: visible ? tracksCol.height : 0
 
+            // Rows are built once a tab shows them and kept until the results
+            // change, so going back to a tab builds nothing. `full` is the
+            // Tracks tab's whole list; the All tab shows its first few of it.
+            property bool seen: false
+            property bool full: false
+            readonly property bool onTracksTab: root.activeTab === root.kTracks
+            function forget() { seen = visible; full = onTracksTab }
+            Component.onCompleted: forget()
+            onVisibleChanged: if (visible) seen = true
+            onOnTracksTabChanged: if (onTracksTab) full = true
+            Connections {
+                target: root
+                function onTracksChanged() { tracksSec.forget() }
+            }
+
             Column {
                 id: tracksCol
                 width: parent.width
@@ -705,15 +720,15 @@ Rectangle {
                 QtObject { id: trackGroup; property int current: 0 }
                 Repeater {
                     onModelChanged: trackGroup.current = 0
-                    // Nothing is built for a section nobody is looking at: a
+                    // Nothing is built for a section nobody has looked at: a
                     // type tab other than Tracks would otherwise still carry
                     // every TrackRow of the result set, invisibly.
-                    model: !tracksSec.visible ? 0
-                           : root.activeTab === 0
-                             ? Math.min(root.tracks.length, root.allTabTracksCap)
-                             : root.tracks.length
+                    model: !tracksSec.seen ? 0
+                           : tracksSec.full ? root.tracks.length
+                           : Math.min(root.tracks.length, root.allTabTracksCap)
                     TrackRow {
                         required property int index
+                        visible: tracksSec.onTracksTab || index < root.allTabTracksCap
                         rowGroup: trackGroup
                         rowIndex: index
                         x: 16
@@ -751,6 +766,12 @@ Rectangle {
             readonly property bool asGrid: root.activeTab === kind
             visible: (root.activeTab === 0 || root.activeTab === kind)
                      && tiles.length > 0
+            // The grid is built the first time its tab shows and kept until
+            // the results change, as the tracks are.
+            property bool gridSeen: false
+            Component.onCompleted: gridSeen = asGrid
+            onAsGridChanged: if (asGrid) gridSeen = true
+            onTilesChanged: gridSeen = asGrid
             implicitHeight: !visible ? 0 : (asGrid ? gridCol.height : rowHolder.height)
 
             // The All tab's summary row.
@@ -790,7 +811,7 @@ Rectangle {
                     width: Math.max(0, gridCol.width - 48)
                     spacing: Theme.space4
                     Repeater {
-                        model: tileSec.asGrid ? tileSec.tiles.length : 0
+                        model: tileSec.gridSeen ? tileSec.tiles.length : 0
                         MediaCard {
                             required property int index
                             readonly property var tile: tileSec.tiles[index]
