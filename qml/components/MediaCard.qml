@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import TidalWave
 
 Item {
@@ -32,6 +33,24 @@ Item {
     // and a page of cards seldom opens one. ensureMenu() builds it unopened.
     readonly property alias pinMenu: menuLoader.item
     function ensureMenu() { menuLoader.active = true; return menuLoader.item }
+
+    // An album's credits, [{id, name}] as TidalBridge hands them over. With
+    // a usable id among them the second line links each artist and the menu
+    // has Go to artist; other kinds ignore it.
+    property var artistList: []
+    readonly property var artistCredits: {
+        var out = []
+        if (mediaType !== "album" || !artistList) return out
+        for (var i = 0; i < artistList.length; i++) {
+            var id = Number(artistList[i].id)
+            if (id > 0) out.push({ id: id, name: String(artistList[i].name) })
+        }
+        return out
+    }
+    function openArtist(artistId) {
+        if (artistId > 0 && Window.window)
+            Window.window.navigate("artist", { artistId: artistId })
+    }
 
     // The destructive entry on the tile's own menu, if the host offers one.
     // Empty on most pages. See ContextMenu.removeLabel.
@@ -273,6 +292,31 @@ Item {
         minimumPixelSize: Theme.fontMicro
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
+        // Under the links, still laid out: they take its fitted size.
+        opacity: links.status === Loader.Ready ? 0 : 1
+    }
+
+    // The links are built on the card's first hover: they cost more objects
+    // than the card, and a page of cards is seldom pointed at. They look like
+    // the plain line until a name is under the pointer.
+    property bool linksWanted: false
+    HoverHandler {
+        enabled: root.artistCredits.length > 0 && !root.linksWanted
+        onHoveredChanged: if (hovered) root.linksWanted = true
+    }
+    Loader {
+        id: links
+        active: root.linksWanted && root.artistCredits.length > 0
+        anchors.left: subText.left
+        anchors.top: subText.top
+        width: subText.width
+        sourceComponent: ArtistLinks {
+            namePrefix: "card"
+            // The row of cards is one tab stop; the menu has Go to artist.
+            tabStops: false
+            fontPixelSize: subText.fontInfo.pixelSize
+            artistList: root.artistCredits
+        }
     }
 
     // Right button only, so the cover's tap and hover handlers underneath
@@ -296,6 +340,8 @@ Item {
             parent: root
             objectName: "cardPinMenu"
             trackSource: root.canQueue ? root.fetchTracks : null
+            artistCredits: root.artistCredits
+            onArtistRequested: (artistId) => root.openArtist(artistId)
             removeLabel: root.removeLabel
             onRemoveRequested: root.removeRequested()
         }

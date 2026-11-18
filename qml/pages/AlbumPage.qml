@@ -252,9 +252,21 @@ Rectangle {
         clip: true
         model: root.tracks
         boundsBehavior: Flickable.StopAtBounds
+        // The rows' 16 px inset, plus the scroll bar's lane on the right, so
+        // they end as far from its inner edge as they start from the left.
+        readonly property real rowInset: Theme.space4
+        readonly property real rowWidth: width - 2 * rowInset - Math.round(vbar.width - vbar.leftPadding)
 
-        header: Column {
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
+        header: Item {
             width: tracksList.width
+            z: 2
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
             DetailHero {
                 id: hero
@@ -374,7 +386,18 @@ Rectangle {
                 ]
             }
 
-            Item { height: Theme.space2; width: parent.width }
+            // Labels only: the album's own order, disc by disc, is the page.
+            TrackListHeader {
+                id: headings
+                objectName: "albumTracksHeader"
+                y: hero.height
+                pinIn: tracksList
+                pinBelow: stickyHeader.height
+                x: tracksList.rowInset
+                width: tracksList.rowWidth
+                showAlbum: false
+                showCover: false
+            }
         }
 
         // A wrapper, so a disc's first row can carry its "Disc n" header.
@@ -385,12 +408,13 @@ Rectangle {
             readonly property bool startsDisc: root.multiDisc
                 && (index === 0 || root.discOf(root.tracks[index - 1]) !== disc)
 
+            // No height of its own: the Column leaves a hidden one out, and a
+            // height bound to implicitHeight loops on Qt 6.5 and later.
             Text {
                 objectName: "albumDiscHeader"
                 visible: trackDelegate.startsDisc
-                x: 16 + 12
-                width: parent.width - 32 - 12
-                height: visible ? implicitHeight : 0
+                x: tracksList.rowInset + 12
+                width: tracksList.rowWidth - 12
                 topPadding: index === 0 ? Theme.space1 : Theme.space5
                 bottomPadding: Theme.space2
                 text: qsTr("Disc %1", "heading over one disc's tracks on an album page")
@@ -402,8 +426,8 @@ Rectangle {
             }
 
             TrackRow {
-                width: tracksList.width - 32
-                x: 16
+                width: tracksList.rowWidth
+                x: tracksList.rowInset
                 // The album's own numbering, which starts over on each disc.
                 trackNum:    modelData.trackNumber > 0 ? modelData.trackNumber : index + 1
                 title:       modelData.title
@@ -446,6 +470,7 @@ Rectangle {
         }
 
         ScrollBar.vertical: ScrollBar {
+            id: vbar
             objectName: "albumScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
@@ -530,7 +555,7 @@ Rectangle {
         id: stickyHeader
         objectName: "albumStickyHeader"
         flickable: tracksList
-        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.heroHeight : 280
         title: albumData.title || ""
         ArtistLinks {
             Layout.fillWidth: true

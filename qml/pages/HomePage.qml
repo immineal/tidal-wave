@@ -161,7 +161,7 @@ Rectangle {
                      kind: "artist", coverUrl: it.coverUrl || "" }
         default:
             return { id: it.id, title: it.title, subtitle: it.artists, kind: "album",
-                     coverUrl: it.coverUrl }
+                     coverUrl: it.coverUrl, artistList: it.artistList || [] }
         }
     }
 
@@ -236,7 +236,7 @@ Rectangle {
 
     function albumItem(a) {
         return { id: a.id, title: a.title, subtitle: a.artists,
-                 coverUrl: a.coverUrl, type: "album" }
+                 coverUrl: a.coverUrl, type: "album", artistList: a.artistList || [] }
     }
     function playlistItem(p) {
         return { id: p.uuid, title: p.title,
