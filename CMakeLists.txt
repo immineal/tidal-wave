@@ -276,6 +276,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/DetailBar.qml
         qml/components/CoverArt.qml
         qml/components/ToastHost.qml
+        qml/components/TrackDragPreview.qml
         qml/pages/LoginPage.qml
         qml/pages/HomePage.qml
         qml/pages/SearchPage.qml
