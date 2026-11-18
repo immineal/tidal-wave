@@ -116,6 +116,9 @@ public:
 
     Q_INVOKABLE void fetchAlbumTracks     (qlonglong albumId,      QJSValue cb);
     Q_INVOKABLE void fetchPlaylistTracks  (const QString &uuid,    QJSValue cb);
+    // The same tracks as TrackRows (see TrackRows.h), for a TrackModel: a
+    // long playlist made into JS objects cost more than the rest of its page.
+    Q_INVOKABLE void fetchPlaylistTrackRows(const QString &uuid,   QJSValue cb);
     // The playlist itself: {uuid, title, description, numTracks, duration,
     // coverUrl, type}.
     Q_INVOKABLE void fetchPlaylist       (const QString &uuid,    QJSValue cb);
@@ -232,6 +235,8 @@ public:
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
 
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const;
+    // Every liked track as TrackRows, for a TrackModel; see TrackRows.h.
+    Q_INVOKABLE QVariant favoriteTrackRows() const;
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const;

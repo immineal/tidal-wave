@@ -704,7 +704,7 @@ TestCase {
         var page = createTemporaryObject(playlistC, host.pane, {})
         page.playlistUuid = "p-mid"
         settle(host.contentItem)
-        compare(page.tracks.length, 1, "the tracks fixture did not load")
+        compare(page.trackRows.length, 1, "the tracks fixture did not load")
 
         var btn = findByName(host.contentItem, "playlistEditButton")
         verify(btn, "the hero has no Edit button")

@@ -14,6 +14,8 @@
 #include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QLoggingCategory>
+#include <QRegularExpression>
 #include <QSet>
 #include <QSettings>
 #include <QSignalSpy>
@@ -55,6 +57,31 @@ void installMadeCounter() {
 }
 
 double ms(qint64 ns) { return double(ns) / 1e6; }
+
+// The JS collector's pauses, from its step log (Qt 6.8 on). Whole-heap, a
+// collection runs all its steps at once, so their sum is the pause.
+struct Gc { int count = 0; double ms = 0, worst = 0; };
+Gc g_gc;
+QList<double> g_gcPauses;
+QtMessageHandler g_nextHandler = nullptr;
+void countGc(QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
+    if (!ctx.category || qstrcmp(ctx.category, "qt.qml.gc.stepExecution") != 0) {
+        if (g_nextHandler) g_nextHandler(type, ctx, msg);
+        return;
+    }
+    static const QRegularExpression step(QStringLiteral("Performed (\\w+) in (\\d+) microseconds"));
+    const QRegularExpressionMatch m = step.match(msg);
+    if (!m.hasMatch()) return;
+    if (m.captured(1) == QLatin1String("MarkStart")) {
+        ++g_gc.count;
+        g_gcPauses << 0;
+    }
+    if (g_gcPauses.isEmpty()) return;
+    const double d = m.captured(2).toDouble() / 1000;
+    g_gcPauses.last() += d;
+    g_gc.ms += d;
+    g_gc.worst = std::max(g_gc.worst, g_gcPauses.last());
+}
 
 // ── the stubs' data, in the shapes the real bridge hands over ─────────────
 QVariantMap artistMap(const Artist &a) {
@@ -151,6 +178,8 @@ struct Step {
     int    built = 0;       // items that were not in the scene before
     int    covers = 0;      // cover requests the step made
     int    made = 0;        // QObjects constructed, kept or not
+    int    gcs = 0;         // JS collections while it ran
+    double gcWorst = 0;     // the longest of them
     double total() const { return action + first; }
 };
 
@@ -222,6 +251,8 @@ class TestUiPerf : public QObject {
         collect(m_win->contentItem(), before);
         g_imageRequests = 0;
         g_made = 0;
+        const Gc gcBefore = g_gc;
+        g_gc.worst = 0;
         Step s;
         s.what = what;
         QElapsedTimer t;
@@ -236,13 +267,17 @@ class TestUiPerf : public QObject {
         for (QQuickItem *i : std::as_const(after)) if (!before.contains(i)) ++s.built;
         s.covers = g_imageRequests;
         s.made = g_made;
+        s.gcs = g_gc.count - gcBefore.count;
+        s.gcWorst = g_gc.worst;
+        g_gc.worst = std::max(g_gc.worst, gcBefore.worst);
         m_steps << s;
         if (m_print)
-            qInfo().noquote() << QStringLiteral("  %1 %2 %3 %4 %5 %6 %7 %8 %9 %10")
+            qInfo().noquote() << QStringLiteral("  %1 %2 %3 %4 %5 %6 %7 %8 %9 %10 %11")
                 .arg(s.what, -34).arg(s.action, 8, 'f', 1).arg(s.first, 7, 'f', 1)
                 .arg(s.total(), 7, 'f', 1).arg(s.worst, 7, 'f', 1)
                 .arg(QStringLiteral("%1/%2").arg(s.slow).arg(s.frames), 7)
-                .arg(s.built, 6).arg(s.made, 6).arg(s.covers, 6).arg(s.settled, 7, 'f', 0);
+                .arg(s.built, 6).arg(s.made, 6).arg(s.covers, 6).arg(s.settled, 7, 'f', 0)
+                .arg(s.gcs ? QStringLiteral("%1/%2").arg(s.gcs).arg(s.gcWorst, 0, 'f', 1) : QString(), 9);
         return s;
     }
 
@@ -254,7 +289,8 @@ class TestUiPerf : public QObject {
             .arg(QStringLiteral("frame"), 7).arg(QStringLiteral("total"), 7)
             .arg(QStringLiteral("worst"), 7).arg(QStringLiteral("slow"), 7)
             .arg(QStringLiteral("built"), 6).arg(QStringLiteral("made"), 6)
-            .arg(QStringLiteral("covers"), 6).arg(QStringLiteral("settle"), 7);
+            .arg(QStringLiteral("covers"), 6).arg(QStringLiteral("settle"), 7)
+            + QStringLiteral(" %1").arg(QStringLiteral("gc n/ms"), 9);
     }
 
     // A flick: `px` a frame, `n` frames, each timed with the work it caused.
@@ -281,6 +317,8 @@ class TestUiPerf : public QObject {
         collect(m_win->contentItem(), before);
         g_imageRequests = 0;
         g_made = 0;
+        const Gc gcBefore = g_gc;
+        g_gc.worst = 0;
         for (int i = 0; i < n; ++i) {
             QElapsedTimer t;
             t.start();
@@ -300,9 +338,11 @@ class TestUiPerf : public QObject {
         const int slow = int(std::count_if(f.begin(), f.end(), [](double v) { return v > 16.0; }));
         r = Flick{f[f.size() / 2], f.last(), slow, built, int(g_made)};
         if (m_print)
-            qInfo().noquote() << QStringLiteral("  %1 median %2  p95 %3  worst %4  slow %5/%6  built %7  made %8  covers %9")
+            qInfo().noquote() << QStringLiteral("  %1 median %2  p95 %3  worst %4  slow %5/%6  built %7  made %8  covers %9  gc %10/%11")
                 .arg(what, -34).arg(f[f.size() / 2], 5, 'f', 1).arg(f[f.size() * 95 / 100], 5, 'f', 1)
-                .arg(f.last(), 5, 'f', 1).arg(slow).arg(n).arg(built).arg(r.made).arg(int(g_imageRequests));
+                .arg(f.last(), 5, 'f', 1).arg(slow).arg(n).arg(built).arg(r.made).arg(int(g_imageRequests))
+                .arg(g_gc.count - gcBefore.count).arg(g_gc.worst, 0, 'f', 1);
+        g_gc.worst = std::max(g_gc.worst, gcBefore.worst);
         view->setProperty("contentY", view->property("originY"));
         QCoreApplication::processEvents();
         return r;
@@ -324,6 +364,10 @@ private slots:
         qputenv("HOME", m_dir.path().toUtf8());
         QLocale::setDefault(QLocale(QLocale::English, QLocale::UnitedKingdom));
         m_print = qEnvironmentVariableIntValue("TW_BENCH_PRINT") != 0;
+        if (m_print) {
+            g_nextHandler = qInstallMessageHandler(countGc);
+            QLoggingCategory::setFilterRules(QStringLiteral("qt.qml.gc.stepExecution.debug=true"));
+        }
 
         L = makeLibrary();
         m_pins = std::make_unique<PinStore>();
@@ -387,6 +431,9 @@ private slots:
                 .arg(built, 0, 'f', 1).arg(first, 0, 'f', 1).arg(built + first, 0, 'f', 1);
 
         for (int i = 0; i < 10; ++i) { QTest::qWait(10); grab(); }
+        if (m_print)
+            qInfo().noquote() << QStringLiteral("JS collections so far: %1, longest %2 ms")
+                .arg(g_gc.count).arg(g_gc.worst, 0, 'f', 1);
         QList<double> idle;
         for (int i = 0; i < 9; ++i) idle << frame();
         std::sort(idle.begin(), idle.end());
@@ -394,6 +441,14 @@ private slots:
     }
 
     void cleanupTestCase() {
+        if (m_print) {
+            QStringList p;
+            for (double d : std::as_const(g_gcPauses)) p << QString::number(d, 'f', 1);
+            qInfo().noquote() << QStringLiteral("\nJS collections: %1, %2 ms in all, longest %3 ms: %4")
+                .arg(g_gcPauses.size()).arg(g_gc.ms, 0, 'f', 1)
+                .arg(g_gcPauses.isEmpty() ? 0 : *std::max_element(g_gcPauses.begin(), g_gcPauses.end()), 0, 'f', 1)
+                .arg(p.join(QStringLiteral(" ")));
+        }
         m_win.reset();
         m_engine.reset();
     }
@@ -435,6 +490,13 @@ private slots:
             }
         measure(QStringLiteral("Collection -> Home"), [this] { navigate(QStringLiteral("home")); });
         measure(QStringLiteral("Home -> Collection"), [this] { navigate(QStringLiteral("collection")); });
+        // A like or an unlike reads the whole list again. It stays in C++,
+        // where JS sees no rows at all.
+        const Step like = measure(QStringLiteral("a like reloads the liked tracks"),
+                                  [this] { eval(QStringLiteral("bridge.favoriteTracksChanged()")); });
+        QVERIFY(eval(QStringLiteral("collectionLoader.item.savedTracks.length === undefined")).toBool());
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(like.total() < 100, qPrintable(QStringLiteral("a like took %1 ms").arg(like.total())));
     }
 
     // ── Search's result tabs ─────────────────────────────────────────────
@@ -479,20 +541,28 @@ private slots:
         const auto openness = [this] { return eval(QStringLiteral("queuePanel.openness")).toDouble(); };
         auto *list = eval(QStringLiteral("queuePanel.queueList")).value<QObject *>();
         QVERIFY(list);
+        // No frame of a slide may take two frames' time.
+        QStringList slowFrames;
+        const auto slide = [&](const QString &what, bool opening) {
+            const Step s = measure(what, [&] { eval(QStringLiteral("queueOpen = %1").arg(opening)); },
+                                   [&] { return opening ? openness() >= 1 : openness() <= 0; });
+            if (s.worst >= 33) slowFrames << QStringLiteral("%1 ms in \"%2\"").arg(s.worst).arg(what);
+            return s;
+        };
         for (int i = 0; i < 2; ++i) {
-            QSignalSpy resets(list, SIGNAL(modelChanged()));
-            const Step open = measure(QStringLiteral("open"), [this] { eval(QStringLiteral("queueOpen = true")); },
-                                      [&] { return openness() >= 1; });
+            const Step open = slide(i == 0 ? QStringLiteral("open") : QStringLiteral("open again"), true);
             m_queueOpen[size] = qMin(m_queueOpen.value(size, 1e9), open.action);
-            // The jump to the playing row lands inside the slide.
-            if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
-                QVERIFY2(open.worst < 100, qPrintable(QStringLiteral("a %1 ms frame in the slide").arg(open.worst)));
-            // Each new count rebuilds every row in view, so opening must
-            // give the list its count once.
-            QCOMPARE(resets.count(), 1);
-            measure(QStringLiteral("close"), [this] { eval(QStringLiteral("queueOpen = false")); },
-                    [&] { return openness() <= 0; });
+            // The same queue is still built: the rows wait, held, while the
+            // panel is closed.
+            if (i == 1) QCOMPARE(open.built, 0);
+            slide(QStringLiteral("close"), false);
         }
+        // The next track while closed: the rows read their new tracks on opening.
+        m_stubs.player->setQueueForTest(tracksOf(L.likes.mid(0, size)), size / 3 + 1);
+        slide(QStringLiteral("open after the next track"), true);
+        slide(QStringLiteral("close"), false);
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(slowFrames.isEmpty(), qPrintable(slowFrames.join(QStringLiteral(", "))));
         // Only the rows in view are made, so a long queue opens as fast as a
         // short one. Timed, so checked on request only.
         if (size == 6000 && qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
@@ -509,13 +579,16 @@ private slots:
         measure(QStringLiteral("Home -> album"),
                 [&] { navigate(QStringLiteral("album"), QStringLiteral("{ albumId: %1 }").arg(album.id)); });
         measure(QStringLiteral("album -> back"), [this] { eval(QStringLiteral("goBack()")); });
-        measure(QStringLiteral("Home -> playlist (6000)"),
+        const Step playlist = measure(QStringLiteral("Home -> playlist (6000)"),
                 [&] { navigate(QStringLiteral("playlist"),
                                QStringLiteral("{ playlistUuid: 'pl-3', playlistTitle: 'Long' }")); },
-                [this] { return eval(QStringLiteral("detailView && detailView.item && detailView.item.tracks.length > 0")).toBool(); });
-        // Kept as a plain array: the reply's own list makes a row's object
-        // again on every read, and the page reads every row several times.
-        QVERIFY(eval(QStringLiteral("Array.isArray(detailView.item.tracks)")).toBool());
+                [this] { return eval(QStringLiteral("detailView && detailView.item && detailView.item.trackRows.length > 0")).toBool(); });
+        // Kept as the bridge's own list and read by a C++ model: a row becomes
+        // a JS object only when it is drawn, and copying 6000 was most of the open.
+        QVERIFY(!eval(QStringLiteral("Array.isArray(detailView.item.tracks)")).toBool());
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(playlist.total() < 100,
+                     qPrintable(QStringLiteral("a 6000-track playlist took %1 ms to its first frame").arg(playlist.total())));
         measure(QStringLiteral("playlist -> back"), [this] { eval(QStringLiteral("goBack()")); });
         measure(QStringLiteral("Home -> artist"),
                 [&] { navigate(QStringLiteral("artist"), QStringLiteral("{ artistId: %1 }").arg(L.artists.at(3).id)); });

@@ -84,7 +84,8 @@ bool RowFilter::matches(qsizetype row, const QString &needle) const {
 void RowFilter::setPattern(const QString &pattern) {
     if (pattern == m_pattern) return;
     m_pattern = pattern;
-    const QString needle = Tidal::foldForMatch(pattern);
+    // Spaces at either end do not count, as in the sidebar's finder.
+    const QString needle = Tidal::foldForMatch(pattern.trimmed());
     if (needle != m_needle) {
         // A needle that holds the last one can only narrow, so only the rows
         // still shown need looking at.
