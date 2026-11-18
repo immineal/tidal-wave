@@ -2257,7 +2257,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Normalize loudness</source>
+        <source>Normalise loudness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

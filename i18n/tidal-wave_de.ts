@@ -2501,7 +2501,7 @@
         <translation>Aus</translation>
     </message>
     <message>
-        <source>Normalize loudness</source>
+        <source>Normalise loudness</source>
         <translation>Lautstärke angleichen</translation>
     </message>
     <message>
