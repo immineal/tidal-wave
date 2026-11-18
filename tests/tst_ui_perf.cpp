@@ -541,20 +541,28 @@ private slots:
         const auto openness = [this] { return eval(QStringLiteral("queuePanel.openness")).toDouble(); };
         auto *list = eval(QStringLiteral("queuePanel.queueList")).value<QObject *>();
         QVERIFY(list);
+        // No frame of a slide may take two frames' time.
+        QStringList slowFrames;
+        const auto slide = [&](const QString &what, bool opening) {
+            const Step s = measure(what, [&] { eval(QStringLiteral("queueOpen = %1").arg(opening)); },
+                                   [&] { return opening ? openness() >= 1 : openness() <= 0; });
+            if (s.worst >= 33) slowFrames << QStringLiteral("%1 ms in \"%2\"").arg(s.worst).arg(what);
+            return s;
+        };
         for (int i = 0; i < 2; ++i) {
-            QSignalSpy resets(list, SIGNAL(modelChanged()));
-            const Step open = measure(QStringLiteral("open"), [this] { eval(QStringLiteral("queueOpen = true")); },
-                                      [&] { return openness() >= 1; });
+            const Step open = slide(i == 0 ? QStringLiteral("open") : QStringLiteral("open again"), true);
             m_queueOpen[size] = qMin(m_queueOpen.value(size, 1e9), open.action);
-            // The jump to the playing row lands inside the slide.
-            if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
-                QVERIFY2(open.worst < 100, qPrintable(QStringLiteral("a %1 ms frame in the slide").arg(open.worst)));
-            // Each new count rebuilds every row in view, so opening must
-            // give the list its count once.
-            QCOMPARE(resets.count(), 1);
-            measure(QStringLiteral("close"), [this] { eval(QStringLiteral("queueOpen = false")); },
-                    [&] { return openness() <= 0; });
+            // The same queue is still built: the rows wait, held, while the
+            // panel is closed.
+            if (i == 1) QCOMPARE(open.built, 0);
+            slide(QStringLiteral("close"), false);
         }
+        // The next track while closed: the rows read their new tracks on opening.
+        m_stubs.player->setQueueForTest(tracksOf(L.likes.mid(0, size)), size / 3 + 1);
+        slide(QStringLiteral("open after the next track"), true);
+        slide(QStringLiteral("close"), false);
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(slowFrames.isEmpty(), qPrintable(slowFrames.join(QStringLiteral(", "))));
         // Only the rows in view are made, so a long queue opens as fast as a
         // short one. Timed, so checked on request only.
         if (size == 6000 && qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))

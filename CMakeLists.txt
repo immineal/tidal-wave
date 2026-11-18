@@ -82,6 +82,7 @@ set(SOURCES
     src/ui/TidalLink.cpp
     src/ui/TrackNotifier.cpp
     src/ui/RowFilter.cpp
+    src/ui/CountModel.cpp
     src/ui/TrackModel.cpp
     src/api/LibraryIndex.cpp
     src/api/FavoritesCache.cpp
@@ -125,6 +126,7 @@ set(HEADERS
     src/ui/TidalLink.h
     src/ui/TrackNotifier.h
     src/ui/RowFilter.h
+    src/ui/CountModel.h
     src/ui/TrackModel.h
     src/api/Fold.h
     src/api/TrackRows.h
