@@ -853,7 +853,8 @@ private slots:
         QQuickItem *input = named(m_sidebar, QStringLiteral("finderInput"));
         QVERIFY(v && input);
         QVERIFY(debounceTimer());
-        bench(QStringLiteral("Sidebar finder, every kind"), input, v, QStringLiteral("the blue"), [this] {
+        const QList<Sample> keys =
+            bench(QStringLiteral("Sidebar finder, every kind"), input, v, QStringLiteral("the blue"), [this] {
             QStringList out;
             for (const QVariant &r : listOf(m_sidebar->property("rows"))) {
                 const QVariantMap m = r.toMap();
@@ -863,6 +864,10 @@ private slots:
             return out;
         });
         setText(input, QString());
+        // Past the first key the list has rows enough; the next keys refill them.
+        for (qsizetype k = 1; k < keys.size(); ++k)
+            QVERIFY2(keys.at(k).created == 0, qPrintable(QStringLiteral("\"%1\" made %2 new rows")
+                                                             .arg(keys.at(k).text).arg(keys.at(k).created)));
     }
 };
 
