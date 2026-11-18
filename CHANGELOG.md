@@ -15,7 +15,7 @@ milestones and not a semver promise about an API.
   the next track's file and starts it just before the current one ends.
   Where the next file is not ready in time, the change goes as in 0.4.2,
   which left a short silence between tracks. This needs Qt 6.5 or newer.
-- Normalize loudness, a switch under Settings > Playback, on by default.
+- Normalise loudness, a switch under Settings > Playback, on by default.
   Each track plays at the loudness Tidal measured for it, so a quiet master
   and a loud one come out about as loud. An album played from its page in
   its own order keeps the album's balance between its tracks. A track is

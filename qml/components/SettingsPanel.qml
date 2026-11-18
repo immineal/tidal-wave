@@ -658,7 +658,7 @@ Popup {
                         Layout.fillWidth: true
                         spacing: Theme.spaceHalf
                         Text {
-                            text: qsTr("Normalize loudness")
+                            text: qsTr("Normalise loudness")
                             color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
