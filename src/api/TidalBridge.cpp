@@ -1198,7 +1198,7 @@ void TidalBridge::fetchTrackCredits(qlonglong trackId, QJSValue cb) {
 
 QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
     QVariantList list;
-    const QString needle = foldForMatch(query);
+    const QString needle = foldForMatch(query.trimmed());
     for (const auto &t : m_favoriteTracks) {
         if (needle.isEmpty() ||
             foldForMatch(t.title).contains(needle) ||
@@ -1212,7 +1212,7 @@ QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
 
 QVariantList TidalBridge::searchFavoriteAlbums(const QString &query) const {
     QVariantList list;
-    const QString needle = foldForMatch(query);
+    const QString needle = foldForMatch(query.trimmed());
     for (const auto &a : m_favoriteAlbums) {
         if (needle.isEmpty() ||
             foldForMatch(a.title).contains(needle) ||
@@ -1225,7 +1225,7 @@ QVariantList TidalBridge::searchFavoriteAlbums(const QString &query) const {
 
 QVariantList TidalBridge::searchFavoriteArtists(const QString &query) const {
     QVariantList list;
-    const QString needle = foldForMatch(query);
+    const QString needle = foldForMatch(query.trimmed());
     for (const auto &a : m_favoriteArtists) {
         if (needle.isEmpty() ||
             foldForMatch(a.name).contains(needle)) {
@@ -1237,7 +1237,7 @@ QVariantList TidalBridge::searchFavoriteArtists(const QString &query) const {
 
 QVariantList TidalBridge::searchFavoritePlaylists(const QString &query) const {
     QList<Playlist> playlists;
-    const QString needle = foldForMatch(query);
+    const QString needle = foldForMatch(query.trimmed());
     for (const auto &p : m_favoritePlaylists) {
         if (needle.isEmpty() ||
             foldForMatch(p.title).contains(needle)) {
