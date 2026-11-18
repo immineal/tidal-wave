@@ -98,13 +98,15 @@ Item {
         visible: root.credits.length > 0
         spacing: 0
 
+        // A count, not the list: a reused row handed a track with as many
+        // credits keeps its names and only their text changes.
         Repeater {
             id: creditRepeater
-            model: root.credits
+            model: root.credits.length
             delegate: Row {
                 id: credit
-                required property var modelData
                 required property int index
+                readonly property var modelData: root.credits[index] || ({ id: 0, name: "" })
 
                 readonly property bool linkable: Number(modelData.id) > 0
                 readonly property real sepWidth: index > 0 ? sep.implicitWidth : 0
