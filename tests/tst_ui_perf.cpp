@@ -385,7 +385,13 @@ private slots:
         Step d = measure(QStringLiteral("Staff picks -> For you"),
                          [this] { eval(QStringLiteral("homeLoader.item.showFeedTab(0)")); },
                          [&] { return !onStaff(); });
-        Q_UNUSED(a); Q_UNUSED(b); Q_UNUSED(c); Q_UNUSED(d);
+        Q_UNUSED(a);
+        // Both feeds seen once, a switch shows what is there: nothing is
+        // built again and no cover is asked for again.
+        for (const Step &s : {b, c, d}) {
+            QVERIFY2(s.built == 0, qPrintable(QStringLiteral("%1 built %2 items").arg(s.what).arg(s.built)));
+            QVERIFY2(s.covers == 0, qPrintable(QStringLiteral("%1 asked for %2 covers").arg(s.what).arg(s.covers)));
+        }
     }
 
     // ── Collection's five tabs ───────────────────────────────────────────

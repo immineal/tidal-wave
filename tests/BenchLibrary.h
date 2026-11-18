@@ -250,12 +250,12 @@ protected:
 };
 
 // Counts what the covers ask for. Answers asynchronously, as the app's
-// provider does, with a tiny image.
+// provider does, at a cover's size, so Qt's pixmap cache fills as it would.
 inline std::atomic<int> g_imageRequests{0};
 
 class CountingResponse : public QQuickImageResponse {
 public:
-    explicit CountingResponse(QSize s) : m_img(s.isValid() && !s.isEmpty() ? s : QSize(4, 4),
+    explicit CountingResponse(QSize s) : m_img(s.isValid() && !s.isEmpty() ? s : QSize(320, 320),
                                                QImage::Format_ARGB32_Premultiplied) {
         m_img.fill(Qt::gray);
         QMetaObject::invokeMethod(this, [this] { emit finished(); }, Qt::QueuedConnection);
