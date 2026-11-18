@@ -333,7 +333,7 @@ TestCase {
         var conn = function (uuid) { changed.push(uuid) }
         Edits.playlistChanged.connect(conn)
         Edits.undoLast()
-        settleEdits()
+        tryVerify(function () { return !Edits.undoing }, 5000, "the undo never finished")
         Edits.playlistChanged.disconnect(conn)
         compare(bridge.removeWritesForTest(), ["1,2"])
         compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13])
@@ -351,7 +351,7 @@ TestCase {
         bridge.setServerPlaylistForTest("pl-1", [11, 12, 13])
         bridge.setReadBackLagForTest(-1)
         Edits.undoLast()
-        settleEdits()
+        tryVerify(function () { return !Edits.undoing }, 5000, "the undo never finished")
         compare(bridge.removeWritesForTest(), ["1,2"])
         compare(Toasts.text, Edits.unconfirmedText)
         verify(!Edits.undoing)
