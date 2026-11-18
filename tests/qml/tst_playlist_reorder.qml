@@ -69,7 +69,7 @@ TestCase {
         var page = createTemporaryObject(pageC, host.pane,
                                          { playlistUuid: "p-mine", playlistTitle: "Mine" })
         verify(page, "PlaylistPage did not load")
-        tryVerify(function () { return page.tracks.length === 6 && page.playlistEditable },
+        tryVerify(function () { return page.trackRows.length === 6 && page.playlistEditable },
                   settleMs, "the playlist did not load")
         var list = findByName(page, "playlistTracksList")
         // The rows in view, below the hero.
@@ -112,7 +112,7 @@ TestCase {
     }
 
     function titles(page) {
-        return page.tracks.map(function (t) { return t.title }).join(",")
+        return page.trackRows.list().map(function (t) { return t.title }).join(",")
     }
 
     // ── a drag moves the row ─────────────────────────────────────────────
@@ -218,7 +218,7 @@ TestCase {
             verify(waitForRendering(host.contentItem))
             var page = createTemporaryObject(pageC, host.pane,
                                              { playlistUuid: "p-mine", playlistTitle: "Mine" })
-            tryVerify(function () { return page.tracks.length === 6 }, settleMs)
+            tryVerify(function () { return page.trackRows.length === 6 }, settleMs)
             p = { host: host, page: page, list: findByName(page, "playlistTracksList") }
             p.list.positionViewAtIndex(0, ListView.Beginning)
             wait(20)

@@ -7,6 +7,7 @@
 #include "FavoritesCache.h"
 #include "PageEverything.h"
 #include "RecordVersions.h"
+#include "TrackRows.h"
 #include "LyricsFinder.h"
 #include "lyricsync/AutoSync.h"
 #include <QJSEngine>
@@ -445,6 +446,13 @@ void TidalBridge::fetchAlbumTracks(qlonglong albumId, QJSValue cb) {
 void TidalBridge::fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
     m_client->fetchPlaylistTracks(uuid, [this, cb](QList<Track> tracks, QString err) mutable {
         call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::fetchPlaylistTrackRows(const QString &uuid, QJSValue cb) {
+    m_client->fetchPlaylistTracks(uuid, [this, cb](QList<Track> tracks, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(wrapRows(tracksToList(tracks))),
                    qjsEngine(this)->toScriptValue(err) });
     });
 }

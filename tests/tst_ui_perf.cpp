@@ -509,13 +509,16 @@ private slots:
         measure(QStringLiteral("Home -> album"),
                 [&] { navigate(QStringLiteral("album"), QStringLiteral("{ albumId: %1 }").arg(album.id)); });
         measure(QStringLiteral("album -> back"), [this] { eval(QStringLiteral("goBack()")); });
-        measure(QStringLiteral("Home -> playlist (6000)"),
+        const Step playlist = measure(QStringLiteral("Home -> playlist (6000)"),
                 [&] { navigate(QStringLiteral("playlist"),
                                QStringLiteral("{ playlistUuid: 'pl-3', playlistTitle: 'Long' }")); },
-                [this] { return eval(QStringLiteral("detailView && detailView.item && detailView.item.tracks.length > 0")).toBool(); });
-        // Kept as a plain array: the reply's own list makes a row's object
-        // again on every read, and the page reads every row several times.
-        QVERIFY(eval(QStringLiteral("Array.isArray(detailView.item.tracks)")).toBool());
+                [this] { return eval(QStringLiteral("detailView && detailView.item && detailView.item.trackRows.length > 0")).toBool(); });
+        // Kept as the bridge's own list and read by a C++ model: a row becomes
+        // a JS object only when it is drawn, and copying 6000 was most of the open.
+        QVERIFY(!eval(QStringLiteral("Array.isArray(detailView.item.tracks)")).toBool());
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(playlist.total() < 100,
+                     qPrintable(QStringLiteral("a 6000-track playlist took %1 ms to its first frame").arg(playlist.total())));
         measure(QStringLiteral("playlist -> back"), [this] { eval(QStringLiteral("goBack()")); });
         measure(QStringLiteral("Home -> artist"),
                 [&] { navigate(QStringLiteral("artist"), QStringLiteral("{ artistId: %1 }").arg(L.artists.at(3).id)); });

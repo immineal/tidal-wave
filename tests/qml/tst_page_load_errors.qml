@@ -425,7 +425,7 @@ TestCase {
         page.playlistUuid = "pl-live-1"
         settle(page)
 
-        compare(page.tracks.length, 4, "the playlist did not load")
+        compare(page.trackRows.length, 4, "the playlist did not load")
         compare(page.loadError, "", "a successful load reported an error")
         verify(!page.loadFailed, "a loaded playlist called itself failed")
         compare(panelOf(page, "playlistLoadError").visible, false,
@@ -443,7 +443,7 @@ TestCase {
         page.playlistUuid = "pl-live-2"
         settle(page)
 
-        compare(page.tracks.length, 0, "the fixture was supposed to carry no tracks")
+        compare(page.trackRows.length, 0, "the fixture was supposed to carry no tracks")
         compare(findChild(page, "heroTitle").text, "Neue Liste",
                 "the empty playlist did not load its own header")
         compare(page.loadError, "", "an answer with no error reported one")
@@ -537,7 +537,7 @@ TestCase {
         var page = makePage(playlistC)
         page.playlistUuid = "pl-live-5"
         settle(page)
-        compare(page.tracks.length, 1, "the first playlist did not load")
+        compare(page.trackRows.length, 1, "the first playlist did not load")
 
         // A top-up for pl-live-5 goes out and is held. Its payload is frozen
         // when the call is made, so it carries this one-track list.
@@ -553,12 +553,12 @@ TestCase {
         bridge.setPlaylistTracksForTest(makeTracks(5, 7600))
         page.playlistUuid = "pl-live-6"
         settle(page)
-        compare(page.tracks.length, 5, "the second playlist did not load")
+        compare(page.trackRows.length, 5, "the second playlist did not load")
 
         bridge.flushTrackRepliesForTest()
         settle(page)
 
-        compare(page.tracks.length, 5,
+        compare(page.trackRows.length, 5,
                 "a top-up for the playlist the user left replaced the tracks on screen")
         compare(findChild(page, "heroTitle").text, "Zweite Liste",
                 "the second playlist lost its header")
