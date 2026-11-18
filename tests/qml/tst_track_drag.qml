@@ -348,7 +348,9 @@ TestCase {
         var host = show()
         openQueueByHolding(host)
         var panel = host.panel
-        verify(panel.queueList.contentY > 100, "the queue did not open scrolled")
+        // By index: content coordinates are estimates, below 0 on Qt 6.5.
+        var view = panel.queueList
+        verify(view.indexAt(1, view.contentY + 1) > 0, "the queue did not open scrolled")
         var second = entryAt(panel, panel.manualAt + 1)
         var p = second.mapToItem(host.contentItem, second.width / 2, 8)
         moveTo(host, p)
