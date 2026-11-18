@@ -92,13 +92,10 @@ jobs:
           ! grep -q TestSessionBus skipped.txt
 
   # The suite on macOS, offscreen, so Mac behaviour is run and not only built.
-  # Not blocking until it has been seen green: the suite has never run on a
-  # Mac before this job.
   test-macos:
     name: Tests (macOS, Qt 6.12)
     runs-on: macos-latest
     timeout-minutes: 60
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
