@@ -609,7 +609,7 @@ TestCase {
     function test_making_one_from_the_collection_shows_it_in_the_grid() {
         bridge.setUserPlaylistsForTest(makePlaylists(2))
         var c = makeCollection(1000, 3)
-        compare(c.page.filteredPlaylists.length, 2, "the fixture did not load")
+        compare(c.page.playlistRows.count, 2, "the fixture did not load")
 
         mouseClick(findByName(c.page, "collectionNewPlaylistButton"))
         var dlg = c.page.playlistDialog
@@ -622,10 +622,10 @@ TestCase {
                   "the dialog stayed up after a successful create")
         settle(c.host.contentItem)
 
-        compare(c.page.filteredPlaylists.length, 3,
+        compare(c.page.playlistRows.count, 3,
                 "the new playlist never reached the grid; it holds "
                 + playlistTitles().join(", "))
-        compare(c.page.filteredPlaylists[2].title, "Zugfahrt",
+        compare(c.page.playlistRows.get(2).title, "Zugfahrt",
                 "the grid gained a row, but not the playlist that was made")
         // The page stays where it is: no tab change and no navigation.
         compare(c.page.activeTab, 3, "creating a playlist moved the tab")

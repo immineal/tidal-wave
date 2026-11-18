@@ -138,8 +138,8 @@ public:
     void setPreferExplicit(bool on) { m_preferExplicit = on; }
     bool preferExplicit() const { return m_preferExplicit; }
 
-    // Home page feeds
-    void fetchHomeMixes   (MixesCallback cb);
+    // Home page feeds. fetchHomeMixes is a test seam too (see fetchMixPage).
+    virtual void fetchHomeMixes(MixesCallback cb);
     void fetchMixTracks   (const QString &mixId, TracksCallback cb);
     // Every page of v2/home/feed/<feed> merged into one body: the first
     // page's header and all pages' items. `locale` words the titles. A later

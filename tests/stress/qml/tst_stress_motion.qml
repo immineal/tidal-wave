@@ -138,7 +138,7 @@ TestCase {
         var holder = createTemporaryObject(holderC, testCase, { width: 1200, height: 820 })
         var page = collectionC.createObject(holder, {})
         S.fill(page, { activeTab: 0 })
-        S.fill(page, { filteredTracks: S.tracks(2000) })
+        S.fill(page, { savedTracks: S.tracks(2000) })
         var spinner = createTemporaryObject(spinnerC, holder, {})
         waitForRendering(holder, 60000)
 
