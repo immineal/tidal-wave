@@ -818,6 +818,7 @@ Rectangle {
                             coverUrl:  tile ? (tile.coverUrl || "") : ""
                             title:     tile ? (tile.title    || "") : ""
                             subtitle:  tile ? (tile.subtitle || "") : ""
+                            artistList: tile ? (tile.artistList || []) : []
                             mediaType: root.mediaTypeOf(tileSec.kind)
                             itemId:    tile ? ("" + (tile.id || "")) : ""
                             cardSize:  160
@@ -924,7 +925,7 @@ Rectangle {
         if (kind === kAlbums)
             return albums.map(function (a) {
                 return { id: a.id, title: a.title, subtitle: a.artists,
-                         coverUrl: a.coverUrl }
+                         coverUrl: a.coverUrl, artistList: a.artistList || [] }
             })
         if (kind === kArtists)
             return artists.map(function (a) {

@@ -163,11 +163,12 @@ TestCase {
         return item.truncated !== undefined && item.elide !== undefined && item.text !== undefined
     }
 
-    // The deliberate overdraws, each named so nothing else picks the
-    // exemption up: the ring round an artist's artwork, the slice of the
-    // travelling tab pill each chip holds, and the chip's accent-ink label.
+    // The deliberate overdraws, named so nothing else picks the exemption up:
+    // an artist's art ring, a chip's slice of the tab pill and its ink label,
+    // and the ground of pinned column headings, which spans the whole list.
     function drawnOutsideOnPurpose(item) {
         return item.objectName === "cardArtCorners"
+            || item.objectName === "trackListHeaderGround"
             || item.objectName === "collectionTabPillSlice"
             || item.objectName === "collectionTabInkLabel"
     }
