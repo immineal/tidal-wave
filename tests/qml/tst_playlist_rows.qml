@@ -220,7 +220,10 @@ TestCase {
         var s = open()
         sortBy(s, "title")
         filterTo(s, "g")
-        Edits.playlistChanged(s.page.playlistUuid)
+        // Through a reference: Qt 6.5 crashes on a direct call of a QML
+        // singleton's signal from outside it (see tst_playlist_picker).
+        var changed = Edits.playlistChanged
+        changed.call(Edits, s.page.playlistUuid)
         frame(s.host.contentItem)
         compare(titlesOf(rows(s)), "Bahn,Mittag,Mittag,Zug")
         compare(findByName(s.page, "playlistFilter").text, "g")
