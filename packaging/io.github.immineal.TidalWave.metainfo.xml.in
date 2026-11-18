@@ -134,7 +134,7 @@
     <!-- date= is the release date and cannot be derived, so it is the one thing
          here that has to be touched by hand when v@PROJECT_VERSION@ is tagged.
          Only the newest release takes its version from project(). -->
-    <release version="@PROJECT_VERSION@" date="2026-11-17">
+    <release version="@PROJECT_VERSION@" date="2026-11-18">
       <description>
         <p>Albums play without gaps, tracks come out at an even volume, and your playlists can be reordered and deleted.</p>
         <ul>
