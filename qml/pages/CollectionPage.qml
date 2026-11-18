@@ -11,7 +11,8 @@ Rectangle {
     property int activeTab: 0
     property string searchPattern: ""
     // Each tab's whole list, in the bridge's order. The views show it sorted
-    // and narrowed by the field through the RowFilters below.
+    // and narrowed by the field through the models below. The tracks are the
+    // bridge's TrackRows, or a test's JS array.
     property var savedTracks:    []
     property var savedAlbums:    []
     property var savedArtists:   []
@@ -27,10 +28,12 @@ Rectangle {
     readonly property alias artistRows:   artistFilter
     readonly property alias playlistRows: playlistFilter
     readonly property alias mixRows:      mixFilter
-    RowFilter {
+    // The liked tracks stay in C++ and become JS one row at a time, as drawn.
+    TrackModel {
         id: trackFilter
-        source: trackSort.sorted(root.savedTracks)
-        fields: ["title", "artists", "albumTitle"]
+        source: root.savedTracks
+        sortKey: trackSort.key
+        descending: trackSort.descending
         pattern: root.searchPattern
         live: root.activeTab === 0
     }
@@ -212,7 +215,7 @@ Rectangle {
         target: bridge
         function onOfflineChanged() { if (!bridge.offline && root.mixesFailed) root.loadMixes() }
         // Only the list that changed, so a like does not reset the other tabs.
-        function onFavoriteTracksChanged() { root.savedTracks = bridge.searchFavoriteTracks("") }
+        function onFavoriteTracksChanged() { root.savedTracks = bridge.favoriteTrackRows() }
         function onFavoriteAlbumsChanged() { root.savedAlbums = bridge.searchFavoriteAlbums("") }
         function onFavoriteArtistsChanged() { root.savedArtists = bridge.searchFavoriteArtists("") }
         function onFavoritePlaylistsChanged() { root.savedPlaylists = bridge.searchFavoritePlaylists("") }
@@ -227,7 +230,7 @@ Rectangle {
     // The whole lists, read again when the bridge says one changed. Typing
     // never comes here: the RowFilters narrow what is already loaded.
     function updateFilteredContent() {
-        savedTracks    = bridge.searchFavoriteTracks("")
+        savedTracks    = bridge.favoriteTrackRows()
         savedAlbums    = bridge.searchFavoriteAlbums("")
         savedArtists   = bridge.searchFavoriteArtists("")
         savedPlaylists = bridge.searchFavoritePlaylists("")
@@ -480,7 +483,7 @@ Rectangle {
                     // Recorded after the source so it is the newer of the two.
                     if (Number(modelData.albumId) > 0)
                         library.markPlayed("album", "" + modelData.albumId)
-                    player.playTracks(trackFilter.rows(), index)
+                    player.playTracks(trackFilter.shownRows(), index)
                 }
             }
 
@@ -956,18 +959,23 @@ Rectangle {
     // Tracks: all of them, shuffled, from a random one, as a detail page's
     // Shuffle does. The other tabs: open one at random.
     function surprise() {
+        if (root.activeTab === 0) {
+            // The tracks go to the player as they are, not through JS.
+            if (trackFilter.count === 0) return
+            var at = Math.floor(Math.random() * trackFilter.count)
+            var t = trackFilter.get(at)
+            player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
+            // The track's album stands in, as for a row's play.
+            if (Number(t.albumId) > 0)
+                library.markPlayed("album", "" + t.albumId)
+            player.setShuffle(true)
+            player.playTracks(trackFilter.shownRows(), at)
+            return
+        }
         var items = root.shownItems()
         if (!items || items.length === 0) return
         var pick = Math.floor(Math.random() * items.length)
         switch (root.activeTab) {
-        case 0:
-            player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
-            // The track's album stands in, as for a row's play.
-            if (Number(items[pick].albumId) > 0)
-                library.markPlayed("album", "" + items[pick].albumId)
-            player.setShuffle(true)
-            player.playTracks(items, pick)
-            break
         case 1: root.openAlbum(items[pick]); break
         case 2: root.openArtist(items[pick]); break
         case 3: root.openPlaylist(items[pick]); break

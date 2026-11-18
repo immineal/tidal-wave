@@ -1218,6 +1218,13 @@ QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
     return list;
 }
 
+QVariant TidalBridge::favoriteTrackRows() const {
+    QVariantList list;
+    list.reserve(m_favoriteTracks.size());
+    for (const auto &t : m_favoriteTracks) list.append(trackToMap(t));
+    return wrapRows(std::move(list));
+}
+
 QVariantList TidalBridge::searchFavoriteAlbums(const QString &query) const {
     QVariantList list;
     const QString needle = foldForMatch(query.trimmed());

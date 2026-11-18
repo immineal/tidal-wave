@@ -235,6 +235,8 @@ public:
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
 
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const;
+    // Every liked track as TrackRows, for a TrackModel; see TrackRows.h.
+    Q_INVOKABLE QVariant favoriteTrackRows() const;
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const;

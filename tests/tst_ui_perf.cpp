@@ -435,6 +435,13 @@ private slots:
             }
         measure(QStringLiteral("Collection -> Home"), [this] { navigate(QStringLiteral("home")); });
         measure(QStringLiteral("Home -> Collection"), [this] { navigate(QStringLiteral("collection")); });
+        // A like or an unlike reads the whole list again. It stays in C++,
+        // where JS sees no rows at all.
+        const Step like = measure(QStringLiteral("a like reloads the liked tracks"),
+                                  [this] { eval(QStringLiteral("bridge.favoriteTracksChanged()")); });
+        QVERIFY(eval(QStringLiteral("collectionLoader.item.savedTracks.length === undefined")).toBool());
+        if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(like.total() < 100, qPrintable(QStringLiteral("a like took %1 ms").arg(like.total())));
     }
 
     // ── Search's result tabs ─────────────────────────────────────────────
