@@ -16,6 +16,7 @@
 #include <QQuickWindow>
 #include <QSet>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
@@ -148,6 +149,7 @@ class TestUiPerf : public QObject {
     std::unique_ptr<QQuickWindow> m_win;
     TestStubs m_stubs;
     bool m_print = false;
+    QHash<int, double> m_queueOpen;
     double m_idle = 0;
     QList<Step> m_steps;
 
@@ -441,9 +443,16 @@ private slots:
         m_stubs.player->setQueueForTest(tracksOf(L.likes.mid(0, size)), size / 3);
         header(QStringLiteral("Queue panel, %1 tracks").arg(size));
         const auto openness = [this] { return eval(QStringLiteral("queuePanel.openness")).toDouble(); };
+        auto *list = eval(QStringLiteral("queuePanel.queueList")).value<QObject *>();
+        QVERIFY(list);
         for (int i = 0; i < 2; ++i) {
-            measure(QStringLiteral("open"), [this] { eval(QStringLiteral("queueOpen = true")); },
-                    [&] { return openness() >= 1; });
+            QSignalSpy resets(list, SIGNAL(modelChanged()));
+            const Step open = measure(QStringLiteral("open"), [this] { eval(QStringLiteral("queueOpen = true")); },
+                                      [&] { return openness() >= 1; });
+            m_queueOpen[size] = qMin(m_queueOpen.value(size, 1e9), open.action);
+            // Each new count rebuilds every row in view, so opening must
+            // give the list its count once.
+            QCOMPARE(resets.count(), 1);
             measure(QStringLiteral("close"), [this] { eval(QStringLiteral("queueOpen = false")); },
                     [&] { return openness() <= 0; });
         }
@@ -470,6 +479,40 @@ private slots:
                 [this] { return eval(QStringLiteral("nowPlayingness")).toDouble() >= 1; });
         measure(QStringLiteral("Now playing -> back"), [this] { eval(QStringLiteral("goBack()")); },
                 [this] { return eval(QStringLiteral("nowPlayingness")).toDouble() <= 0.001; });
+    }
+
+    // What one delegate of each heavy kind is made of. Printed only.
+    void anatomy() {
+        if (!m_print) QSKIP("printed with TW_BENCH_PRINT=1");
+        const auto show = [this](const QString &what, QQuickItem *view) {
+            QVERIFY2(view, qPrintable(what));
+            QQuickItem *d = nullptr;
+            for (QQuickItem *kid : view->property("contentItem").value<QQuickItem *>()->childItems())
+                if (kid->isVisible() && kid->height() > 20) { d = kid; break; }
+            QVERIFY(d);
+            QSet<QQuickItem *> all;
+            collect(d, all);
+            QHash<QString, int> by;
+            for (QQuickItem *i : std::as_const(all)) ++by[QString::fromLatin1(i->metaObject()->className())];
+            QStringList parts;
+            for (auto it = by.cbegin(); it != by.cend(); ++it) parts << QStringLiteral("%1 %2").arg(it.value()).arg(it.key());
+            parts.sort();
+            qInfo().noquote() << QStringLiteral("%1: %2 items: %3").arg(what).arg(all.size()).arg(parts.join(QStringLiteral(", ")));
+        };
+        navigate(QStringLiteral("collection"));
+        eval(QStringLiteral("collectionLoader.item.activeTab = 0"));
+        QTest::qWait(300);
+        show(QStringLiteral("track row"), visibleNamed(m_win->contentItem(), QStringLiteral("collectionTracksList")));
+        eval(QStringLiteral("collectionLoader.item.activeTab = 1"));
+        QTest::qWait(300);
+        show(QStringLiteral("album card"), visibleNamed(m_win->contentItem(), QStringLiteral("collectionAlbumsGrid")));
+        m_stubs.player->setQueueForTest(tracksOf(L.likes.mid(0, 50)), 10);
+        eval(QStringLiteral("queueOpen = true"));
+        QTest::qWait(600);
+        show(QStringLiteral("queue row"), visibleNamed(m_win->contentItem(), QStringLiteral("queuePanelList")));
+        eval(QStringLiteral("queueOpen = false"));
+        QTest::qWait(600);
+        navigate(QStringLiteral("home"));
     }
 
     // ── flicking long lists ──────────────────────────────────────────────
