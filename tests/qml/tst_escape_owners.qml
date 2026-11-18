@@ -188,6 +188,38 @@ TestCase {
                   "after the drag, Escape no longer went back")
     }
 
+    // A queue row being reordered: Escape calls the move off and the queue
+    // stays open; the next Escape closes it.
+    function test_escape_during_a_queue_reorder_keeps_the_queue_open() {
+        var tracks = makeTracks(5, 8300)
+        player.setQueueForTest(tracks, 0)
+        player.setCurrentTrackForTest(tracks[0])
+        player.resetQueueCallsForTest()
+        var win = showApp()
+        win.queueOpen = true
+        var panel = findByType(win.contentItem, "QueuePanel")
+        verify(panel, "the window has no queue panel")
+        tryVerify(function () { return panel.rowCount > 0 && panel.openness === 1 }, 3000,
+                  "the queue did not open")
+        frame(win.contentItem)
+        var grip = findNamed(panel.queueList.itemAtIndex(panel.contextAt), "queueDragArea")
+        verify(grip, "the first upcoming row has no grip")
+        var at = grip.mapToItem(win.contentItem, grip.width / 2, grip.height / 2)
+        mousePress(win.contentItem, at.x, at.y)
+        for (var s = 1; s <= 6; ++s) { mouseMove(win.contentItem, at.x, at.y + 12 * s); wait(5) }
+        verify(panel.dragging, "the drag never started")
+        keyClick(Qt.Key_Escape)
+        verify(!panel.dragging, "Escape left the move on")
+        verify(win.queueOpen, "Escape during the move also closed the queue")
+        mouseRelease(win.contentItem, at.x, at.y + 72)
+        compare(player.queueCalls.join(","), "", "the release after Escape still moved the row")
+        keyClick(Qt.Key_Escape)
+        tryVerify(function () { return !win.queueOpen }, 2000,
+                  "after the move, Escape no longer closed the queue")
+        player.setQueueForTest([], -1)
+        player.setCurrentTrackForTest({})
+    }
+
     // A field with text in it clears on Escape, as LibraryFinder says. The
     // window's Escape outranked it, so the page went back instead.
     function test_escape_in_the_library_finder_clears_it_and_stays() {

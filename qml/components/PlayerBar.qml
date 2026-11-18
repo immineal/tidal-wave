@@ -476,6 +476,8 @@ Rectangle {
                     objectName: "playerBarQueueDrop"
                     anchors.fill: parent
                     keys: TrackDrag.keys
+                    // A queue row is in the queue already.
+                    enabled: TrackDrag.origin !== "queue"
                     onDropped: (drop) => {
                         var tracks = TrackDrag.tracks
                         player.addToQueue(tracks)

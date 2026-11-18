@@ -351,15 +351,13 @@ Item {
     // ── dragging what is still to come ───────────────────────────────────
     // A queued row or one of the context's, by its grip or its body, to any
     // gap in either section; dropped in the other section it joins that one.
-    // The live state sits here, because the drop indicator belongs to the list.
+    // The row stays put and TrackDrag's preview travels, as in a playlist.
     property string dragKind: ""
     property int  dragFrom:   -1
     property int  dragFlat:   -1
-    property real dragOffset: 0
-    // Content y of the dragged row and of the press, measured off the
-    // delegate at press time, because the view only estimates positions.
+    // Content y of the dragged row, measured off the delegate at press
+    // time, because the view only estimates positions.
     property real dragRowY:   0
-    property real dragPressY: 0
     // The pointer in the list's own coordinates, for the edge scroll.
     property real dragViewX:  0
     property real dragViewY:  0
@@ -388,13 +386,11 @@ Item {
         return fromY + (i >= from ? d : -d)
     }
 
-    function beginDrag(kind, slot, flat, rowY, pressY) {
+    function beginDrag(kind, slot, flat, rowY) {
         dragKind   = kind
         dragFrom   = slot
         dragFlat   = flat
-        dragOffset = 0
         dragRowY   = rowY
-        dragPressY = pressY
         // The current item outlives a scroll, so the dragged row keeps its
         // delegate, and with it the pointer grab, however far the list moves.
         _currentBefore = list.currentIndex
@@ -402,7 +398,7 @@ Item {
         aimDrop(dragRowY + rowHeight / 2, true)
     }
 
-    // Aims the drop at the gap nearest the dragged row's middle.
+    // Aims the drop at the gap nearest `centre`, a content y.
     function aimDrop(centre, inside) {
         var kind = "", gap = -1
         var manualTop = manualHeaderAt >= 0 ? flatY(manualHeaderAt) : -1
@@ -424,31 +420,37 @@ Item {
         dragTo    = !dropValid ? -1 : (kind === dragKind && gap > dragFrom ? gap - 1 : gap)
     }
 
-    // The pointer moved, or the list moved under it.
+    // The pointer moved, or the list moved under it. Off the list, over the
+    // heading or the player bar, nothing is aimed at.
     function moveDrag(viewX, viewY) {
         if (!dragging) return
         dragViewX = viewX
         dragViewY = viewY
-        dragOffset = list.contentY + viewY - dragPressY
-        aimDrop(dragRowY + rowHeight / 2 + dragOffset, viewX >= 0 && viewX <= list.width)
+        aimDrop(list.contentY + viewY,
+                viewX >= 0 && viewX <= list.width && viewY >= 0 && viewY <= list.height)
     }
 
-    function cancelDrag() {
+    function resetDrag() {
         if (dragging && list.currentIndex === dragFlat && _currentBefore < list.count)
             list.currentIndex = _currentBefore
         dragKind   = ""
         dragFrom   = -1
         dragFlat   = -1
-        dragOffset = 0
         dropKind   = ""
         dropGap    = -1
         dragTo     = -1
         dropValid  = false
     }
+    // Calls the move off, the preview with it.
+    function cancelDrag() {
+        resetDrag()
+        if (TrackDrag.active && TrackDrag.origin === "queue") TrackDrag.cancel()
+    }
 
+    // Lands the move where the line is; the queue's DropArea calls it.
     function endDrag() {
         var kind = dragKind, from = dragFrom, toKind = dropKind, to = dragTo, ok = dropValid
-        cancelDrag()
+        resetDrag()
         if (!ok || from < 0 || to < 0 || (kind === toKind && from === to)) return
         if (kind === "manual" && toKind === "manual") player.moveManual(from, to)
         else player.moveQueueRow(kind, from, toKind, to)
@@ -885,7 +887,10 @@ Item {
                     Rectangle {
                         objectName: "queueDropIndicator"
                         parent: list.contentItem
-                        visible: (root.dragging && root.dropValid) || root.carrying
+                        // Not over the row's own place, where a drop moves nothing.
+                        visible: (root.dragging && root.dropValid
+                                  && !(root.dropKind === root.dragKind && root.dragTo === root.dragFrom))
+                                 || root.carrying
                         x: 8
                         width: Math.max(0, list.width - 16)
                         height: 2
@@ -906,17 +911,27 @@ Item {
                     onHeightChanged:        root.scheduleCurrentPosition()
                 }
 
-                // Tracks carried in from a page land at the line.
+                // Tracks carried in from a page land at the line; a row of
+                // the queue's own is aimed by its MouseArea and moves there.
                 DropArea {
                     objectName: "queueTrackDrop"
                     anchors.fill: list
                     keys: TrackDrag.keys
-                    onEntered: (drag) => root.aimCarry(drag.x, drag.y)
-                    onPositionChanged: (drag) => root.aimCarry(drag.x, drag.y)
+                    readonly property bool ownRow: TrackDrag.origin === "queue"
+                    onEntered: (drag) => { if (!ownRow) root.aimCarry(drag.x, drag.y) }
+                    onPositionChanged: (drag) => { if (!ownRow) root.aimCarry(drag.x, drag.y) }
                     onExited: root.clearCarry()
                     onDropped: (drop) => {
-                        if (root.dropCarried(drop.x, drop.y)) drop.accept(Qt.CopyAction)
-                        else drop.accepted = false
+                        if (root.dragging) {
+                            root.moveDrag(drop.x, drop.y)
+                            if (!root.dropValid) { drop.accepted = false; return }
+                            drop.accept(Qt.MoveAction)
+                            root.endDrag()
+                        } else if (root.dropCarried(drop.x, drop.y)) {
+                            drop.accept(Qt.CopyAction)
+                        } else {
+                            drop.accepted = false
+                        }
                     }
                 }
 
@@ -1007,21 +1022,32 @@ Item {
         readonly property bool draggable:  upcoming && root.upcomingCount > 1
         readonly property bool dragging:   root.dragging && root.dragFlat === rowIndex
 
-        // Starts a drag on this row from a press at (x, y) of `area`.
+        // Starts a drag on this row from a press at (x, y) of `area`; the
+        // preview is TrackDrag's, and any end but the queue's drop is no move.
         function startDrag(area, x, y) {
-            var p = area.mapToItem(list, x, y)
-            root.beginDrag(kind, slot, rowIndex, entry.y, list.contentY + p.y)
-            root.moveDrag(p.x, p.y)
+            if (!TrackDrag.begin(entry, [track], area.mapToItem(null, x, y),
+                                 function () { if (root.dragging) root.cancelDrag() }, "queue"))
+                return
+            root.beginDrag(kind, slot, rowIndex, entry.y)
+            followDrag(area, x, y)
         }
         function followDrag(area, x, y) {
             var p = area.mapToItem(list, x, y)
             root.moveDrag(p.x, p.y)
+            TrackDrag.move(area.mapToItem(null, x, y))
+        }
+        function dropDrag(area, x, y) {
+            followDrag(area, x, y)
+            if (!TrackDrag.drop() && root.dragging) root.cancelDrag()
+        }
+        // Past the start-drag distance a press carries the row.
+        function travelled(pressAt, mouse) {
+            return Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
+                || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance
         }
 
         objectName: "queueEntry"
         height: isHeader ? root.headerHeight : root.rowHeight
-        // The row being dragged travels over its neighbours, not under them.
-        z: dragging ? 2 : 0
 
         readonly property string headerText: isHeader ? root.headerLabelOf(kind) : ""
 
@@ -1123,6 +1149,7 @@ Item {
         // ── a track ──────────────────────────────────────────────────────
         Rectangle {
             id: rowBg
+            objectName: "queueRowGround"
             anchors.fill: parent
             anchors.leftMargin: Theme.space2
             anchors.rightMargin: Theme.space2
@@ -1130,7 +1157,7 @@ Item {
             anchors.bottomMargin: Theme.spaceHalf
             visible: !entry.isHeader
             radius: Theme.radiusRow
-            // A dragged row is lifted: opaque, so the rows it passes stay under it.
+            // The row being carried stays in its place, marked; the preview travels.
             color: entry.dragging ? Theme.surfaceHigh
                  : entry.isCurrent ? Theme.accentSoft
                  : (qHov.hovered || entry.menuOpen) ? Theme.hoverFill
@@ -1140,9 +1167,6 @@ Item {
             // History reads as history. The whole row dims, not just the
             // text, so the section is obvious at a glance from the artwork.
             opacity: entry.isPlayed ? 0.55 : 1
-            // The lift. A transform rather than a y offset, because the row's
-            // y belongs to the ListView.
-            transform: Translate { y: entry.dragging ? root.dragOffset : 0 }
 
             // Declared before the content, so the grip and the remove button
             // in front of it still get their own clicks.
@@ -1151,7 +1175,8 @@ Item {
                 anchors.fill: parent
                 enabled: !entry.isHeader
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
-                cursorShape: entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                cursorShape: entry.dragging ? Qt.ClosedHandCursor
+                           : entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
                 // A drag on a row is not a scroll: it moves the row, and the
                 // wheel scrolls. A press that travelled is not a click either.
                 preventStealing: true
@@ -1160,9 +1185,7 @@ Item {
                 onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
                 onPositionChanged: function (mouse) {
                     if (entry.dragging) { entry.followDrag(rowArea, mouse.x, mouse.y); return }
-                    if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
-                            || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
-                        travelled = true
+                    if (entry.travelled(pressAt, mouse)) travelled = true
                     // The body drags as the grip does, as in Spotify and Tidal.
                     if (travelled && entry.draggable && !root.dragging
                             && (mouse.buttons & Qt.LeftButton)) {
@@ -1170,7 +1193,9 @@ Item {
                         entry.followDrag(rowArea, mouse.x, mouse.y)
                     }
                 }
-                onReleased: if (entry.dragging) root.endDrag()
+                onReleased: function (mouse) {
+                    if (entry.dragging) entry.dropDrag(rowArea, mouse.x, mouse.y)
+                }
                 onCanceled: if (entry.dragging) root.cancelDrag()
                 onClicked: function (mouse) {
                     if (travelled) return
@@ -1220,13 +1245,18 @@ Item {
                         // and takes the grab away mid-reorder.
                         preventStealing: true
 
-                        // The event arrives in the handle's own moving
-                        // coordinates; the row maps it back into the list's.
-                        onPressed: function (mouse) { entry.startDrag(gripArea, mouse.x, mouse.y) }
+                        property point pressAt
+                        onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y) }
                         onPositionChanged: function (mouse) {
                             if (entry.dragging) entry.followDrag(gripArea, mouse.x, mouse.y)
+                            else if (!root.dragging && entry.travelled(pressAt, mouse)) {
+                                entry.startDrag(gripArea, pressAt.x, pressAt.y)
+                                entry.followDrag(gripArea, mouse.x, mouse.y)
+                            }
                         }
-                        onReleased: if (entry.dragging) root.endDrag()
+                        onReleased: function (mouse) {
+                            if (entry.dragging) entry.dropDrag(gripArea, mouse.x, mouse.y)
+                        }
                         onCanceled: if (entry.dragging) root.cancelDrag()
                     }
                 }
