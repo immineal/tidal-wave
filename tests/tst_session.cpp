@@ -17,6 +17,7 @@
 #include <QPointer>
 #include <QSet>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -288,8 +289,26 @@ class TestSession : public QObject {
     QByteArray m_realHome;
     QByteArray m_realConfig;
     bool m_hadConfig = false;
+    QByteArray m_realFixedHome;
+    bool m_hadFixedHome = false;
 
-    QString credsPath() const
+    // Whether `path` lies in the scratch home, by its deepest existing parent:
+    // on macOS the temporary directory is reached through a symlink.
+    bool insideHome(const QString &path) const
+    {
+        QFileInfo at(path);
+        while (!at.exists() && at.absolutePath() != at.absoluteFilePath())
+            at = QFileInfo(at.absolutePath());
+        const QString root = QFileInfo(m_home->path()).canonicalFilePath();
+        const QString here = at.canonicalFilePath();
+        return here == root || here.startsWith(root + QLatin1Char('/'));
+    }
+
+    // Where this version keeps the session. On Linux that is the old place
+    // too, because init() points XDG_CONFIG_HOME at ~/.config.
+    QString credsPath() const { return Auth::credentialsPath(); }
+    // Where 0.4 and earlier kept it.
+    QString legacyCredsPath() const
     {
         return m_home->path() + QStringLiteral("/.config/tidal-wave/credentials.json");
     }
@@ -302,10 +321,11 @@ class TestSession : public QObject {
     }
 
     // A saved session whose token "old" expires `inSecs` from now.
-    void saveSession(qint64 inSecs, qint64 userId = 7)
+    void saveSession(qint64 inSecs, qint64 userId = 7, QString path = {})
     {
-        QVERIFY(QDir(m_home->path()).mkpath(QStringLiteral(".config/tidal-wave")));
-        QFile creds(credsPath());
+        if (path.isEmpty()) path = credsPath();
+        QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+        QFile creds(path);
         QVERIFY(creds.open(QIODevice::WriteOnly));
         creds.write(QJsonDocument(QJsonObject{
             {QStringLiteral("access_token"),  QStringLiteral("old")},
@@ -320,9 +340,9 @@ class TestSession : public QObject {
 
     // Signs in from a saved session and waits until the start-up requests
     // (sessions, users/7) are answered and the name they bring is saved.
-    void signIn(Rig &rig, qint64 expiresInSecs = 3600)
+    void signIn(Rig &rig, qint64 expiresInSecs = 3600, const QString &savedAt = {})
     {
-        saveSession(expiresInSecs);
+        saveSession(expiresInSecs, 7, savedAt);
         rig.auth.loadCredentials();
         QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
         QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.seenFor(QStringLiteral("/api/users/7")).size(), 1, 5000);
@@ -346,10 +366,23 @@ private slots:
         // written and deleted.
         qputenv("XDG_CONFIG_HOME", (m_home->path() + QStringLiteral("/.config")).toUtf8());
         QCOMPARE(QDir::homePath(), m_home->path());
+#ifdef Q_OS_MACOS
+        // macOS finds ~/Library from the account, not from HOME.
+        m_hadFixedHome = qEnvironmentVariableIsSet("CFFIXED_USER_HOME");
+        m_realFixedHome = qgetenv("CFFIXED_USER_HOME");
+        qputenv("CFFIXED_USER_HOME", m_home->path().toUtf8());
+#endif
+        QVERIFY2(insideHome(Auth::credentialsPath()),
+                 qPrintable(QStringLiteral("the session would be kept outside the scratch home: ")
+                            + Auth::credentialsPath()));
     }
 
     void cleanup()
     {
+#ifdef Q_OS_MACOS
+        if (m_hadFixedHome) qputenv("CFFIXED_USER_HOME", m_realFixedHome);
+        else qunsetenv("CFFIXED_USER_HOME");
+#endif
         qputenv("HOME", m_realHome);
         if (m_hadConfig) qputenv("XDG_CONFIG_HOME", m_realConfig);
         else qunsetenv("XDG_CONFIG_HOME");
@@ -371,24 +404,32 @@ private slots:
     }
 
     // ── where the session is kept ───────────────────────────────────────
-    // XDG_CONFIG_HOME is honoured, and a session saved by an earlier version
-    // under ~/.config is still read, then moved.
+    // XDG_CONFIG_HOME is honoured, the app's Application Support folder on
+    // macOS, and a session saved by an earlier version under ~/.config is
+    // still read, then moved.
     void theSessionIsKeptWhereTheDesktopKeepsSettings()
     {
+#ifdef Q_OS_MACOS
+        const QString moved = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                            + QStringLiteral("/credentials.json");
+        QVERIFY2(moved.contains(QLatin1String("/Library/Application Support/")), qPrintable(moved));
+#else
         const QString elsewhere = m_home->path() + QStringLiteral("/xdg");
         qputenv("XDG_CONFIG_HOME", elsewhere.toUtf8());
+        const QString moved = elsewhere + QStringLiteral("/tidal-wave/credentials.json");
+#endif
         Rig rig;
-        signIn(rig);
+        signIn(rig, 3600, legacyCredsPath());
         if (QTest::currentTestFailed()) return;
 
-        const QString moved = elsewhere + QStringLiteral("/tidal-wave/credentials.json");
         QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(moved), 2000);
+        QVERIFY(insideHome(moved));
         QFile f(moved);
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(QJsonDocument::fromJson(f.readAll()).object()[QStringLiteral("user_id")].toInt(), 7);
         QCOMPARE(QFileInfo(moved).permissions() & ~(QFileDevice::ReadUser | QFileDevice::WriteUser),
                  QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        QVERIFY2(!QFile::exists(credsPath()), "the old copy of the tokens was left behind");
+        QVERIFY2(!QFile::exists(legacyCredsPath()), "the old copy of the tokens was left behind");
 
         rig.auth.logout();
         QVERIFY(!QFile::exists(moved));

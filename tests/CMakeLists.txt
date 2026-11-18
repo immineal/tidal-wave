@@ -103,6 +103,12 @@ list(APPEND TW_TEST_ENVIRONMENT "DBUS_SESSION_BUS_ADDRESS=unix:path=${CMAKE_CURR
 if(Qt6_VERSION VERSION_LESS 6.5)
     list(APPEND TW_TEST_ENVIRONMENT "QT_MEDIA_BACKEND=ffmpeg")
 endif()
+# macOS finds ~/Library from the account whatever HOME says, so a test that
+# moves HOME would still write the real one. This moves it for every test.
+if(APPLE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/macos-home")
+    list(APPEND TW_TEST_ENVIRONMENT "CFFIXED_USER_HOME=${CMAKE_CURRENT_BINARY_DIR}/macos-home")
+endif()
 set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
     ENVIRONMENT "${TW_TEST_ENVIRONMENT}"
 )

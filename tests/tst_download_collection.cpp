@@ -257,6 +257,13 @@ private slots:
         Rig rig;
         rig.downloader->setCollectionSpacingMs(400);
         QStringList order;
+        // When the app sent each stream request. The stub's own clock also
+        // counts the trip through the network stack, which varies.
+        QElapsedTimer clock;
+        clock.start();
+        QList<qint64> t;
+        connect(rig.downloader.get(), &Downloader::downloadStarted, this,
+                [&](qlonglong) { t << clock.elapsed(); });
         connect(rig.downloader.get(), &Downloader::downloadFinished, this,
                 [&](qlonglong id) { order << rig.tidal.log.filter(QStringLiteral("m:")).join(QLatin1Char(','))
                                            + QStringLiteral(" f:%1").arg(id); });
@@ -269,9 +276,9 @@ private slots:
         QCOMPARE(order, (QStringList{QStringLiteral("m:101 f:101"),
                                      QStringLiteral("m:101,m:102 f:102"),
                                      QStringLiteral("m:101,m:102,m:103 f:103")}));
-        const QList<qint64> t = rig.tidal.manifestTimes;
+        QCOMPARE(int(rig.tidal.manifestTimes.size()), 3);
         QCOMPARE(int(t.size()), 3);
-        QVERIFY2(t[1] - t[0] >= 380 && t[2] - t[1] >= 380,
+        QVERIFY2(t[1] - t[0] >= 395 && t[2] - t[1] >= 395,
                  qPrintable(QStringLiteral("gaps of %1 and %2 ms").arg(t[1] - t[0]).arg(t[2] - t[1])));
         // An album's files are numbered.
         const QDir folder(m_out->filePath(QStringLiteral("Artist - Album")));

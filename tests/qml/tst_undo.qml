@@ -130,7 +130,9 @@ TestCase {
         bridge.setTrackFavoriteForTest(9101, false)
         bridge.setReadBackLagForTest(-1)
         Edits.setFavorite("track", 9101, true)
-        settleEdits()
+        // The reload comes last. Waited for: a fixed wait ran out on a slow runner.
+        tryVerify(function () { return bridge.favoriteReloadsForTest().length > 0 }, 5000,
+                  "the write was never given up on")
         compare(Toasts.text, Edits.unconfirmedText)
         compare(Toasts.actionLabel, "", "an unconfirmed change offered Undo")
         compare(Edits.count, 0)
@@ -145,7 +147,7 @@ TestCase {
         compare(Edits.count, 1)
         bridge.setReadBackLagForTest(-1)
         Edits.undoLast()
-        settleEdits()
+        tryVerify(function () { return !Edits.undoing }, 5000, "the undo never finished")
         compare(Toasts.text, Edits.unconfirmedText)
         compare(bridge.favoriteReloadsForTest(), ["album"])
         verify(!Edits.undoing)
@@ -505,7 +507,7 @@ TestCase {
         var conn = function (uuid) { changed.push(uuid) }
         Edits.playlistChanged.connect(conn)
         Edits.removeFromPlaylist("pl-1", "Tape", 12, 1, 1, null)
-        settleEdits()
+        tryVerify(function () { return changed.length > 0 }, 5000, "the removal was never given up on")
         Edits.playlistChanged.disconnect(conn)
         compare(Toasts.text, Edits.unconfirmedText)
         compare(Edits.count, 0)
