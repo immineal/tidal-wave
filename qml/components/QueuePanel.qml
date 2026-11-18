@@ -63,14 +63,20 @@ Item {
     }
 
     // ── the model ────────────────────────────────────────────────────────
-    // A length and two boundaries, all gated on `visible`. The rows are read
-    // one at a time by the delegates in view: the whole queue as one JS list
-    // cost 80 ms to make for 6000 tracks.
-    readonly property int totalCount:  visible ? player.queueCount : 0
-    readonly property int playIndex:   visible ? player.queueIndex  : -1
-    readonly property int manualTotal: visible ? player.manualCount : 0
-    readonly property string contextName: visible ? player.contextName : ""
-    readonly property string contextType: visible ? player.contextType : ""
+    // A length and two boundaries, read one row at a time by the delegates
+    // in view: the whole queue as one JS list cost 80 ms for 6000 tracks.
+    // Live while `live`; held while hidden, so the rows stay built and still.
+    property bool live: false
+    property int totalCount: 0
+    property int playIndex: -1
+    property int manualTotal: 0
+    property string contextName: ""
+    property string contextType: ""
+    Binding on totalCount  { when: root.live; value: player.queueCount;  restoreMode: Binding.RestoreNone }
+    Binding on playIndex   { when: root.live; value: player.queueIndex;  restoreMode: Binding.RestoreNone }
+    Binding on manualTotal { when: root.live; value: player.manualCount; restoreMode: Binding.RestoreNone }
+    Binding on contextName { when: root.live; value: player.contextName; restoreMode: Binding.RestoreNone }
+    Binding on contextType { when: root.live; value: player.contextType; restoreMode: Binding.RestoreNone }
 
     readonly property bool hasCurrent: playIndex >= 0 && playIndex < totalCount
 
@@ -101,8 +107,7 @@ Item {
     // The same sum as contextAt + contextCount, in one binding of the
     // player's ints: built from the chain above, it moved once per link as
     // the panel opened, and each move rebuilt every row in view.
-    readonly property int rowCount: {
-        if (!visible) return 0
+    function rowsNow() {
         var total = player.queueCount, at = player.queueIndex
         var played = Math.max(0, Math.min(at, total))
         var current = at >= 0 && at < total ? 1 : 0
@@ -110,6 +115,17 @@ Item {
         var context = Math.max(0, total - played - current - manual)
         return (played > 0 ? played + 1 : 0) + 2 * current
              + (manual > 0 ? manual + 1 : 0) + (context > 0 ? context + 1 : 0)
+    }
+    property int rowCount: 0
+    Binding on rowCount { when: root.live; value: root.rowsNow(); restoreMode: Binding.RestoreNone }
+
+    // What the rows read their track through. Bumped for each change to the
+    // queue while live, and once on opening for any change while hidden.
+    property int queueRev: 0
+    property bool _queueStale: false
+    Connections {
+        target: player
+        function onQueueChanged() { if (root.live) root.queueRev++; else root._queueStale = true }
     }
 
     // ── the keyboard ─────────────────────────────────────────────────────
@@ -219,9 +235,9 @@ Item {
 
     function trackAt(kind, slot) {
         var q = queueIndexOf(kind, slot)
-        // queueCount is read for its notifier: it signals every change to the
-        // queue, so a row whose slot now holds another track reads again.
-        return (q >= 0 && q < player.queueCount && root.visible) ? player.queueTrackAt(q) : null
+        // queueRev is read for its notifier, so a row whose slot now holds
+        // another track reads again.
+        return (root.queueRev >= 0 && q >= 0 && q < root.totalCount) ? player.queueTrackAt(q) : null
     }
 
     function headerLabelOf(kind) {
@@ -309,10 +325,28 @@ Item {
         scheduleCurrentPosition()
     }
 
-    // On open the rows do not exist yet, so the scroll waits for them. Only on
-    // open: following every advance would yank the view back from wherever the
-    // user was reading, which is what the jump pill is for.
-    onVisibleChanged: if (visible) Qt.callLater(revealCurrent)
+    // Only on open: following every advance would yank the view back from
+    // wherever the user was reading, which is what the jump pill is for. The
+    // first rows land while the list has no height, so they are built once,
+    // around the playing one, rather than at the top first.
+    function goLive() {
+        var parked = rowCount === 0 && rowsNow() > 0
+        // A new count moves every row, so the one walked to is gone.
+        if (rowsNow() !== rowCount) keyRow = -1
+        list.parked = parked
+        live = true
+        if (_queueStale) { _queueStale = false; queueRev++ }
+        revealCurrent()
+        if (parked) {
+            list.parked = false
+            revealCurrent()
+        }
+        // Again after the host has handed the panel the keyboard, which
+        // scrolls to the row it focuses.
+        Qt.callLater(revealCurrent)
+    }
+    onVisibleChanged: if (visible) goLive(); else live = false
+    Component.onCompleted: if (visible) goLive()
 
     // ── dragging what is still to come ───────────────────────────────────
     // A queued row or one of the context's, by its grip or its body, to any
@@ -734,15 +768,18 @@ Item {
                 ListView {
                     id: list
                     objectName: "queuePanelList"
-                    anchors.fill: parent
+                    // See onVisibleChanged.
+                    property bool parked: false
+                    width: parent.width
+                    height: parked ? 0 : parent.height
                     clip: true
                     // The model is the row count, not the rows: the delegate
                     // reads its own entry out of the section arrays, so a
-                    // 5000 track queue is never copied into one JS list.
-                    model: root.rowCount
+                    // 5000 track queue is never copied into one JS list. A
+                    // new count adds or takes rows at the end; those in view stay.
+                    model: CountModel { count: root.rowCount }
                     cacheBuffer: 240
-                    // Opening builds the rows at the top, then jumps to the
-                    // playing one; reused, the top rows become those.
+                    // Rows scrolled out of view become the ones scrolled in.
                     reuseItems: true
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }

@@ -99,7 +99,7 @@ TestCase {
         verify(page, "PlaylistPage did not load")
         wait(1)
         frame(host.contentItem)
-        compare(page.tracks.length, 3, "the page did not load its three tracks")
+        compare(page.trackRows.length, 3, "the page did not load its three tracks")
         return host
     }
 

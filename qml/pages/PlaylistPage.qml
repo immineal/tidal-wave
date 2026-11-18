@@ -26,6 +26,8 @@ Rectangle {
     // Whether the user made it, as the header says. Another user's playlist
     // saved here is USER too, and only the creator may edit.
     property bool   playlistEditable: false
+    // The bridge's TrackRows, which JS cannot read, or a JS array. Read
+    // through trackModel, which also has their number in `length`.
     property var    tracks: []
     property bool   loading: false
 
@@ -36,7 +38,7 @@ Rectangle {
     // artwork are still correct. Gated on what the server said: a playlist with
     // no songs in it is ordinary.
     readonly property bool loadFailed:
-        loadError.length > 0 && !loading && tracks.length === 0
+        loadError.length > 0 && !loading && trackModel.length === 0
 
     // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
     property bool loadOffline: false
@@ -62,49 +64,23 @@ Rectangle {
         root.loadOffline = bridge.offline === true
     }
 
-    // A reply's list as a plain JS array. As it arrives, each read of a row
-    // makes that row's object again, and the page reads every row several
-    // times; for 6000 tracks the copy saves 150 ms.
-    function asArray(list) {
-        var out = new Array(list.length)
-        for (var i = 0; i < list.length; ++i) out[i] = list[i]
-        return out
-    }
-
     // The words typed into the field over the list.
     property string trackFilter: ""
 
-    // A row can be bound before shownOrder catches up with a new list.
-    function placeOf(row) {
-        var i = root.shownOrder[row]
-        return i === undefined ? row : i
-    }
-
-    // Case and accents do not count, as in Search; see SearchPage.fold().
-    function fold(s) {
-        if (typeof s !== "string" || s.length === 0) return ""
-        var d = (typeof s.normalize === "function") ? s.normalize("NFD") : s
-        return d.replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/ß/g, "ss")
-    }
-
-    // The order the column headings ask for: only what is shown and what
-    // plays from here. root.tracks, and Tidal's copy, keep their order.
+    // root.tracks as the bridge handed it, sorted by the headings and narrowed
+    // by the field; a row becomes a JS object only once drawn. A row's `place`
+    // is its index in root.tracks, which a removal names, twins apart.
     TrackListHeader.Sort { id: trackSort }
-    readonly property var sortedOrder: trackSort.order(root.tracks)
-    // Each shown row's index in root.tracks, which a removal names. A track
-    // in the playlist twice is two places, so each row keeps its own.
-    readonly property var shownOrder: {
-        var words = root.fold(root.trackFilter).split(/\s+/).filter(function (w) { return w.length > 0 })
-        if (words.length === 0) return root.sortedOrder
-        return root.sortedOrder.filter(function (i) {
-            var t = root.tracks[i]
-            var hay = root.fold([t.title, t.artists, t.albumTitle].join(" "))
-            return words.every(function (w) { return hay.indexOf(w) >= 0 })
-        })
+    readonly property alias trackRows: trackModel
+    TrackModel {
+        id: trackModel
+        source: root.tracks
+        sortKey: trackSort.key
+        descending: trackSort.descending
+        pattern: root.trackFilter
+        // Case and accents do not count, and every word must be found.
+        everyWord: true
     }
-    readonly property var shownTracks: root.shownOrder.map(function (i) { return root.tracks[i] })
-    // Play and Shuffle take every track, in the order of the headings.
-    readonly property var sortedTracks: root.sortedOrder.map(function (i) { return root.tracks[i] })
 
     // Records this playlist as the "playing from" source, then starts playback.
     function playFrom(list, i) {
@@ -147,7 +123,7 @@ Rectangle {
                 // A song added to this playlist from a row on this page updates
                 // no tracklist, so reload when the count and the list disagree.
                 // The reload raises no signal, so this cannot loop.
-                if (cached[i].numTracks !== root.tracks.length)
+                if (cached[i].numTracks !== trackModel.length)
                     root.reloadTracks()
                 return
             }
@@ -158,7 +134,7 @@ Rectangle {
     // not the page of it that happens to be drawn. The menu can be opened
     // before fetchPlaylistTracks() has answered, so an empty page asks again.
     function allTracks(cb) {
-        if (root.tracks.length > 0) { cb(root.tracks); return }
+        if (trackModel.length > 0) { cb(trackModel.list()); return }
         if (root.playlistUuid.length === 0) return
         bridge.fetchPlaylistTracks(root.playlistUuid, function (t, err) {
             if (!err && t.length > 0) cb(t)
@@ -170,14 +146,14 @@ Rectangle {
     function reloadTracks() {
         if (root.playlistUuid.length === 0) return
         var requested = root.playlistUuid
-        bridge.fetchPlaylistTracks(requested, function (t, err) {
+        bridge.fetchPlaylistTrackRows(requested, function (t, err) {
             // A reply for a playlist the user has already left says nothing
             // about the one on screen.
             if (requested !== root.playlistUuid) return
             // The reason is not kept: a failed top-up leaves a correct page,
             // and the error panel is for a page with nothing on it.
             if (err) return
-            root.tracks = root.asArray(t)
+            root.tracks = t
         })
     }
 
@@ -187,7 +163,7 @@ Rectangle {
     property bool moving: false
     readonly property bool canReorder: root.playlistEditable && trackSort.key === ""
         && root.trackFilter.trim().length === 0 && !root.moving && !root.loading
-        && root.tracks.length > 1
+        && trackModel.length > 1
     readonly property int rowHeight: 52
     property int  dragFrom: -1
     property real dragRowY: 0
@@ -198,7 +174,7 @@ Rectangle {
     // The gap the drop aims at, 0 above the first row to n below the last,
     // nearest the dragged row's middle; and the row's place after the drop.
     readonly property int dropGap: !root.dragging ? -1
-        : Math.max(0, Math.min(root.tracks.length,
+        : Math.max(0, Math.min(trackModel.length,
               Math.round((root.dragRowY + root.dragOffset + root.rowHeight / 2
                           - (root.dragRowY - root.dragFrom * root.rowHeight)) / root.rowHeight)))
     readonly property int dropTo: root.dropGap > root.dragFrom ? root.dropGap - 1 : root.dropGap
@@ -227,9 +203,9 @@ Rectangle {
         if (!root.dragging) return
         var from = root.dragFrom, to = root.dropTo
         root.cancelMove()
-        if (to < 0 || to === from || from >= root.tracks.length) return
+        if (to < 0 || to === from || from >= trackModel.length) return
         var requested = root.playlistUuid
-        var trackId = Number(root.tracks[from].id)
+        var trackId = Number(trackModel.sourceAt(from).id)
         root.moving = true
         // The row moves on Tidal's word, as a removal leaves on it.
         Edits.movePlaylistItem(requested, root.playlistTitle, trackId, from, to,
@@ -237,10 +213,8 @@ Rectangle {
             if (requested !== root.playlistUuid) return
             root.moving = false
             if (stale === true) { Qt.callLater(root.reloadAfterStaleMove); return }
-            if (ok !== true || Number((root.tracks[from] || {}).id) !== trackId) return
-            var arr = root.tracks.slice()
-            arr.splice(to, 0, arr.splice(from, 1)[0])
-            root.tracks = arr
+            if (ok !== true || Number((trackModel.sourceAt(from) || {}).id) !== trackId) return
+            root.tracks = trackModel.withMoved(from, to)
         })
     }
     onTracksChanged: if (root.dragging) root.cancelMove()
@@ -293,11 +267,11 @@ Rectangle {
         playlistEditable = false
         // Which playlist these replies are about; see MixPage.loadMix().
         var requested = playlistUuid
-        bridge.fetchPlaylistTracks(requested, function (t, err) {
+        bridge.fetchPlaylistTrackRows(requested, function (t, err) {
             if (requested !== root.playlistUuid) return
             root.loading = false
             if (err) { root.noteLoadError(err); return }
-            root.tracks = root.asArray(t)
+            root.tracks = t
         })
         loadPlaylistHeader(requested)
     }
@@ -328,7 +302,7 @@ Rectangle {
         objectName: "playlistTracksList"
         anchors.fill: parent
         clip: true
-        model: root.shownTracks
+        model: trackModel
         // As on Collection's tracks: rows leaving the view become the ones
         // coming in, rather than each made anew.
         reuseItems: true
@@ -363,7 +337,7 @@ Rectangle {
                 title: root.playlistTitle
                 artSource: root.coverUrl
                 // Without a cover of its own, the tracks' covers; see DetailHero.
-                artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
+                artCovers: trackModel.leadCovers
                 artIcon: "playlist"
                 onPinRequested: (x, y) => {
                     var p = hero.mapToItem(root, x, y)
@@ -385,7 +359,7 @@ Rectangle {
                     text: {
                         // One complete sentence per case rather than glued
                         // fragments, so a translation can reorder it.
-                        var n = root.tracks.length
+                        var n = trackModel.length
                         var d = root.playlistDuration
                         // The count is the tracklist's, still on its way.
                         if (root.loading && n === 0)
@@ -403,7 +377,7 @@ Rectangle {
                 // hold every word typed. Play and Shuffle still take them all.
                 SearchBar {
                     objectName: "playlistFilter"
-                    visible: root.tracks.length > 0
+                    visible: trackModel.length > 0
                     Layout.preferredWidth: 280
                     Layout.topMargin: Theme.space1
                     placeholder: qsTr("Find in this playlist…")
@@ -417,9 +391,9 @@ Rectangle {
                         icon: "play"
                         accent: true
                         onClicked: {
-                            if (root.tracks.length > 0) {
+                            if (trackModel.length > 0) {
                                 bridge.markPlaylistPlayed(root.playlistUuid)
-                                root.playFrom(root.sortedTracks, 0)
+                                root.playFrom(trackModel.sortedRows(), 0)
                             }
                         }
                     },
@@ -428,10 +402,10 @@ Rectangle {
                         icon: "shuffle"
                         accent: false
                         onClicked: {
-                            if (root.tracks.length > 0) {
+                            if (trackModel.length > 0) {
                                 bridge.markPlaylistPlayed(root.playlistUuid)
                                 player.setShuffle(true)
-                                root.playFrom(root.sortedTracks, Math.floor(Math.random() * root.tracks.length))
+                                root.playFrom(trackModel.sortedRows(), Math.floor(Math.random() * trackModel.length))
                             }
                         }
                     },
@@ -497,7 +471,7 @@ Rectangle {
             showAlbum:      width - root.sidebarReclaim >= albumBreakpoint
             showAdded:      width - root.sidebarReclaim >= addedBreakpoint
             // Its number on the playlist, filtered or sorted.
-            trackNum:       root.placeOf(index) + 1
+            trackNum:       place + 1
             title:          modelData.title
             artists:        modelData.artists
             albumTitle:     modelData.albumTitle
@@ -505,9 +479,8 @@ Rectangle {
             coverUrl:       modelData.coverUrl80
             trackData:      modelData
             playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
-            // Its place on Tidal's list, which a sort does not move. A new
-            // list can make its rows before its order is worked out.
-            trackItemIndex: root.placeOf(index)
+            // Its place on Tidal's list, which a sort does not move.
+            trackItemIndex: place
             reorderable: root.canReorder
             z: reordering ? 2 : 0
             transform: Translate { y: playlistTrackRow.reordering ? root.dragOffset : 0 }
@@ -517,17 +490,17 @@ Rectangle {
             onReorderCanceled: root.cancelMove()
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
-                root.playFrom(root.shownTracks, index)
+                root.playFrom(trackModel.shownRows(), index)
             }
             // The row leaves the page only on the server's word. The count
-            // beside the title reads root.tracks.length, and the bridge repairs
+            // beside the title reads trackModel.length, and the bridge repairs
             // the cached counts drawn elsewhere.
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 var requested = root.playlistUuid
                 var row = playlistTrackRow
                 var trackId = Number(modelData.id)
                 var named = root.playlistTitle
-                var had = root.tracks.filter(function (t) { return Number(t.id) === trackId }).length
+                var had = trackModel.countOf(trackId)
                 // Edits confirms it with Tidal before it says so and offers Undo.
                 Edits.removeFromPlaylist(requested, named, trackId, itemIndex, had,
                                          function(ok, stale, index) {
@@ -536,12 +509,10 @@ Rectangle {
                     // Before the list is touched, which rebuilds the rows. An
                     // earlier splice may have destroyed this one already.
                     if (row) row.confirmRemovedFromPlaylist(ok === true)
-                    if (ok === true && index >= 0 && index < root.tracks.length) {
+                    if (ok === true && index >= 0 && index < trackModel.length) {
                         // The row the server took out, not itemIndex when an
                         // earlier removal landed in between.
-                        var arr = root.tracks.slice()
-                        arr.splice(index, 1)
-                        root.tracks = arr
+                        root.tracks = trackModel.withRemoved(index)
                     }
                 })
             }
@@ -560,8 +531,8 @@ Rectangle {
             ColumnLayout {
                 id: noMatches
                 objectName: "playlistNoMatches"
-                visible: !root.loadFailed && root.tracks.length > 0
-                         && root.trackFilter.trim().length > 0 && root.shownTracks.length === 0
+                visible: !root.loadFailed && trackModel.length > 0
+                         && root.trackFilter.trim().length > 0 && trackModel.count === 0
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
                 spacing: Theme.space2

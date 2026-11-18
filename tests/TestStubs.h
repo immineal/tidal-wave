@@ -28,6 +28,7 @@
 #include <QVariantMap>
 
 #include "api/RecordVersions.h"
+#include "api/TrackRows.h"
 #include "api/TidalBridge.h"   // withRecentSearch / kRecentSearchCap
 #include "ui/I18n.h"
 #include "ui/Application.h"
@@ -312,12 +313,19 @@ public:
     // switch: PlaylistPage.reloadTracks() asks for tracks alone, and the header
     // queue is asserted to hold exactly one reply per page opened.
     Q_INVOKABLE void fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
+        answerPlaylistTracks(uuid, cb, false);
+    }
+    Q_INVOKABLE void fetchPlaylistTrackRows(const QString &uuid, QJSValue cb) {
+        answerPlaylistTracks(uuid, cb, true);
+    }
+    void answerPlaylistTracks(const QString &uuid, QJSValue cb, bool asRows) {
         m_lastPlaylistTracksFetched = uuid;
         ++m_playlistTracksFetches;
         if (!cb.isCallable()) return;
         QJSEngine *e = jsEngine();
         QJSValueList args;
-        args << (e ? e->toScriptValue(m_playlistTracks) : emptyArray())
+        args << (!e ? emptyArray() : asRows ? e->toScriptValue(Tidal::wrapRows(m_playlistTracks))
+                                            : e->toScriptValue(m_playlistTracks))
              << QJSValue(m_headerError);
         if (m_deferTracks) { m_pendingTracks.append({cb, args}); return; }
         cb.call(args);
@@ -1030,6 +1038,7 @@ public:
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const {
         return matching(m_favoriteTrackList, query, {"title", "artists", "albumTitle"});
     }
+    Q_INVOKABLE QVariant favoriteTrackRows() const { return Tidal::wrapRows(m_favoriteTrackList); }
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const {
         return matching(m_favoriteAlbumList, query, {"title", "artists"});
     }
