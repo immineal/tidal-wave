@@ -146,6 +146,51 @@ TestCase {
         mouseRelease(p.host.contentItem, at.x, at.y + 2 * 52 + 10)
     }
 
+    // At the page's own top, hero showing: the line sits on the seam between
+    // two rows' grounds, inside no row's text, the carried row's included.
+    function test_the_line_sits_between_rows_clear_of_their_text() {
+        var p = showPage()
+        p.list.positionViewAtBeginning()
+        wait(20)
+        var at = drag(p, 1, 2, false)
+        var line = findByName(p.page, "playlistDropIndicator")
+        verify(line.visible, "no drop line while dragging")
+        compare(p.page.dropGap, 4)
+        var lineY = line.mapToItem(p.page, 0, line.height / 2).y
+        var seam = rowAt(p, 4).mapToItem(p.page, 0, 0).y
+        fuzzyCompare(lineY, seam, 1.5, "the line is not on the seam above the row it lands before")
+        for (var i = 0; i < 6; ++i) {
+            var g = findByName(rowAt(p, i), "trackRowGround")
+            var top = g.mapToItem(p.page, 0, 0).y, bottom = top + g.height
+            verify(lineY <= top + 2 || lineY >= bottom - 2,
+                   "the line runs through row " + i + " (" + top + " to " + bottom + ", line at " + lineY + ")")
+        }
+        mouseRelease(p.host.contentItem, at.x, at.y + 2 * 52 + 10)
+        compare(bridge.movesForTest(), ["1>3"])
+    }
+
+    function test_the_row_stays_put_and_a_preview_travels() {
+        var p = showPage()
+        var before = rowAt(p, 1).mapToItem(p.page, 0, 0).y
+        var at = drag(p, 1, 2, false)
+        compare(rowAt(p, 1).mapToItem(p.page, 0, 0).y, before, "the dragged row left its place")
+        var pv = findByName(p.host.contentItem, "trackDragPreview")
+        verify(pv && pv.visible, "no preview travels with the pointer")
+        compare(findByName(pv, "trackDragPreviewLabel").text, "Song 1")
+        mouseRelease(p.host.contentItem, at.x, at.y + 2 * 52 + 10)
+    }
+
+    function test_escape_calls_the_move_off() {
+        var p = showPage()
+        p.host.requestActivate()
+        var at = drag(p, 0, 2, false)
+        keyClick(Qt.Key_Escape)
+        verify(!findByName(p.page, "playlistDropIndicator").visible, "the line outlived Escape")
+        mouseRelease(p.host.contentItem, at.x, at.y + 2 * 52 + 10)
+        compare(bridge.movesForTest(), [], "the drop after Escape still moved the row")
+        compare(titles(p.page), "Song 0,Song 1,Song 2,Song 3,Song 4,Song 5")
+    }
+
     function test_a_drag_back_to_its_place_sends_nothing() {
         var p = showPage()
         var at = drag(p, 2, 1, false)

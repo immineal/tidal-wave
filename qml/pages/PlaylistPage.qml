@@ -159,7 +159,8 @@ Rectangle {
 
     // ── reordering by drag ───────────────────────────────────────────────
     // Only in the list's own order with every row shown, so a drop between
-    // two rows means the same place on Tidal; and one move at a time.
+    // two rows means the same place on Tidal; and one move at a time. The row
+    // stays put and TrackDrag's preview travels, so the line sits in a gap.
     property bool moving: false
     readonly property bool canReorder: root.playlistEditable && trackSort.key === ""
         && root.trackFilter.trim().length === 0 && !root.moving && !root.loading
@@ -167,36 +168,32 @@ Rectangle {
     readonly property int rowHeight: 52
     property int  dragFrom: -1
     property real dragRowY: 0
-    property real dragPressY: 0
-    property real dragOffset: 0
+    // The pointer over the list, in the list's own coordinates.
+    property bool pointerInside: false
+    property real pointerY: 0
     property int  _currentBefore: -1
     readonly property bool dragging: root.dragFrom >= 0
     // The gap the drop aims at, 0 above the first row to n below the last,
-    // nearest the dragged row's middle; and the row's place after the drop.
-    readonly property int dropGap: !root.dragging ? -1
+    // nearest the pointer; and the row's place after the drop.
+    readonly property int dropGap: !root.dragging || !root.pointerInside ? -1
         : Math.max(0, Math.min(trackModel.length,
-              Math.round((root.dragRowY + root.dragOffset + root.rowHeight / 2
+              Math.round((root.pointerY + tracksList.contentY
                           - (root.dragRowY - root.dragFrom * root.rowHeight)) / root.rowHeight)))
     readonly property int dropTo: root.dropGap > root.dragFrom ? root.dropGap - 1 : root.dropGap
 
-    function beginMove(row, index, pressY) {
+    function beginMove(row, index) {
         root._currentBefore = tracksList.currentIndex
         // Keeps the dragged row alive while the list scrolls under it.
         tracksList.currentIndex = index
         root.dragFrom = index
         root.dragRowY = row.y
-        root.dragPressY = pressY
-        root.dragOffset = 0
-    }
-    // y is the pointer in the dragged row, which already carries the offset.
-    function followMove(y) {
-        if (root.dragging) root.dragOffset += y - root.dragPressY
+        root.pointerInside = false
     }
     function cancelMove() {
         edgeScroll.stop()
         if (!root.dragging) return
         root.dragFrom = -1
-        root.dragOffset = 0
+        root.pointerInside = false
         tracksList.currentIndex = root._currentBefore
     }
     function endMove() {
@@ -220,25 +217,22 @@ Rectangle {
     onTracksChanged: if (root.dragging) root.cancelMove()
     onCanReorderChanged: if (!root.canReorder && root.dragging) root.cancelMove()
 
-    // Scrolls while the dragged row is held near the top or the bottom; the
-    // row stays under the pointer, so it travels with the list.
+    // Scrolls while the pointer is held near the top or the bottom of the list.
     Timer {
         id: edgeScroll
         interval: 16
         repeat: true
-        running: root.dragging
+        running: root.dragging && root.pointerInside
         readonly property real band: 48
         onTriggered: {
-            var y = root.dragRowY + root.dragOffset + root.dragPressY - tracksList.contentY
+            var y = root.pointerY
             var top = detailBar.height + 40, bottom = tracksList.height
             var step = y < top + band ? -Math.min(16, top + band - y)
                      : y > bottom - band ? Math.min(16, y - (bottom - band)) : 0
             if (step === 0) return
             var lo = tracksList.originY
             var hi = tracksList.originY + Math.max(0, tracksList.contentHeight - tracksList.height)
-            var next = Math.max(lo, Math.min(hi, tracksList.contentY + step))
-            root.dragOffset += next - tracksList.contentY
-            tracksList.contentY = next
+            tracksList.contentY = Math.max(lo, Math.min(hi, tracksList.contentY + step))
         }
     }
 
@@ -482,11 +476,7 @@ Rectangle {
             // Its place on Tidal's list, which a sort does not move.
             trackItemIndex: place
             reorderable: root.canReorder
-            z: reordering ? 2 : 0
-            transform: Translate { y: playlistTrackRow.reordering ? root.dragOffset : 0 }
-            onReorderStarted: (x, y) => root.beginMove(playlistTrackRow, index, y)
-            onReorderMoved: (x, y) => root.followMove(y)
-            onReorderEnded: root.endMove()
+            onReorderStarted: (x, y) => root.beginMove(playlistTrackRow, index)
             onReorderCanceled: root.cancelMove()
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
@@ -583,13 +573,34 @@ Rectangle {
         // Where the dragged row would land: a line in the gap.
         Rectangle {
             objectName: "playlistDropIndicator"
-            visible: root.dragging && root.dropTo !== root.dragFrom
+            visible: root.dragging && root.dropGap >= 0 && root.dropTo !== root.dragFrom
             x: tracksList.leftMargin + Theme.space2
             width: tracksList.rowWidth - 2 * Theme.space2
             height: 2
             color: Theme.accent
             y: root.dragRowY + (root.dropGap - root.dragFrom) * root.rowHeight - tracksList.contentY - 1
             z: 3
+        }
+    }
+
+    // The list's half of a reorder: where a row of its own is carried to.
+    DropArea {
+        objectName: "playlistReorderDrop"
+        anchors.fill: tracksList
+        keys: TrackDrag.keys
+        enabled: root.dragging
+        function follow(drag) {
+            root.pointerY = drag.y
+            root.pointerInside = true
+        }
+        onEntered: (drag) => follow(drag)
+        onPositionChanged: (drag) => follow(drag)
+        onExited: root.pointerInside = false
+        onDropped: (drop) => {
+            root.pointerY = drop.y
+            root.pointerInside = true
+            drop.accept(Qt.MoveAction)
+            root.endMove()
         }
     }
 
