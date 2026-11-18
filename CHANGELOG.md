@@ -57,6 +57,9 @@ works differently now, the entry says what 0.4.2 did.
   went back and played the track before it.
 - While a track loads, the seek bar shows its length. 0.4.2 showed the previous
   track's.
+- If the sound system stops taking the audio, playback picks up again after a
+  few seconds. With Qt 6.5 or newer, 0.4.2 stayed frozen.
+  After such a recovery, the next track change has a short gap.
 
 ### Lyrics
 
