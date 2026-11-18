@@ -1015,12 +1015,23 @@ Item {
 
     SettingsPanel { id: settingsPopup }
 
-    // Nothing is done with the answer here: the bridge raises playlistCreated,
-    // LibraryIndex adds the row and it arrives through `library.entries` like
-    // every other. The alias is a test's only handle on the reparented Popup.
+    // The row arrives on its own: the bridge raises playlistCreated, and
+    // LibraryIndex adds it through `library.entries` like every other. The
+    // new playlist opens, as it does from the picker. The alias is a test's
+    // only handle on the reparented Popup.
     readonly property alias playlistDialog: newPlaylistDialog
 
-    NewPlaylistDialog { id: newPlaylistDialog }
+    NewPlaylistDialog {
+        id: newPlaylistDialog
+        onPlaylistCreated: (playlist) => root.openCreated(playlist)
+    }
+
+    function openCreated(playlist) {
+        var uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
+        if (uuid.length > 0)
+            root.navigate("playlist", { playlistUuid: uuid, playlistTitle: playlist.title || "",
+                                        coverUrl: "", playlistType: "USER" })
+    }
 
     // ── inline components ────────────────────────────────────────────────
 
