@@ -322,6 +322,12 @@ Item {
     function revealCurrent() {
         if (!visible || !hasCurrent || currentAt < 0 || currentAt >= list.count) return
         list.positionViewAtIndex(currentAt, ListView.Center)
+        // Qt 6.5 builds a far row only after the call, which then leaves it at
+        // the top: build it now and centre it again.
+        if (!list.itemAtIndex(currentAt)) {
+            list.forceLayout()
+            list.positionViewAtIndex(currentAt, ListView.Center)
+        }
         scheduleCurrentPosition()
     }
 

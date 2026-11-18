@@ -766,7 +766,8 @@ TestCase {
         var panel = openPanel(host)
         var view = panel.queueList
 
-        verify(view.contentY > 0, "the panel opened at the top of the history")
+        // By index: content coordinates are estimates, below 0 on Qt 6.5.
+        verify(view.indexAt(1, view.contentY + 1) > 0, "the panel opened at the top of the history")
         verify(panel.currentOnScreen,
                "the current track is not on screen after opening the panel")
 
@@ -776,6 +777,10 @@ TestCase {
         var top = entry.mapToItem(view, 0, 0).y
         verify(top >= -0.5 && top + entry.height <= view.height + 0.5,
                "the current row is at y=" + top.toFixed(1) + " in a "
+               + view.height + "px viewport")
+        // In the middle, with the tracks before it in sight above.
+        verify(Math.abs(top + entry.height / 2 - view.height / 2) <= entry.height,
+               "the current row opened at y=" + top.toFixed(1) + ", not in the middle of a "
                + view.height + "px viewport")
 
         verify(!findByName(panel, "queueJumpToCurrent").visible,
