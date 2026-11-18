@@ -1038,6 +1038,7 @@ public:
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const {
         return matching(m_favoriteTrackList, query, {"title", "artists", "albumTitle"});
     }
+    Q_INVOKABLE QVariant favoriteTrackRows() const { return Tidal::wrapRows(m_favoriteTrackList); }
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const {
         return matching(m_favoriteAlbumList, query, {"title", "artists"});
     }
