@@ -263,6 +263,13 @@ TestCase {
             page = createTemporaryObject(mixC, holder, {})
             page.mixId = "mx-1"
             headName = "mixTracksHeader"; barName = "mixScrollBar"
+        } else if (which === "album") {
+            bridge.setAlbumForTest({ id: 900000101, title: "Ein Album", artists: "Eine Band",
+                                     artistId: 3, numTracks: 40, coverUrl: "" }, manyTracks(40))
+            page = createTemporaryObject(albumC, holder, {})
+            page.albumId = 900000101
+            listName = "albumTracksList"; headName = "albumTracksHeader"
+            barName = "albumScrollBar"
         } else {
             bridge.setTrackRadioForTest(manyTracks(40))
             page = createTemporaryObject(radioC, holder, {})
@@ -294,8 +301,11 @@ TestCase {
     // the rows (or the other way round) shows.
     function checkAligned(p, row, what) {
         function xOn(item) { return item.mapToItem(p.page, 0, 0).x }
+        // A row without covers (an album's) starts its title column at the title.
+        var cover = findByName(row, "trackRowCover")
+        var titleCol = cover && cover.parent.visible ? cover : findByName(row, "trackTitle")
         fuzzyCompare(xOn(findByName(p.head, "trackListHeadingTitle")),
-                     xOn(findByName(row, "trackRowCover")), 1, what + ": the title heading is off its column")
+                     xOn(titleCol), 1, what + ": the title heading is off its column")
         var pairs = [["trackListHeadingAlbum", "trackAlbumColumn", "album"],
                      ["trackListHeadingAdded", "trackAddedColumn", "date"]]
         for (var i = 0; i < pairs.length; ++i) {
@@ -347,9 +357,9 @@ TestCase {
     }
     // A page's first row and the list it scrolls in, which it is inset from.
     function openRows(which) {
-        if (which !== "album" && which !== "search") {
+        if (which !== "search") {
             var p = openPage(which)
-            return { page: p.page, frame: p.list, row: p.list.itemAtIndex(0),
+            return { page: p.page, frame: p.list, row: firstRow(p.list.itemAtIndex(0)),
                      bar: findByName(p.page, p.barName) }
         }
         var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
@@ -386,10 +396,63 @@ TestCase {
                      data.tag + ": the rows' right inset is not their left one")
     }
 
-    function test_every_page_lines_its_headings_up_with_its_rows_data() { return pagesWithHeadings() }
+    function test_every_page_lines_its_headings_up_with_its_rows_data() {
+        return pagesWithHeadings().concat([{ tag: "album", which: "album" }])
+    }
     function test_every_page_lines_its_headings_up_with_its_rows(data) {
         var p = openPage(data.which)
-        checkAligned(p, p.list.itemAtIndex(0), data.tag)
+        checkAligned(p, firstRow(p.list.itemAtIndex(0)), data.tag)
+    }
+
+    // The album's headings name its columns and sort nothing: the album's
+    // own order, by disc, is the point of the page. Scrolled, they stay
+    // under the bar as on the other pages.
+    function test_the_album_headings_stay_at_the_top_and_sort_nothing() {
+        var p = openPage("album")
+        compare(p.head.sort, null, "the album's headings sort")
+        var title = findByName(p.head, "trackListHeadingTitle")
+        verify(!title.activeFocusOnTab, "a heading that sorts nothing is a tab stop")
+        verify(!findByName(p.head, "trackListHeadingAlbum").visible, "the album page heads an album column")
+        var bar = findByName(p.page, "albumStickyHeader")
+        function topOn(item) { return item.mapToItem(p.page, 0, 0).y }
+        var atRest = topOn(p.head)
+        verify(atRest > bar.height + 100, "the headings are not under the hero at rest")
+        fuzzyCompare(atRest, topOn(p.list.headerItem) + p.list.headerItem.height - p.head.height, 1,
+                     "the headings are not the last thing over the rows")
+
+        p.list.contentY = p.list.originY + p.list.headerItem.height + 52 * 10
+        waitForRendering(p.page)
+        fuzzyCompare(topOn(p.head), bar.height, 1, "the headings scrolled away with the rows")
+        compare(bar.reveal, 1, "rows that passed under the headings show through the bar")
+        var under = p.list.itemAt(40, p.list.contentY + bar.height + p.head.height / 2)
+        verify(under, "no row under the headings")
+        checkAligned(p, firstRow(under), "album scrolled")
+        var queued = JSON.stringify(player.queueTracks)
+        mouseClick(title, 10, title.height / 2)
+        compare(JSON.stringify(player.queueTracks), queued, "a click on the headings played the row under them")
+    }
+
+    // Over a disc's heading as over a single disc's rows.
+    function test_the_album_headings_sit_over_the_first_disc() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var t = manyTracks(6)
+        for (var i = 0; i < t.length; ++i) { t[i].volumeNumber = i < 3 ? 1 : 2; t[i].trackNumber = i % 3 + 1 }
+        bridge.setAlbumForTest({ id: 900000102, title: "Zwei Scheiben", artists: "Eine Band",
+                                 artistId: 3, numTracks: 6, coverUrl: "" }, t)
+        var page = createTemporaryObject(albumC, holder, {})
+        page.albumId = 900000102
+        var list = null
+        tryVerify(function () {
+            list = findByName(page, "albumTracksList")
+            return list && list.count === 6 && list.itemAtIndex(0) !== null
+        }, 3000, "the album never filled")
+        waitForRendering(page)
+        var head = findByName(page, "albumTracksHeader")
+        var disc = findByName(list.itemAtIndex(0), "albumDiscHeader")
+        verify(head && head.visible, "a two-disc album has no headings")
+        verify(disc && disc.visible, "the first disc lost its heading")
+        verify(disc.mapToItem(page, 0, 0).y >= head.mapToItem(page, 0, head.height).y - 0.5,
+               "the disc heading is not under the column headings")
     }
 
     // Scrolled past the hero, the headings stay at the top of the list with
@@ -450,7 +513,9 @@ TestCase {
 
     // A long list opens at the top, its hero on screen, not scrolled by
     // the hero's height.
-    function test_a_long_list_opens_at_its_hero_data() { return pagesWithHeadings().slice(1) }
+    function test_a_long_list_opens_at_its_hero_data() {
+        return pagesWithHeadings().slice(1).concat([{ tag: "album", which: "album" }])
+    }
     function test_a_long_list_opens_at_its_hero(data) {
         var p = openPage(data.which)
         compare(p.list.contentY, p.list.originY, "the page opened scrolled")
