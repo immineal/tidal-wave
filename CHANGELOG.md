@@ -7,471 +7,389 @@ milestones and not a semver promise about an API.
 
 ## [0.5.0] - 2026-11-18
 
-### Added
+The biggest release so far, so this section is sorted by topic. Where something
+works differently now, the entry says what 0.4.2 did.
 
-**Playback**
+### Playback
 
-- The next track follows the last one without a gap. A second player loads
-  the next track's file and starts it just before the current one ends.
-  Where the next file is not ready in time, the change goes as in 0.4.2,
-  which left a short silence between tracks. This needs Qt 6.5 or newer.
-- Normalise loudness, a switch under Settings > Playback, on by default.
-  Each track plays at the loudness Tidal measured for it, so a quiet master
-  and a loud one come out about as loud. An album played from its page in
-  its own order keeps the album's balance between its tracks. A track is
-  never raised past what its peak allows.
-- Crossfade between tracks, a switch under Settings > Playback, off by
-  default, with a length from 1 to 12 seconds (5 to begin with). Tracks
-  that follow each other on the album that plays, in its order, keep their
-  gapless join. A skip changes at once. Settings shows the two rows on Qt
-  6.5 and newer only.
-- Autoplay similar tracks when the queue ends, a switch under Settings >
-  Playback, off by default. With it on, the track radio of the last track
-  joins the end of the queue, leaving out tracks already in it, and
-  playback goes on into it. Repeat and casting leave the queue as it is.
-- A lossless track starts once the first part of it has arrived. 0.4.2
-  waited for the whole file. On Qt 6.4 and 6.5 the track still waits for
-  the whole file.
-- The quality badge shows the format of the stream that plays: "24-bit /
-  96 kHz FLAC", "16-bit / 44.1 kHz FLAC" or "AAC 320 kbps". Now playing
-  puts the tier in front, as in "Max · 24-bit / 96 kHz FLAC". 0.4.2 showed
-  the tier alone. Where the stream does not say, the tier is shown as
-  before.
-- Version of records with explicit lyrics, under Settings > Playback:
-  Explicit, the default, or Clean. Search results, an artist's popular
-  tracks, the artist's discography and the rows Tidal puts on Home show
-  that version where a record exists in both. A record with one version
-  shows whatever the setting, and so does everything you saved. The album
-  page's Other versions row lists the other one, and now also finds it
-  where Tidal's own page names none.
+- Gapless playback. The next track starts the moment the last one ends. If its
+  file isn't ready in time, you get the short pause 0.4.2 always had. Needs Qt
+  6.5 or newer.
+- Normalise loudness, in Settings > Playback and on by default, plays each
+  track at the loudness Tidal measured for it. An album played in order from
+  its page keeps the balance between its tracks. No track is raised past its
+  peak.
+- Crossfade, in Settings > Playback and off by default, from 1 to 12 seconds.
+  Tracks that follow each other on an album played in order still join without
+  a gap, and a skip changes at once. Needs Qt 6.5 or newer.
+- Autoplay similar tracks, in Settings > Playback and off by default. When the
+  queue runs out, the last track's radio is added to it, minus tracks already
+  there, and playback carries on. Nothing is added while repeat is on or while
+  you cast.
+- Lossless tracks start as soon as the first part has arrived, on Qt 6.6 or
+  newer. 0.4.2 waited for the whole file.
+- The quality badge shows the format of the stream, such as "24-bit / 96 kHz
+  FLAC" or "AAC 320 kbps". Now playing puts the tier in front: "Max · 24-bit /
+  96 kHz FLAC". 0.4.2 showed the tier alone.
+- A new setting in Settings > Playback picks Explicit (the default) or Clean.
+  Search, artist pages and Tidal's rows on Home show that version of a record
+  when both exist. Records you saved show as they are. The other version is
+  listed under Other versions on the album page.
+- Next under repeat one moves on to the next track. 0.4.2 started the same one
+  again.
+- Shuffle on a page plays the track you picked first, then the rest of the
+  album or playlist in random order. 0.4.2 left out the tracks above the one
+  you picked.
+- A click on the playing track pauses or resumes it. 0.4.2 started it over.
+  The track stays marked while paused.
+- The queue restored at start downloads nothing until you press Play, and
+  nothing is fetched ahead while you are paused. 0.4.2 downloaded the restored
+  track at every start.
+- Pressing Next or Previous several times in a row loads only the track you
+  stop on.
+- The whole queue is kept between sessions. 0.4.2 kept 50 tracks before the
+  current one and up to 650 after it.
+- The volume slider follows how loud things sound, so its lower half is no
+  longer close to silent. Your saved volume sounds the same as before.
+- Stop from a desktop media widget stops the track, and Play then starts it
+  from the beginning. 0.4.2 paused.
+- Removing the playing track from the end of the queue stops playback. 0.4.2
+  went back and played the track before it.
+- While a track loads, the seek bar shows its length. 0.4.2 showed the previous
+  track's.
 
-**Lyrics**
+### Lyrics
 
-- Settings has a new section, Experimental, above Privacy. It holds three
-  switches for lyrics.
-- Synced lyrics from LRCLIB, on by default. While the now playing page is
-  open, a track that Tidal has no synced lyrics for is looked up on
-  lrclib.net. Lyrics from more sites, off unless you turn it on, asks
-  NetEase Cloud Music, KuGou and Genius after LRCLIB, in that order.
-  - The asking stops at the first site with synced lyrics, and these follow
-    the song as Tidal's do. Plain lyrics from Tidal stay on screen while the
-    sites are asked.
-  - A line at the foot of the lyrics names the site, and a click on it opens
-    the site. A track that LRCLIB or NetEase knows as an instrumental says
-    Instrumental.
-  - Each site gets at most one request a second and is left alone for a
-    while after it refuses one. Synced lyrics that are found are kept on
-    disk, so the song is not looked up again. A track with plain lyrics only,
-    or none, is looked up again after 30 days.
-  - The privacy notice in Settings and the README say what each site
-    receives, and that two of them are servers in China.
-- Sync plain lyrics automatically, on by default. Lyrics without timings,
-  from Tidal or from a site, are timed against the track's audio on this
-  machine, and nothing is sent anywhere for it. It uses the audio the app
-  has already downloaded to play the track, and runs at low priority in the
-  background. While the lyrics are open, the next track is analysed ahead.
-  - Timings it is unsure of are not shown. The ones shown follow the song
-    and say "Synced automatically, may be off" under the lyrics. Synced
-    lyrics from Tidal or a site are always preferred to them.
-  - The timings are kept on disk next to the lyrics.
-- Plain lyrics that are longer than the panel have a scroll bar in its
-  right margin, which can be dragged. 0.4.2 showed none.
+- If Tidal has no synced lyrics for a track, the app looks for them on LRCLIB.
+  This is on by default. Turn on Lyrics from more sites and it also asks
+  NetEase Cloud Music, KuGou and Genius. Both switches live in a new
+  Experimental section of Settings.
+  - The first site with synced lyrics is used. Tidal's plain lyrics stay on
+    screen while the sites are asked.
+  - The source is named under the lyrics, and a click opens it. Tracks that
+    LRCLIB or NetEase know as instrumentals say Instrumental.
+  - Each site gets at most one request a second. Lyrics that are found are
+    kept on disk. A track with only plain lyrics, or none, is looked up again
+    after 30 days.
+  - The privacy notice in Settings and the README say what each site receives.
+    Two of them are servers in China.
+- Sync plain lyrics automatically, on by default, times plain lyrics against
+  the track's audio on your computer. Nothing is sent anywhere. It runs in the
+  background at low priority, and works ahead on the next track while the
+  lyrics are open. Lines it isn't sure of get no timing, and the result is
+  marked "Synced automatically, may be off". Real synced lyrics always come
+  first.
+- Plain lyrics that don't fit the panel get a scroll bar you can drag.
+- Lyrics open in place of the artwork, and the rest of now playing stays put.
+  In 0.4.2 they shifted the page and pushed Up next down.
+- Once you have scrolled synced lyrics, they follow the song again when you
+  bring the sung line back to the middle, or the top before the first line.
+  0.4.2 waited for Resync, a click on a line or the next track.
+- No line lights up before the first one is sung. 0.4.2 lit the first line
+  through the whole intro.
+- Lyrics that arrive late for the previous track no longer replace the current
+  track's.
 
-**Scrobbling**
+### Scrobbling
 
-- Settings has a new section, Scrobbling, below Playback, with a switch
-  each for ListenBrainz and Last.fm. Both are off by default and can be on
-  at once.
-  - ListenBrainz takes the user token from your ListenBrainz settings page.
-    Last.fm signs in through its own page in the browser: Connect with
-    Last.fm, then I've allowed access.
-  - A track counts once half of it, or 4 minutes, has really been played,
-    and only if it is longer than 30 seconds. Pauses and seeks add nothing.
-    Casting counts like playing here.
-  - Each listen is kept on disk until the service has taken it, so a quit
-    or a lost connection loses none. Disconnect forgets the account and
-    keeps the listens not sent yet for when the same account connects
-    again. Discard deletes them. Logging out of Tidal disconnects both.
+- A new Scrobbling section in Settings sends what you play to ListenBrainz,
+  Last.fm or both. Both are off until you connect an account.
+  - ListenBrainz needs the user token from your ListenBrainz settings page.
+    Last.fm signs in through its website: Connect with Last.fm, then I've
+    allowed access.
+  - A track counts once half of it or 4 minutes has played, and only if it is
+    longer than 30 seconds. Time skipped by seeking doesn't count. Casting
+    counts like playing here.
+  - Listens are kept on disk until the service accepts them, so quitting or
+    losing the connection loses none. Disconnect keeps unsent listens for
+    when you connect the same account again. Discard deletes them. Logging out
+    of Tidal disconnects both services.
   - The privacy notice in Settings and the README say what each service
     receives.
 
-**Playlists and the collection**
+### Playlists and your collection
 
-- Ctrl+Z takes back the last change, and a notice above the player bar
-  offers Undo for it. This covers liked tracks, saved albums and mixes,
-  followed artists, tracks added to or removed from a playlist, a playlist
-  reordered and the queue cleared, up to ten changes back. The app reads
-  each change back from Tidal before it says it is done. A change Tidal
-  does not show is reported as not confirmed, with no Undo. Deleting a
-  playlist has no Undo.
-- A playlist you made can be deleted, from Delete playlist… in its menu in
-  the sidebar or from Delete in its Edit dialog. Both ask first.
-- A playlist you made can be reordered by dragging its tracks, while it is
-  shown in its own order and not filtered. The row stays in its place, a
-  line shows where it will land, and a small chip with the title follows
-  the pointer. Escape calls the drag off.
-- A track can be dragged from any list onto one of your playlists in the
-  sidebar, or into the queue. Held over the queue button in the player bar
-  for a moment, it opens the queue and lands between the rows where it is
-  let go. Let go on the button, it goes to the end of the queue.
-- A whole album, playlist or mix goes into a playlist from Add to playlist
-  in its header's menu or its card's menu.
-- The Add to playlist picker has a search field and ticks the playlists
-  that hold the track already.
-- A playlist made with New playlist opens, from the sidebar, from
-  Collection and from the picker. 0.4.2 left you where you were.
-- Adding a track that a playlist holds already asks, "Already in …", with
-  Add anyway and Cancel. 0.4.2 added it a second time without a word.
-- An album or playlist can be downloaded whole, from a button in its
-  header. The tracks go one at a time into a folder named after it, as
-  FLAC, at least 20 seconds apart to keep clear of Tidal's limits. The
-  button turns into Cancel while the run goes, and tracks already in the
-  folder are skipped, so a run picks up where a cancelled one stopped.
-- Settings > Playback has a Download folder, where the save dialog starts.
-  After a download, the row's tick and Show in folder in its menu open the
-  file manager at the file. A failed download says why in a tool tip over
-  the row's button. 0.4.2 only turned the button red.
-- A playlist has a field in its header, Find in this playlist…, that
-  narrows the list to tracks whose title, artists or album hold the words.
+- Ctrl+Z, or Undo on the notice above the player bar, takes back your last
+  change, up to ten steps: likes, saved albums and mixes, followed artists,
+  tracks added to or removed from a playlist, a reordered playlist and a
+  cleared queue. The app checks each change with Tidal before calling it done.
+  A change Tidal doesn't show is reported as not confirmed, without Undo.
+  Deleting a playlist can't be undone.
+- Delete a playlist you made with Delete playlist… in its sidebar menu or
+  Delete in its Edit dialog. Both ask first.
+- Reorder a playlist you made by dragging its tracks, while it is in its own
+  order and unfiltered. The row stays put, a line shows where it will land and
+  a chip with the title follows the pointer. Escape cancels.
+- Drag a track from any list onto one of your playlists in the sidebar, or
+  into the queue. Hold it over the queue button to open the queue and drop it
+  between two rows, or let go on the button to add it at the end.
+- Add a whole album, playlist or mix to a playlist from the menu in its header
+  or on its card.
+- The Add to playlist picker has a search field and ticks the playlists that
+  already hold the track.
+- Adding a track that a playlist already holds asks first ("Already in …").
+  0.4.2 added a second copy without a word.
+- New playlist opens the playlist it makes, from the sidebar, Collection or
+  the picker.
+- Remove from playlist works. 0.4.2 sent a request that Tidal always refused,
+  and the track stayed. If the playlist was changed on another device in the
+  meantime, it is loaded again and nothing is removed.
+- Add to playlist, Edit and Remove from playlist appear only on playlists you
+  made. 0.4.2 offered them on other people's playlists too, and Tidal refused
+  the change.
+- Download a whole album or playlist from its header. Tracks are saved one by
+  one as FLAC into a folder named after it, at least 20 seconds apart to stay
+  within Tidal's limits. The button turns into Cancel while it runs. Tracks
+  already in the folder are skipped, so a cancelled download picks up where it
+  stopped.
+- Settings > Playback has a Download folder. After a download, the row's tick
+  and Show in folder open your file manager at the file. A failed download
+  says why in a tool tip. 0.4.2 only turned the button red.
+- Find in this playlist… narrows a playlist to tracks whose title, artists or
+  album match what you type.
 - Liked tracks, playlists, mixes and track radios have column headings: #,
-  Title, Album, Date added (on liked tracks and playlists) and Length. A
-  click on Title, Album, Date added or Length sorts by it, a second click
-  the other way round, a third returns to the list's own order. Scrolled
-  down, the headings stay at the top. On liked tracks they take the place
-  of the sort words. The album page has the same headings, which sort
-  nothing there.
-- Track rows show a filled heart on liked tracks, and an outline heart
-  under the pointer on the others. A click on it likes or unlikes. An
-  explicit track carries an "E" after its title, and a track's version
-  follows the title, as "(Live)". The album name in a row is a link to the
-  album.
-- Copy link in the menu of albums, playlists, artists and mixes. Album,
-  playlist, artist and mix pages have a More button that opens that menu.
-- An album card's artists are links, and its menu has Go to artist.
-- Collection has a button right of its search field. On the albums,
-  artists, playlists and mixes tabs it is Surprise me and opens one of the
-  items shown at random. On the tracks tab it is Shuffle and plays the
-  tracks shown in random order. Both follow the search field and the sort.
-- Saved albums can also be sorted by Artist or by Year.
-- When Tidal cannot be reached, a strip above the page says so, with Try
-  now, and the app keeps asking on its own. Your collection is shown as it
-  was last saved on this computer. 0.4.2 started offline with an empty
-  library and "No saved tracks".
+  Title, Album, Date added and Length. Click one to sort, again to reverse,
+  and a third time for the list's own order. The headings stay in view as you
+  scroll. Albums have the headings too, without sorting.
+- Track rows show a heart on liked tracks and an outline heart under the
+  pointer on the rest. Click it to like or unlike. Explicit tracks carry an
+  "E", the version follows the title, as in "(Live)", and the album name
+  opens the album.
+- Copy link in the menus of albums, playlists, artists and mixes. Their pages
+  have a More button that opens the same menu.
+- Album cards link their artists, and their menu has Go to artist.
+- Collection has Surprise me, which opens a random album, artist, playlist or
+  mix from those shown, and Shuffle on the Tracks tab. Both respect the search
+  field and the sort.
+- Saved albums can be sorted by Artist or Year.
+- A mouse drag on a track row picks up the track. Scroll lists with the wheel,
+  the scroll bar or a finger.
+- Likes, saved albums and artists, playlists and saved mixes changed on
+  another device show up in a running app. It checks when the window gets the
+  focus back, at most once a minute, and every five minutes while it is open,
+  with one small request per list. 0.4.2 read your collection only at sign-in.
+- Long lists of liked tracks, albums and artists no longer lose items. 0.4.2
+  read them in pages, and Tidal's ordering made some fall between pages. Those
+  tracks were missing from Collection and showed an empty heart.
+- Liked tracks are listed newest first. 0.4.2 showed the oldest 100 until the
+  whole list had arrived.
+- The sidebar's library and its search know all your liked tracks. In 0.4.2
+  they often stopped after the first few dozen, and never went past 5000.
+- While your collection loads, it says so. 0.4.2 showed "No saved tracks" and
+  "(0)" until the lists arrived.
+- A Collection search that finds nothing says so. The Mixes tab follows the
+  search field now, and the sort works on the Playlists tab.
+- Collection's search field ignores accents and stray spaces, like the one in
+  the sidebar.
+- Space after a click on a Collection tab plays or pauses. In 0.4.2 it typed
+  into the search field.
+- When Tidal can't be reached, a strip above the page says so, with Try now,
+  and the app keeps trying. Your collection shows as it was last saved on this
+  computer. 0.4.2 started offline with an empty library.
 
-**Pages**
+### Home, search and pages
 
-- Home shows the rows Tidal's own apps put on their home page, around your
-  own rows, in two tabs, For you and Staff picks, at the right end of the
-  greeting's line. The row names come from Tidal in the app's language.
-- Home's new row Recently played lists the albums, playlists, mixes and
-  artists played lately, on any device, from Tidal's own list, with what
-  was played here added. Tidal does not learn from this app what it plays.
-- Under the greeting, Home shows the track in the player with a button to
-  play it.
-- An artist page has an Artist radio button where Tidal has a station for
-  the artist, and Shuffle beside Play.
-- Search leads with Tidal's top result on the All tab. Recent searches sit
+- Home shows the rows from Tidal's own apps around your own, in two tabs, For
+  you and Staff picks. Row names come in the app's language.
+- Recently played on Home lists the albums, playlists, mixes and artists you
+  played lately on any device. What you play in this app is added here and
+  never sent to Tidal.
+- Under the greeting, Home shows the current track with a button to play it.
+- Artist pages have Artist radio, where Tidal has one, and Shuffle.
+- Search leads with Tidal's top result on the All tab. Recent searches appear
   under the field.
-- A track radio page has a header like the other pages, with Play and
-  Shuffle. 0.4.2 had Play all over a bare list.
-- The album page numbers each disc's tracks from 1 and puts a heading over
-  each disc of an album with more than one. 0.4.2 numbered the rows
-  through.
-- Album, artist, playlist, mix and radio pages that fail to load offer Try
-  again, and say so when Tidal cannot be reached.
+- Going to Search selects your last query, so typing replaces it. The old
+  results stay until the new ones arrive.
+- Track radio pages have a proper header with Play and Shuffle.
+- Albums with more than one disc number each disc from 1, under its own
+  heading. 0.4.2 numbered straight through.
+- Back returns to the last five pages as you left them, scrolled and loaded.
+  Collection remembers its place on each tab.
+- Card rows scroll a card at a time with the arrows at their edges, a sideways
+  drag, or a horizontal wheel or swipe. 0.4.2 had only Shift+wheel and the
+  scroll bar.
+- Pages that fail to load offer Try again, and say when Tidal can't be
+  reached.
+- A failed search says Tidal couldn't answer and offers Try again. 0.4.2 showed
+  Qt's own error message.
+- Home's mixes row says when it couldn't load, with Try again. The playlists
+  row no longer reshuffles while it loads.
+- Artist pages show Related artists. Biographies come in paragraphs with
+  links, cut at four lines with Read more. 0.4.2 printed "<br/>" as text. The
+  artist's name over the photo has lost its dark outline.
+- Lengths of an hour or more read as 1:12:05. 0.4.2 wrote 72:05.
 
-**The queue**
+### The queue
 
-- Every row still to come can be dragged, within its part of the queue or
-  across into the other. 0.4.2 let only the hand-queued rows move. The row
-  stays in its place while it is dragged, a chip with the title follows the
-  pointer, and Escape calls the drag off.
-- Every queue row has a menu: Play next, Add to playlist, Go to album, Go
-  to artist and, for rows still to come, Remove from queue. 0.4.2 had Remove
-  from queue on hand-queued rows only.
-- The queue has a close button, and takes the keyboard while it is open.
+- Every track still to come can be dragged, within its part of the queue or
+  across into the other. 0.4.2 let you move only tracks you had queued by
+  hand. The row stays put while you drag, a chip with the title follows the
+  pointer, and Escape cancels.
+- Every row has a menu with Play next, Add to playlist, Go to album, Go to
+  artist and, for tracks still to come, Remove from queue. 0.4.2 offered only
+  Remove from queue, and only on tracks queued by hand.
+- The queue has a close button and takes the keyboard while it is open.
+- Its first part is headed "Earlier in queue". 0.4.2 said "Played", even for
+  tracks you skipped.
 
-**Desktop**
+### Casting
 
-- The tray menu has Previous track, Play or Pause, and Next track, and the
-  tray icon's tool tip names the track that plays.
+- A Chromecast that stops responding no longer freezes the app, and stopping
+  a cast is instant.
+- Each track is served at a random address that only the cast device is
+  given. In 0.4.2 anything on your network could fetch it.
+- The device gets an address it can reach on computers with Docker, a VPN or
+  a virtual machine network. Devices that also answer over IPv6 connect.
+- A cast starts where the track was, and taking it back carries on here from
+  the same point. 0.4.2 started the track over both times.
+- A failed cast says why above the output button. "Connecting" no longer hangs
+  for a device that can't be reached.
+- A cast ended on the device, or taken over by another app, ends here too,
+  with a short notice.
+- The end of a track on the device no longer skips several tracks.
+- Picking another device while casting moves the cast there and carries on
+  from the same point.
+- Tracks that Tidal has only in AAC can be cast, and casting follows your
+  streaming quality setting.
+
+### Desktop
+
+- The tray menu has Previous track, Play or Pause and Next track, and the tray
+  icon's tool tip names the playing track. The menu follows a change of
+  language, and no longer offers Show and Hide at the same time.
 - `tidal-wave --play-pause`, `--next` and `--previous` control the running
   app. `--help` and `--version` print and exit.
-- Tidal links open in the app: tidal:// links and tidal.com and
-  listen.tidal.com links, from the command line, the desktop's link
-  handler, a drop on the window, a paste into Search or MPRIS. A track
-  link opens its album.
-- The desktop entry opens tidal:// links and has Play/Pause, Next Track
-  and Previous Track in the launcher's menu.
-- Desktop media widgets (MPRIS) can list the queue around the current
-  track and skip to a track in it.
-- On Windows and macOS the media keys work, and the system's now playing
-  panel shows the track.
-- Show a notification when a new track starts, under Settings > Window,
-  off by default. Nothing is shown while the window is in front.
-- The window opens at the size and place it was left, maximised if it was,
-  on the page it showed. 0.4.2 opened at 1280 by 800 on Home.
-- Reduce motion in Settings > Appearance: As the system says, On or Off.
-  The system's setting is now read on Windows and macOS too.
-- The mouse wheel over the volume sets it. A running sleep timer shows in
-  the player bar with the time left, and a click on it opens now playing.
+- Tidal links open in the app: tidal://, tidal.com and listen.tidal.com, from
+  the command line, your desktop's link handler, a drop on the window, a paste
+  into Search or MPRIS. A track link opens its album.
+- The desktop entry opens tidal:// links and has Play/Pause, Next Track and
+  Previous Track in the launcher's menu.
+- Desktop media widgets (MPRIS) can list the queue and jump to a track in it.
+- On Windows and macOS the media keys work, and the system's now playing panel
+  shows the track.
+- An optional notification when a new track starts, in Settings > Window and
+  off by default. It stays away while the window is in front.
+- The window opens at the size and place you left it, maximised if it was, on
+  the page it showed. 0.4.2 opened at 1280 by 800 on Home.
+- Reduce motion in Settings > Appearance: As the system says, On or Off. The
+  system setting is now read on Windows and macOS too.
+- The mouse wheel over the volume changes it. A running sleep timer shows the
+  time left in the player bar, and a click opens now playing.
+- On Linux the session file follows `$XDG_CONFIG_HOME`. On macOS it moves to
+  `~/Library/Application Support/TidalWave/Tidal Wave`, and the old file is
+  read once and removed. A crash can no longer leave it half written.
 
-**Keyboard and screen readers**
+### Keyboard and screen readers
 
-- A screen reader can find, name and press the buttons, sliders, tabs,
-  switches, cards and rows.
-- A track list, the sidebar's library list, a row of cards and the queue
-  are one tab stop each, walked with the arrow keys, Home and End. Enter
-  plays, and the Menu key or Shift+F10 opens the row's menu. 0.4.2 made
-  every row and every artist name a tab stop.
-- The seek bar, the volume and the sleep timer work from the keyboard.
-  Controls that answered only the mouse are tab stops: Collection's sort
-  words, Playing from, the Lyrics and Credits chips, Show all, a card's
-  play button and the rows of the playlist picker.
-- Escape in a search field empties it, and in an empty one gives the
-  keyboard back.
-- Small buttons such as the clear crosses and the close buttons take
-  presses over at least 32 by 32 pixels.
-- New shortcuts: Ctrl+F and Ctrl+L go to the search field, Ctrl+N makes a
-  new playlist, Ctrl+Z undoes, Ctrl+Q quits, and Alt+Shift+B likes or
-  unlikes the playing track.
-
-### Changed
-
-- Shortcuts that moved: seeking is Shift+Left and Shift+Right, the volume
-  is Ctrl+Up and Ctrl+Down, and now playing is Ctrl+4. In 0.4.2 the bare
-  arrow keys seeked and set the volume, and Ctrl+N opened now playing.
-  Space presses the control the keyboard is on, and plays or pauses
+- Screen readers can find, name and press buttons, sliders, tabs, switches,
+  cards and rows.
+- A track list, the sidebar's library, a row of cards and the queue are one
+  tab stop each. Inside, use the arrow keys, Home and End. Enter plays, and
+  the Menu key or Shift+F10 opens the row's menu. 0.4.2 made every row and
+  every artist name a tab stop.
+- The seek bar, the volume and the sleep timer work from the keyboard. So do
+  controls that used to answer only the mouse: Collection's sort words,
+  Playing from, the Lyrics and Credits chips, Show all, a card's play button
+  and the rows of the playlist picker.
+- Escape closes the open dialog, menu or output picker and does nothing else.
+  0.4.2 also left the page.
+- Escape in a search field clears it, and in an empty one hands the keyboard
+  back.
+- Small buttons, such as the clear and close crosses, respond to clicks over
+  at least 32 by 32 pixels.
+- New shortcuts: Ctrl+F and Ctrl+L go to search, Ctrl+N makes a new playlist,
+  Ctrl+Z undoes, Ctrl+Q quits, and Alt+Shift+B likes or unlikes the playing
+  track.
+- Shortcuts that moved: seek with Shift+Left and Shift+Right, change the
+  volume with Ctrl+Up and Ctrl+Down, open now playing with Ctrl+4. In 0.4.2
+  the bare arrow keys seeked and changed the volume, and Ctrl+N opened now
+  playing. Space presses the control the keyboard is on, and plays or pauses
   everywhere else.
-- Playback:
-  - Next under repeat one goes to the next track. 0.4.2 started the same
-    track over. A track that ends under repeat one starts over from the
-    file it has, without asking Tidal again.
-  - Shuffle from a page plays the track picked first and then the rest of
-    the album or playlist in random order. 0.4.2 left out the rows above
-    the one it started from.
-  - The playing track stays marked while it is paused, and a click on it
-    pauses or resumes it. 0.4.2 started it over.
-  - A queue restored at start, and a step taken while paused, fetch
-    nothing until Play. 0.4.2 downloaded the restored track at every start.
-    Nothing is fetched ahead while the player is paused.
-  - A run of quick presses on Next or Previous asks Tidal only for the
-    track it ends on.
-  - The whole queue is kept between sessions. 0.4.2 kept 50 rows before
-    the current one and up to 650 after it.
-  - The volume slider follows loudness, so its lower half is no longer
-    nearly silent. A volume saved by 0.4.2 sounds the same after the
-    update.
-  - Removing the playing row at the end of the queue stops there. 0.4.2
-    went back to the track before and played it.
-  - Stop from a desktop media widget stops the track, and Play starts it
-    from the beginning. 0.4.2 paused it.
-  - The seek bar shows the track's length while the track loads. 0.4.2
-    showed the previous track's.
-  - The queue's first part is headed "Earlier in queue". 0.4.2 said
-    "Played", also for rows that were skipped.
-- Log out sits under Account at the top of Settings, beside the name of
-  the account, and asks first. It stops playback, empties the queue and
-  disconnects scrobbling. In 0.4.2 it was at the foot of the panel, and
-  playback and the queue went on after it.
-- Settings is laid out as rows under small headings, with a new Window
-  section and the version under About at the end. The long privacy notes
-  fold behind Details. Settings opens at the top each time, and a wheel
-  notch moves it by the desktop's lines per notch. Pure black stays in
-  place on a light theme, marked as for the dark themes.
-- Add to playlist offers only the playlists you made, and Edit and Remove
-  from playlist show only on those. 0.4.2 offered them on playlists of
-  other users saved to the collection, and Tidal refused the change.
-- Back returns to the last five pages as they were left, scrolled and
-  loaded, without fetching them again. Collection keeps each tab's place.
-- A mouse drag on a track row carries the track. To scroll a list, use the
-  wheel, the scroll bar or a finger.
-- Card rows scroll one card at a time from round arrows over their edges,
-  with a sideways drag, and with a horizontal wheel or swipe. 0.4.2 scrolled
-  them with Shift+wheel and the scroll bar only.
-- Look:
-  - Detail pages (album, artist, playlist, mix and radio) share one header
-    and one bar, and the header takes its colour from the cover.
-  - A card under the pointer dims its cover under a white play glyph, and
-    nothing grows. Pages load behind a placeholder of their own shape
-    instead of a spinner.
-  - Confirmations are one notice above the player bar, in place of tool
-    tips over the row. Tool tips and scroll bars take the theme's colours.
-  - Menus group their entries, with Remove from playlist last, and the row
-    a menu is for stays marked.
-  - A missing cover shows a glyph. A playlist mosaic uses four different
-    covers, or one when there are fewer.
-  - While a track loads, the play button shows a turning ring. In 0.4.2 the
-    player bar showed three dots.
-  - The playing bars are crisp at every screen scale.
-  - Settings, the playlist dialogs and the playlist picker dim the app
-    behind them.
-  - Follow on artist pages shows a person. In 0.4.2 it shared the heart
-    with Like.
-  - Collection's sort options are plain words with the chosen one bold and
-    underlined, and a chosen tab is bold.
-  - On a saved album, Saved is an outlined button.
-  - Small headings are set in sentence case without spaced letters.
-- Themes:
-  - Sky's accent is #0074B5 (was #0A6FC4) and its red #C51B32 (was
-    #C0392B).
-  - Sand's ground is a warm paper (#F9F4E8) and Clay's a light blush
-    (#F8EFEA).
-  - Rust's and Clay's accents read as rust and clay, further from the red
-    of errors.
-  - On the dark themes, quiet text such as track numbers, lengths and hints
-    is lighter, and so is accent text such as the playing track's title.
-  - Sea and Pine have new greens for lossless.
-  - The rainbow that "Let the colour in" shows while on looks like glass.
-- Now playing:
-  - Lyrics take the artwork's place and leave the rest of the page where
-    it is. In 0.4.2 they moved the page and pushed Up next down.
-  - Fullscreen, the artwork grows with the window. 0.4.2 held it to 420
-    pixels.
-  - A long title takes two lines before it is cut.
-  - With no track it says "No track playing". 0.4.2 showed a dash.
-  - Yellow covers tint the page more calmly on the dark themes.
-- Wording: labels are in sentence case, and the English says track,
-  collection, Log in and Show all throughout. Labels for your own things
-  say My: My mixes, My playlists, My account. Favorite artists is spelt
-  Favourite artists. "Playing from" names a search as one, as in "search
-  “…”", and leads back to it.
-- German says Sammlung for the collection everywhere, and several Settings
-  lines were rewritten in natural German. Numbers follow the language picked
-  in the app. In 0.4.2 they followed the system's.
-- On Linux the session file follows $XDG_CONFIG_HOME where it is set. On
-  macOS it moves to ~/Library/Application Support/TidalWave/Tidal Wave.
-  The file in the old place is read once and removed. It is now written
-  so that a crash cannot leave half of it.
-- Faster on a large collection: typing in Collection's search field,
-  opening a long playlist or the queue, switching between Search's tabs
-  and scrolling long lists.
-- Collection's search field ignores accents and spaces at either end, as
-  the search field in the sidebar does.
-- On Qt 6.8 and later the app runs the QML engine's garbage collector in
-  whole passes, to stay clear of a fault in Qt's incremental collector. A
-  value of QV4_GC_TIMELIMIT set by hand is left alone.
-- The screenshots for software centres show real records whose covers are
-  under free licences. CREDITS.md names them.
 
-### Fixed
+### Look and wording
 
-- Removing a track from a playlist works. 0.4.2 sent a request that Tidal
-  always refused, and the track stayed. A playlist changed on another
-  device in the meantime is read again, and nothing is removed.
-- Changes made to your collection on another device reach a running app:
-  liked tracks, albums and artists, playlists and saved mixes. 0.4.2 read
-  the collection only at sign-in, so such a change showed after a restart.
-  The app now checks when its window gets the focus again, at most once a
-  minute, and every five minutes while the window is open. A window closed
-  to the tray checks nothing. A check is one small request per list, and
-  only a list that changed is loaded again.
-- Liked tracks, albums and artists are read in one request per list, and
-  none go missing. 0.4.2 read them in pages, and Tidal reorders items
-  saved at the same moment from one page to the next, so some were skipped
-  on every load. A skipped track was missing from Collection and showed an
-  empty heart. The hearts now come from Tidal's list of liked ids, which
-  also covers tracks Tidal no longer lists.
-- Liked tracks are listed newest first. 0.4.2 loaded them oldest first and
-  showed the first 100 at once, so with more than 100 liked tracks
-  Collection showed the oldest ones until the last of them had arrived.
-- While the collection loads, Collection, the sidebar and a playlist's
-  header show it loading. 0.4.2 said "No saved tracks", "No saved albums",
-  "Nothing saved yet" or "0 tracks" until the lists were in, and the tabs
-  read "(0)".
-- The sidebar's library and its search stopped reading liked tracks,
-  albums and artists at the first page that came back short. Tidal leaves
-  tracks that can no longer be played out of a page, so the sidebar often
-  knew only the first few dozen liked tracks. It also stopped after 5000.
-  When the sidebar knew only part of the list, it forgot when the tracks
-  past that point were last played, and its Tracks list is sorted by that.
-- Sign-in:
-  - A busy or failing login host no longer signs you out. 0.4.2 ended the
-    session on any error answer to a token renewal.
-  - A saved session signs in once at start. 0.4.2 signed in twice and
-    loaded the whole collection twice.
-  - Signing out while the account's name was still on its way could write
-    the session file again. It no longer does.
-- When Tidal answers that the app asks too often, the app now waits as
-  long as Tidal says before it asks that part of the service again. 0.4.2
-  asked again at once, which kept the limit in force.
-- Casting:
-  - A Chromecast that stopped reading froze the app, and stopping a cast
-    held it up for a moment.
-  - The track served to the cast device could be fetched at any address
-    by anything on the network. Each track is now served at an address
-    made up at random, which only the device is given.
-  - On a computer with docker, a VPN or a virtual machine network, the
-    device could be handed an address it could not reach.
-  - A device that also answered over IPv6 could not be connected to.
-  - Starting a cast started the track from the beginning, and taking it
-    back from the device started it over here. Both go on from where the
-    track was.
-  - A cast that failed said nothing. A message above the output button
-    now says why: the device could not be reached, did not answer, could
-    not play the track or lost the connection. "Connecting" no longer
-    stays up for a device that cannot be reached.
-  - A cast ended on the device, or taken over by another app, ends here as
-    well, with a short notice.
-  - The end of a track on the device could skip several tracks at once.
-  - Picking another device while casting left the first cast half-ended.
-    The cast now moves to the new device and goes on from where it was.
-  - A track that Tidal has only in AAC can be cast, and casting follows the
-    streaming quality setting.
-- Escape closes the open dialog, menu or output picker and nothing else.
-  In 0.4.2 it also left the page.
-- Space after a click on a Collection tab typed into the search field
-  instead of pausing.
-- Going to Search selects the last query, so typing replaces it, and its
-  results stay until the new query is answered.
-- A failed search says that Tidal could not answer, with Try again. 0.4.2
-  showed Qt's own error message.
-- A Collection search that finds nothing says so. 0.4.2 showed the empty
-  collection's text. The Mixes tab ignored the search field, and the sort
-  words did nothing on the Playlists tab.
-- Home's mixes row said nothing when the mixes could not be loaded. It now
-  says so, with Try again. The playlists row no longer reshuffles as it
-  loads.
-- An artist page never showed Related artists. An artist's biography showed
-  "<br/>" as text and ran across the whole page. It is now set in
-  paragraphs, with links to albums and other artists, and cut at four
-  lines with Read more. The artist's name over the photo has no dark
-  outline.
-- Lengths of an hour or more read as 1:12:05. 0.4.2 wrote 72:05.
-- The tray menu stayed in English after a switch to German, and offered
-  Show and Hide at once.
-- Audio files that a crash left in the temp folder are removed at the next
-  start. Covers are kept in a disk cache, so a list scrolled back up does
-  not download them again, and a cover scrolled past stops downloading.
-- A long error, or the German text, ran out of the login card. The card
-  now grows with its text, and the device code can be selected.
-- With hardware acceleration off, icons scrolled out of view in Settings
-  could stay drawn above the panel.
-- The player bar moved its controls when the first track started.
-- A click on a button, a switch or a theme tile in the Settings panel, once
-  the panel was scrolled, also reached the page beneath it. With the albums
-  of Collection behind Settings, a click on Check now could open an album.
-- Synced lyrics that you scrolled follow the song again when the scroll
-  ends with the sung line exactly back in the middle of the panel, or
-  before the first line back at the top. 0.4.2 kept them still until
-  Resync, a click on a line or the next track.
-- Synced lyrics lit their first line from the start of the track, through
-  the whole intro. No line is lit now until the first one is sung.
-- Lyrics that Tidal sent late for the track before no longer replace those
-  of the track now playing.
+- Album, artist, playlist, mix and radio pages share one layout, with a header
+  tinted from the cover.
+- A card under the pointer dims its cover behind a white play symbol. Pages
+  load behind a placeholder in their own shape, where 0.4.2 showed a spinner.
+- Confirmations appear as one notice above the player bar. Tool tips and
+  scroll bars take the theme's colours.
+- Menus are grouped, with Remove from playlist last, and the row a menu
+  belongs to stays marked.
+- A missing cover shows a symbol. Playlist mosaics use four different covers,
+  or one when there are fewer.
+- While a track loads, the play button shows a spinning ring. 0.4.2 showed
+  three dots in the player bar.
+- The playing bars stay sharp at every screen scale, and the player bar's
+  controls no longer jump when the first track starts.
+- Settings, the playlist dialogs and the playlist picker dim the app behind
+  them.
+- Follow on artist pages has a person icon. 0.4.2 used the heart from Like.
+- Collection's sort options are plain words, the chosen one bold and
+  underlined, and the chosen tab is bold. A saved album's Saved button is
+  outlined.
+- Settings is rows under small headings, with Account at the top, a new Window
+  section and the version under About at the end. The long privacy notes fold
+  behind Details. Settings opens at the top each time and scrolls by your
+  desktop's lines per wheel notch.
+- Log out sits next to your account name at the top of Settings and asks
+  first. It stops playback, empties the queue and disconnects scrobbling. In
+  0.4.2 it was at the bottom of the panel, and the music kept playing.
+- A click in a scrolled Settings panel no longer reaches the page beneath it,
+  and with hardware acceleration off, icons scrolled out of Settings no longer
+  stay drawn over the panel.
+- In now playing, fullscreen artwork grows with the window (0.4.2 stopped at
+  420 pixels), a long title gets two lines, and with nothing loaded it says "No
+  track playing". Yellow covers tint the page more gently on the dark themes.
+- Themes: Sky has a new blue (#0074B5) and red (#C51B32). Sand's background is
+  a warm paper and Clay's a light blush. Rust's and Clay's accents sit further
+  from the red used for errors. Sea and Pine have new greens for lossless. On
+  the dark themes, quiet text such as track numbers and lengths is lighter and
+  easier to read, and so is accent text. The rainbow behind "Let the colour
+  in" now looks like glass.
+- Labels are in sentence case. The English says track, collection, Log in and
+  Show all throughout, says My for your own things (My mixes, My playlists, My
+  account) and spells Favourite with a u. German says Sammlung everywhere, and
+  several Settings lines read more naturally.
+- Numbers follow the language picked in the app. 0.4.2 followed the system's.
+- Playing from names a search, as in search "…", and takes you back to it.
+- The login card grows to fit a long error or the German text, and the device
+  code can be selected.
+- The software centre screenshots show real records whose covers are under
+  free licences. CREDITS.md lists them.
+
+### Speed and reliability
+
+- Much faster with a large collection: typing in Collection's search field,
+  opening a long playlist or the queue, switching Search's tabs and scrolling
+  long lists. Covers are cached on disk, and a cover you scroll past stops
+  downloading.
+- A busy or failing Tidal login server no longer signs you out. 0.4.2 ended
+  the session on any error while renewing it.
+- A saved session signs in once at start. 0.4.2 signed in twice and loaded
+  your whole collection twice.
+- Signing out while the account name was still loading could write the
+  session file again. It no longer does.
+- When Tidal says the app is asking too often, it waits as long as Tidal asks.
+  0.4.2 asked again at once, which kept the limit in place.
+- Audio files left in the temp folder by a crash are removed at the next
+  start.
+- On Qt 6.8 and newer the app runs Qt's garbage collector in whole passes, to
+  avoid a crash in its incremental mode. A `QV4_GC_TIMELIMIT` you set yourself
+  is left alone.
 
 ### Removed
 
-- The popularity percentage beside search results, which had no label.
+- The unlabelled popularity percentage next to search results.
 
 ### Known issues
 
-- Gapless playback and crossfade need Qt 6.5, and a lossless track starts
-  before its download ends only with Qt 6.6. The .deb on Debian 12 and
-  Ubuntu 24.04 uses their Qt 6.4, so there tracks change with a short gap
-  and a lossless track waits for its whole file, as in 0.4.2.
-- Search results still list each quality of a record on its own. Only an
-  explicit and a clean version are folded into one, by the new setting.
+- Gapless playback and crossfade need Qt 6.5, and the quick start of lossless
+  tracks needs Qt 6.6. The .deb on Debian 12 and Ubuntu 24.04 uses their Qt
+  6.4, so there tracks change with a short pause and lossless tracks wait for
+  the whole file, as in 0.4.2. The AppImage includes a newer Qt.
+- Search still lists each quality of a record separately. Only the explicit
+  and clean versions are combined, by the new setting.
 - The other known issues listed under 0.4.2 are unchanged.
 
 ## [0.4.2] - 2026-10-17

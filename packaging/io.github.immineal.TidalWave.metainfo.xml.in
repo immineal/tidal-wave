@@ -136,21 +136,18 @@
          Only the newest release takes its version from project(). -->
     <release version="@PROJECT_VERSION@" date="2026-11-17">
       <description>
-        <p>Gapless playback, even loudness, scrobbling, playlists that can be reordered and deleted, and Tidal's own rows on Home.</p>
+        <p>Albums play without gaps, tracks come out at an even volume, and your playlists can be reordered and deleted.</p>
         <ul>
-          <li>The next track follows the last one without a gap, with an optional crossfade. Both need Qt 6.5 or newer</li>
-          <li>Tracks play at an even loudness, on by default, and similar tracks can play on when the queue ends</li>
-          <li>The quality badge shows the format that plays, such as 24-bit / 96 kHz FLAC</li>
-          <li>Synced lyrics from LRCLIB and, if you switch them on, three more sites. Plain lyrics are timed against the audio on your own machine</li>
-          <li>Scrobbling to ListenBrainz and Last.fm, off until you connect an account</li>
-          <li>Removing a track from a playlist works. 0.4.2 sent a request that Tidal always refused</li>
-          <li>Playlists you made can be reordered by drag and deleted, and tracks can be dragged onto a playlist or into the queue</li>
-          <li>Ctrl+Z and an Undo button take back likes, saves and playlist changes once Tidal shows them</li>
-          <li>Home shows the rows of Tidal's own apps, Staff picks, and what you played lately on any device</li>
-          <li>Track lists have column headings that sort, and albums and playlists can be downloaded whole</li>
-          <li>Playback controls in the tray menu and on the command line, tidal:// links, and media keys on Windows and macOS</li>
-          <li>Lists, sliders and the queue work from the keyboard, and screen readers can name and press the controls</li>
-          <li>Changes to your favourites made on another device reach a running app, and no liked track goes missing</li>
+          <li>Gapless playback, with an optional crossfade</li>
+          <li>Even loudness across tracks, on by default</li>
+          <li>Lossless tracks start almost at once</li>
+          <li>Synced lyrics from LRCLIB, and plain lyrics timed on your own computer</li>
+          <li>Scrobbling to ListenBrainz and Last.fm</li>
+          <li>Drag tracks to reorder a playlist, onto a playlist or into the queue</li>
+          <li>Undo likes, saves and playlist edits with Ctrl+Z</li>
+          <li>Home shows the rows from Tidal's own apps and what you played on other devices</li>
+          <li>Media keys on Windows and macOS, and much better keyboard and screen reader support</li>
+          <li>Removing a track from a playlist now works</li>
         </ul>
       </description>
     </release>
