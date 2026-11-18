@@ -98,7 +98,19 @@ Item {
     readonly property int afterManual:     manualAt + manualCount
     readonly property int contextHeaderAt: contextCount > 0 ? afterManual : -1
     readonly property int contextAt:       afterManual + (contextCount > 0 ? 1 : 0)
-    readonly property int rowCount:        contextAt + contextCount
+    // The same sum as contextAt + contextCount, in one binding of the
+    // player's ints: built from the chain above, it moved once per link as
+    // the panel opened, and each move rebuilt every row in view.
+    readonly property int rowCount: {
+        if (!visible) return 0
+        var total = player.queueCount, at = player.queueIndex
+        var played = Math.max(0, Math.min(at, total))
+        var current = at >= 0 && at < total ? 1 : 0
+        var manual = Math.max(0, Math.min(player.manualCount, total - at - 1))
+        var context = Math.max(0, total - played - current - manual)
+        return (played > 0 ? played + 1 : 0) + 2 * current
+             + (manual > 0 ? manual + 1 : 0) + (context > 0 ? context + 1 : 0)
+    }
 
     // ── the keyboard ─────────────────────────────────────────────────────
     // The list is one tab stop: the row last walked to, else the playing one.
