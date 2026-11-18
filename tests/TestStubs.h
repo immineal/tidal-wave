@@ -2148,6 +2148,17 @@ public:
         setManualCount(manualLeft + (toManual ? 1 : 0));
         emit queueChanged();
     }
+    // The real Player's rule: queued rows at a manual slot, or into the context.
+    Q_INVOKABLE void insertQueueRows(const QVariantList &tracks, const QString &section, int slot) {
+        note(QStringLiteral("insertQueueRows %1 %2 %3").arg(tracks.size()).arg(section).arg(slot));
+        if (tracks.isEmpty()) return;
+        if (section == QLatin1String("manual")) { insertManual(tracks, slot); return; }
+        if (section != QLatin1String("context")) return;
+        const int first = m_index + 1 + m_manualCount;
+        const int at = first + qBound(0, slot, int(m_queue.size()) - first);
+        for (int i = 0; i < tracks.size(); ++i) m_queue.insert(at + i, tracks.at(i).toMap());
+        emit queueChanged();
+    }
     Q_INVOKABLE void clearManual() {
         note(QStringLiteral("clearManual"));
         if (m_manualCount <= 0) return;

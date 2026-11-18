@@ -23,6 +23,8 @@ Item {
     property bool   checkable: false
     property bool   backed: false
     property bool   showTip: true
+    // Drawn as if pointed at, for a drop target with a drag over it.
+    property bool   lit: false
 
     readonly property alias hovered: hov.hovered
     signal clicked()
@@ -54,7 +56,7 @@ Item {
         width: Math.min(parent.width, parent.height)
         height: width
         radius: width / 2
-        color: hov.hovered ? root.hoveredFill : root.restFill
+        color: hov.hovered || root.lit ? root.hoveredFill : root.restFill
         Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
         // The focus ring takes over the border, so focus never reads as hover.
         border.width: root.activeFocus ? 2 : (root.backed ? 1 : 0)
