@@ -1,0 +1,100 @@
+pragma Singleton
+import QtQuick
+
+// A track row carried out of its list: onto a playlist in the sidebar, into
+// the queue, or to another place in its own playlist. The row starts and ends
+// it; the targets are DropAreas with these keys, and read `tracks` on a drop.
+QtObject {
+    id: drag
+
+    readonly property var keys: ["application/x-tidalwave-tracks"]
+
+    // The track maps being carried, and the row they came from.
+    property var tracks: []
+    property Item source: null
+    // Where the row lives, for a target that must not take its own: "queue".
+    property string origin: ""
+    readonly property bool active: source !== null
+    readonly property int count: tracks.length
+
+    // What the preview says: the title, or how many for more than one.
+    readonly property string label: {
+        if (count === 1) {
+            var t = tracks[0] ? tracks[0].title : ""
+            return (typeof t === "string" && t.length > 0) ? t : qsTranslate("TrackRow", "Unknown track")
+        }
+        // The queue heading's words, translated there already.
+        return qsTranslate("QueuePanel", "%Ln track(s)", "", count)
+    }
+
+    // The pointer, in the window's coordinates.
+    property point scenePos: Qt.point(0, 0)
+    // The preview sits below and right of the pointer, clear of the cursor,
+    // while the drop is aimed at the pointer itself.
+    readonly property point previewOffset: Qt.point(14, 14)
+
+    property Item preview: null
+    property Component _previewC: null
+    property var _ended: null
+    // Flipped to make the preview move by a hair, so a list that scrolled
+    // under a still pointer hands the drop to the row now there.
+    property bool _jiggle: false
+
+    // Starts carrying `list` from `row`, the pointer at `at`. ended(landed)
+    // is called once, on the drop or when Escape or a lost grab cancels it.
+    function begin(row, list, at, ended, origin) {
+        if (drag.active) drag.cancel()
+        var win = row ? row.Window.window : null
+        if (!win || !list || list.length === 0) return false
+        drag.tracks = list
+        drag.origin = origin || ""
+        drag.source = row
+        drag._ended = ended || null
+        if (!drag._previewC)
+            drag._previewC = Qt.createComponent(Qt.resolvedUrl("components/TrackDragPreview.qml"))
+        drag.preview = drag._previewC.createObject(win.contentItem)
+        drag.move(at)
+        drag.preview.Drag.active = true
+        return true
+    }
+
+    function move(at) {
+        drag.scenePos = at
+        if (!drag.preview) return
+        drag.preview.x = at.x + drag.previewOffset.x + (drag._jiggle ? 0.5 : 0)
+        drag.preview.y = at.y + drag.previewOffset.y
+    }
+
+    // The pointer is where it was, but what lies under it moved.
+    function refresh() {
+        drag._jiggle = !drag._jiggle
+        drag.move(drag.scenePos)
+    }
+
+    // Lets go where the pointer is. True when a target took the tracks.
+    function drop() {
+        if (!drag.preview) return false
+        var action = drag.preview.Drag.drop()
+        drag._finish(action !== Qt.IgnoreAction)
+        return action !== Qt.IgnoreAction
+    }
+
+    function cancel() {
+        if (!drag.preview) return
+        drag.preview.Drag.cancel()
+        drag._finish(false)
+    }
+
+    function _finish(landed) {
+        var ended = drag._ended
+        var p = drag.preview
+        drag._ended = null
+        drag.preview = null
+        drag.source = null
+        drag.origin = ""
+        drag.tracks = []
+        // Hidden at once: destroy() waits for the event loop to come round.
+        if (p) { p.visible = false; p.destroy() }
+        if (ended) ended(landed)
+    }
+}

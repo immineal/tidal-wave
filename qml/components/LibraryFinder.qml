@@ -12,23 +12,27 @@ Rectangle {
     // The kinds the chips have switched on, spelled the way LibraryIndex spells
     // them. Empty means no filter, which is also what "every chip off" means.
     property var kinds: []
-    property string placeholder: qsTr("Find in library")
+    property string placeholder: qsTr("Collection…", "placeholder of the field that filters the collection")
 
     readonly property bool focused: input.activeFocus
 
     // Fixed rather than derived from the children: the children fill this item,
     // so measuring them to size it would be a loop.
-    readonly property int fieldHeight: 36
-    readonly property int chipRowHeight: 30
+    readonly property int fieldHeight: 40
+    readonly property int chipRowHeight: 32
 
     // ── how five icon chips are made to fit any sidebar ──────────────────
-    // SideBar gives this block a 12px margin each side. Five chips need
+    // SideBar gives this block a 12px margin each side. Five 30px chips
     //     4 + 5*30 + 4*2 + 4 = 166px of block, a 190px sidebar,
     // which is why Prefs::minSidebarWidth is 190.
-    readonly property int chipSpacing: 2
-    readonly property int chipInset: 4
+    readonly property int chipWidth: 30     // chosen value, fixed: do not change without asking
     readonly property int chipHeight: 24
-    readonly property int chipWidth: 30
+    readonly property int chipGap: 2
+    readonly property int chipInset: 4
+    // Each chip takes presses over its pill plus half the gap on each side,
+    // so the targets meet with no dead pixel between them.
+    readonly property int chipTargetWidth: chipWidth + chipGap
+    readonly property int chipStripInset: chipInset - chipGap / 2
 
     implicitHeight: fieldHeight + 1 + chipRowHeight
     implicitWidth: 200
@@ -49,6 +53,13 @@ Rectangle {
         if (input.text.length > 0) input.text = ""
         if (kinds.length > 0)      kinds = []
         releaseFocus()
+    }
+
+    // The chip the strip's one tab stop is on.
+    property int currentChip: 0
+    function focusChip(i) {
+        var c = chipRepeater.itemAt(Math.max(0, Math.min(chipRepeater.count - 1, i)))
+        if (c) c.forceActiveFocus(Qt.TabFocusReason)
     }
 
     function toggleKind(kind) {
@@ -74,31 +85,35 @@ Rectangle {
                 id: glass
                 objectName: "finderSearchIcon"
                 anchors.left: parent.left
-                anchors.leftMargin: 11
+                anchors.leftMargin: Theme.space3
                 anchors.verticalCenter: parent.verticalCenter
                 name: "search"
-                color: root.focused ? Theme.accent : Theme.textDim
-                width: 15
-                height: 15
-                strokeWidth: 1.8
+                color: root.focused ? Theme.accentText : Theme.textDim
+                width: 16
+                height: 16
             }
 
             TextInput {
                 id: input
                 objectName: "finderInput"
                 anchors.left: glass.right
-                anchors.leftMargin: 8
+                anchors.leftMargin: Theme.space2
                 anchors.right: clearBtn.left
-                anchors.rightMargin: 6
+                anchors.rightMargin: -Theme.space1
                 anchors.verticalCenter: parent.verticalCenter
                 height: parent.height
                 color: Theme.textPrimary
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontBody
                 clip: true
                 selectByMouse: true
-                selectionColor: Theme.accent
-                selectedTextColor: Theme.accentInk
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.textSelectionInk
                 verticalAlignment: TextInput.AlignVCenter
+                // Claimed ahead of the window's Escape shortcut, which would
+                // otherwise take it and go back.
+                Keys.onShortcutOverride: (event) => {
+                    if (event.key === Qt.Key_Escape) event.accepted = true
+                }
                 Keys.onEscapePressed: {
                     if (text.length > 0) text = ""
                     else                 root.releaseFocus()
@@ -110,7 +125,7 @@ Rectangle {
                 visible: input.text.length === 0
                 text: root.placeholder
                 color: Theme.textDim
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }
@@ -118,17 +133,30 @@ Rectangle {
             Item {
                 id: clearBtn
                 objectName: "finderClear"
+                // A 32px target; the 13px cross sits where it always did.
                 anchors.right: parent.right
-                anchors.rightMargin: 10
+                anchors.rightMargin: 0
                 anchors.verticalCenter: parent.verticalCenter
-                width: 13
-                height: 13
+                width: 32
+                height: 32
                 visible: input.text.length > 0
+                activeFocusOnTab: visible
+                Keys.onReturnPressed: input.text = ""
+                Keys.onSpacePressed:  input.text = ""
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("SearchBar", "Clear search", "button, empties the search field")
+                Accessible.onPressAction: input.text = ""
+                Rectangle {
+                    anchors.centerIn: parent; width: 22; height: 22
+                    radius: Theme.radiusButton; color: "transparent"
+                    border.width: clearBtn.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
                 VectorIcon {
-                    anchors.fill: parent
+                    anchors.centerIn: parent
+                    width: 13; height: 13
                     name: "x"
                     color: clearHov.hovered ? Theme.textPrimary : Theme.textDim
-                    strokeWidth: 1.8
                 }
                 HoverHandler { id: clearHov; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: input.text = "" }
@@ -153,13 +181,14 @@ Rectangle {
                 // same vertical as the magnifier above it, and the matching
                 // inset on the right is in the width budget at the top.
                 anchors.left: parent.left
-                anchors.leftMargin: root.chipInset
+                anchors.leftMargin: root.chipStripInset
                 anchors.right: parent.right
-                anchors.rightMargin: root.chipInset
+                anchors.rightMargin: root.chipStripInset
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: root.chipSpacing
+                spacing: 0
 
                 Repeater {
+                    id: chipRepeater
                     model: [
                         { kind: "track",    glyph: "track",    label: qsTr("Tracks") },
                         { kind: "album",    glyph: "album",    label: qsTr("Albums") },
@@ -168,7 +197,7 @@ Rectangle {
                         { kind: "mix",      glyph: "mix",      label: qsTr("Mixes") }
                     ]
 
-                    delegate: Rectangle {
+                    delegate: Item {
                         id: chip
                         objectName: "finderChip"
                         required property var modelData
@@ -176,18 +205,52 @@ Rectangle {
                         readonly property string label: modelData.label
                         readonly property bool selected: root.kinds.indexOf(kind) >= 0
 
-                        width: root.chipWidth
-                        height: root.chipHeight
-                        radius: Theme.radiusChip
-                        color: selected ? Theme.accentSoft
-                                        : chipHov.hovered ? Theme.hoverFill : "transparent"
+                        required property int index
+                        width: root.chipTargetWidth
+                        height: root.chipRowHeight
 
-                        activeFocusOnTab: true
+                        // On is a solid fill and focus a ring outside it, in
+                        // the gap; on and focused, the ring sits inside in ink.
+                        Rectangle {
+                            objectName: "finderChipFill"
+                            anchors.centerIn: parent
+                            width: root.chipWidth; height: root.chipHeight
+                            radius: Theme.radiusChip
+                            color: chip.selected ? Theme.accent
+                                                 : chipHov.hovered ? Theme.hoverFill : "transparent"
+                        }
+                        Rectangle {
+                            objectName: "finderChipRing"
+                            anchors.centerIn: parent
+                            readonly property int inset: chip.selected ? -3 : root.chipGap
+                            width: root.chipWidth + 2 * inset
+                            height: root.chipHeight + 2 * inset
+                            radius: Theme.radiusChip
+                            color: "transparent"
+                            border.width: chip.activeFocus ? 2 : 0
+                            border.color: chip.selected ? Theme.accentInk : Theme.accent
+                        }
+
+                        // The strip is one tab stop, as a toolbar is: Left and
+                        // Right move along it.
+                        activeFocusOnTab: activeFocus || root.currentChip === chip.index
+                        onActiveFocusChanged: if (activeFocus) root.currentChip = chip.index
                         Keys.onReturnPressed: root.toggleKind(chip.kind)
                         Keys.onSpacePressed:  root.toggleKind(chip.kind)
-
-                        border.width: chip.activeFocus ? 2 : 0
-                        border.color: Theme.accent
+                        Keys.onLeftPressed:   root.focusChip(chip.index - 1)
+                        Keys.onRightPressed:  root.focusChip(chip.index + 1)
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Home) root.focusChip(0)
+                            else if (event.key === Qt.Key_End) root.focusChip(chipRepeater.count - 1)
+                            else return
+                            event.accepted = true
+                        }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: chip.label
+                        Accessible.checkable: true
+                        Accessible.checked: chip.selected
+                        Accessible.onPressAction: root.toggleKind(chip.kind)
+                        Accessible.onToggleAction: root.toggleKind(chip.kind)
 
                         VectorIcon {
                             objectName: "finderChipIcon"
@@ -195,17 +258,17 @@ Rectangle {
                             name: chip.modelData.glyph
                             width: 15
                             height: 15
-                            strokeWidth: 1.6
-                            color: chip.selected ? Theme.accent
+                            color: chip.selected ? Theme.accentInk
                                                  : chipHov.hovered ? Theme.textPrimary : Theme.textDim
                         }
 
                         HoverHandler { id: chipHov; cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: root.toggleKind(chip.kind) }
 
-                        ToolTip.visible: chipHov.hovered
+                        // On focus too: the icon is all a keyboard user sees.
+                        ToolTip.visible: chipHov.hovered || chip.activeFocus
                         ToolTip.text: chip.label
-                        ToolTip.delay: 450
+                        ToolTip.delay: Theme.tooltipDelay
                     }
                 }
             }

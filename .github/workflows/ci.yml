@@ -48,8 +48,8 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
-  # Tests are Linux-only on purpose: the suite is platform-independent, and one
-  # runner keeps CI fast. QML tests need a QPA plugin, hence offscreen.
+  # QML tests need a QPA plugin, hence offscreen. Windows does not run the
+  # suite; macOS does, in test-macos.
   test:
     name: Tests (Ubuntu 24.04, Qt 6.12)
     runs-on: ubuntu-24.04
@@ -90,6 +90,50 @@ jobs:
           tests/list-skipped.sh build-tests | tee skipped.txt
           # The session bus test guards the media keys. It must not be among them.
           ! grep -q TestSessionBus skipped.txt
+
+  # The suite on macOS, offscreen, so Mac behaviour is run and not only built.
+  test-macos:
+    name: Tests (macOS, Qt 6.12)
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.12.0'
+          modules: 'qtmultimedia'
+
+      - name: Configure
+        run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
+
+      - name: Build
+        run: cmake --build build-tests --parallel 4
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          n=$(ctest --test-dir build-tests -N | sed -n 's/^Total Tests: //p')
+          echo "ctest sees ${n:-0} tests"
+          test "${n:-0}" -ge 1
+          ctest --test-dir build-tests --output-on-failure
+
+      - name: List skipped test cases
+        if: always()
+        run: tests/list-skipped.sh build-tests | tee skipped.txt
+
+      # Every case's output, the passing ones too: no one can run this on a Mac.
+      - name: Keep the test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-test-log
+          path: build-tests/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
 
   # The declared Qt floor: Debian 12 has Qt 6.4.2 and GCC 12.2. Tests run too,
   # because QML that 6.4 rejects fails at load time, which a build cannot see.
@@ -280,12 +324,14 @@ jobs:
 
       - name: Scan the tracked tree
         run: |
-          allowed='tidal-wave@linu\.li|noreply@anthropic\.com|someone@example\.com'
-          # Allowed: the project mailbox and the fake user in tests/tst_auth.cpp.
+          allowed='tidal-wave@linu\.li|noreply@anthropic\.com|someone@example\.com|tidal\.com@example\.com'
+          # Allowed: the project mailbox, the fake user in tests/tst_auth.cpp and
+          # the spoofed link in tests/tst_tidal_link.cpp. Image names (@2x.png) skip.
           # @BASE@ is the marker in the DASH fixtures; what follows it reads as a
           # domain, so it comes out first. This file is scanned too.
           found=$(git grep -hI -e '' -- . | sed 's/@BASE@//g' \
                   | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
+                  | grep -ivE '@[0-9]x\.(png|jpe?g|svg|webp)$' \
                   | sort -u | grep -ivE "^($allowed)$" || true)
           if [ -n "$found" ]; then
             echo "Addresses in the tree that are not on the allowlist:"
@@ -313,7 +359,9 @@ jobs:
           echo "clean"
 
   # The desktop entry and the AppStream metainfo are read by every Linux store
-  # and by nothing else in CI.
+  # and by nothing else in CI. Offline here: the screenshots point at the
+  # release tag, which exists only once the release does. release.yml runs
+  # the same check with every URL fetched.
   store-metadata:
     name: The metadata stores read is valid
     runs-on: ubuntu-24.04
@@ -324,57 +372,8 @@ jobs:
       - name: Install the validators
         run: |
           sudo apt-get update
-          # ca-certificates: appstreamcli fetches every <url> in the file, and
-          # without a CA bundle each one fails as url-not-reachable.
           sudo apt-get install -y --no-install-recommends \
-            appstream desktop-file-utils ca-certificates
+            appstream desktop-file-utils
 
       - name: Validate both files, and check they still agree with the project
-        run: |
-          set -euo pipefail
-          id=io.github.immineal.TidalWave
-          # Named after the app id: Flatpak exports only <app-id>.desktop.
-          desktop="packaging/$id.desktop"
-          template="packaging/$id.metainfo.xml.in"
-
-          # --warn-kde: Plasma is where this app's tray lives.
-          desktop-file-validate --warn-kde "$desktop"
-          echo "desktop-file-validate: clean"
-
-          # The file in the tree is a configure_file() template: substitute the
-          # version as CMakeLists.txt does and validate what is installed.
-          ver=$(sed -n 's/^project(tidal-wave VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          test -n "$ver" || { echo "no version found in CMakeLists.txt"; exit 1; }
-          echo "project() version: $ver"
-          sed "s/@PROJECT_VERSION@/$ver/g" "$template" > "$id.metainfo.xml"
-          if grep -q '@[A-Z_]*@' "$id.metainfo.xml"; then
-            echo "a @PLACEHOLDER@ survived substitution:"
-            grep -n '@[A-Z_]*@' "$id.metainfo.xml"
-            exit 1
-          fi
-
-          # No --no-net: this step fetches each screenshot and fails on a missing
-          # one. --pedantic only adds hints to the log; appstreamcli exits
-          # non-zero on errors and warnings alone.
-          appstreamcli validate --explain --pedantic "$id.metainfo.xml"
-
-          # 1. AppStream pairs a metainfo file with its component by filename, so
-          #    <id> and the installed basename have to be the same string.
-          grep -q "<id>$id</id>" "$id.metainfo.xml" \
-            || { echo "<id> does not match the filename $id.metainfo.xml"; exit 1; }
-          # 2. <launchable> has to name the desktop entry as installed. If it
-          #    does not, the store lists an app with no way to start it.
-          want=$(sed -n 's@.*<launchable type="desktop-id">\(.*\)</launchable>.*@\1@p' \
-                 "$id.metainfo.xml")
-          test "$want" = "$(basename "$desktop")" \
-            || { echo "<launchable> says '$want', we install '$(basename "$desktop")'"; exit 1; }
-          # 3. The version must not be a second copy of project()'s. The template
-          #    has to defer to CMake for it, and the PKGBUILD cannot (pkgver is
-          #    needed before any source is fetched), so it is checked instead.
-          grep -q 'version="@PROJECT_VERSION@"' "$template" \
-            || { echo "$template hardcodes a version instead of taking @PROJECT_VERSION@"; exit 1; }
-          pkgver=$(sed -n 's/^pkgver=//p' packaging/PKGBUILD)
-          test "$pkgver" = "$ver" \
-            || { echo "packaging/PKGBUILD says pkgver=$pkgver, project() says $ver"; exit 1; }
-
-          echo "id, launchable and version all agree"
+        run: packaging/validate-store-metadata.sh --no-net

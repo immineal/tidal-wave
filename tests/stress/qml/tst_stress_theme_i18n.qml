@@ -39,8 +39,8 @@ TestCase {
         loaded = []
         var page = collectionC.createObject(holder, {})
         S.fill(page, { activeTab: 0 })
-        S.fill(page, { filteredTracks: S.tracks(400), filteredAlbums: S.albums(60),
-                       filteredArtists: S.artists(60), filteredPlaylists: S.playlists(60),
+        S.fill(page, { savedTracks: S.tracks(400), savedAlbums: S.albums(60),
+                       savedArtists: S.artists(60), savedPlaylists: S.playlists(60),
                        mixes: S.mixes(20) })
         loaded.push(page)
 
@@ -206,7 +206,7 @@ TestCase {
             var page = pages[r % pages.length].createObject(holder, {})
             verify(page, "a page failed to build on round " + r)
             if (r % pages.length === 1)
-                S.fill(page, { activeTab: r % 5, filteredTracks: S.tracks(80) })
+                S.fill(page, { activeTab: r % 5, savedTracks: S.tracks(80) })
 
             // No wait between the two: the second lands while the first is
             // still being applied.

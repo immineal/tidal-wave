@@ -163,7 +163,7 @@ TestCase {
 
         // The page's album is explicit and one of the others is clean, so each
         // card says which it is, then Dolby Atmos or its quality.
-        var sep = " • "
+        var sep = " · "
         compare(textsOf(row, "cardSubtitle"),
                 [ testCase.cleanWord    + sep + player.qualityLabel("HI_RES_LOSSLESS"),
                   testCase.explicitWord + sep + word("Dolby Atmos"),
@@ -192,8 +192,8 @@ TestCase {
         var page = openAlbum(product(testCase.cleanId, false, testCase.stereo, testCase.hiRes))
 
         compare(textsOf(rowOf(page), "cardSubtitle"),
-                [ testCase.explicitWord + " • " + player.qualityLabel("HI_RES_LOSSLESS"),
-                  testCase.explicitWord + " • " + word("Dolby Atmos") ])
+                [ testCase.explicitWord + " · " + player.qualityLabel("HI_RES_LOSSLESS"),
+                  testCase.explicitWord + " · " + word("Dolby Atmos") ])
     }
 
     function test_no_row_when_tidal_names_no_other_version() {
@@ -513,7 +513,7 @@ TestCase {
     function test_an_atmos_only_album_says_so_and_how_it_plays() {
         var page = openAlbum(product(testCase.atmosId, true, testCase.atmos, testCase.atmos))
 
-        var facts = factsOf(page).split(" • ")
+        var facts = factsOf(page).split(" · ")
         compare(facts[facts.length - 1], word("Dolby Atmos, plays in stereo"))
         verify(facts.indexOf(player.qualityLabel("LOW")) === -1,
                "the facts line calls a Dolby Atmos album low quality: " + factsOf(page))
@@ -524,7 +524,7 @@ TestCase {
     function test_a_hi_res_album_is_named_by_its_tag() {
         var page = openExplicitHiRes()
 
-        var facts = factsOf(page).split(" • ")
+        var facts = factsOf(page).split(" · ")
         compare(facts[facts.length - 1], player.qualityLabel("HI_RES_LOSSLESS"),
                 "the facts line of a hi-res album: " + factsOf(page))
     }
@@ -543,7 +543,7 @@ TestCase {
         album.audioModes = data.modes
         var page = openAlbum(album)
 
-        var facts = factsOf(page).split(" • ")
+        var facts = factsOf(page).split(" · ")
         compare(facts[facts.length - 1], player.qualityLabel(data.quality))
     }
 }

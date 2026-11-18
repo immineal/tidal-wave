@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QMediaDevices>
 #include <QAudioOutput>
+#include <QAudio>
 #include <QMediaPlayer>
 #include <QSet>
 #include <QSettings>
@@ -214,6 +215,22 @@ private slots:
         rig.player.rebindAudioOutput(QMediaDevices::defaultAudioOutput());
         QCOMPARE(rig.player.muted(), false);
         QVERIFY(qAbs(rig.player.volume() - 0.8) < 0.01);
+    }
+
+    // The slider is a loudness scale, as Qt advises for one; the output takes
+    // the linear factor. Half way on the slider is a lot less than half power.
+    void theVolumeIsALoudnessScale() {
+        Rig rig;
+        QVERIFY(QTest::qWaitFor([&] { return rig.player.findChild<QAudioOutput *>(); }, 5000));
+        rig.player.setVolume(0.5);
+        QVERIFY(qAbs(rig.player.volume() - 0.5) < 0.001);
+        const double out = rig.player.findChild<QAudioOutput *>()->volume();
+        const double want = QAudio::convertVolume(0.5f, QAudio::LogarithmicVolumeScale,
+                                                  QAudio::LinearVolumeScale);
+        QVERIFY2(qAbs(out - want) < 0.001, qPrintable(QString::number(out)));
+        QVERIFY(out < 0.4);
+        rig.player.setVolume(1.0);
+        QVERIFY(qAbs(rig.player.findChild<QAudioOutput *>()->volume() - 1.0) < 0.001);
     }
 
     // The snapshot/restore pair is tested directly as well as through a real

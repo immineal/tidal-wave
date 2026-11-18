@@ -1084,6 +1084,9 @@ TestCase {
                    where + " shrank to " + c.width.toFixed(1) + "x"
                    + c.height.toFixed(1) + ", past the " + minChipWidth + "x"
                    + minChipHeight + " floor")
+            // Chosen value: the pill is a fixed 30px wide at every sidebar
+            // width. Do not change without asking.
+            compare(findByName(c, "finderChipFill").width, 30, where + " is not 30px wide")
 
             // Inside the finder block, which is the item that clips.
             var at = c.mapToItem(finder, 0, 0)
@@ -1334,8 +1337,7 @@ TestCase {
             host.page.sourceComponent = artistC
             page = host.page.item
             page.artistId   = 7
-            page.artistData = { name: "Ein Interpret", bio: "", coverUrl750: "",
-                                similarArtists: [] }
+            page.artistData = { name: "Ein Interpret", bio: "", coverUrl750: "" }
             page.topTracks  = makeSweepTracks(10)
         }
         return page
@@ -1364,7 +1366,7 @@ TestCase {
         // The square hero cover is a fixed size in a RowLayout that never
         // squeezes it. What comes and goes is the album column of the track rows.
         // ArtistPage has no square cover: its hero art is the backdrop.
-        var art = findByName(page, "heroArt")
+        var art = data.which === "artist" ? null : findByName(page, "heroArt")
         var artWidth = art ? art.width : 0
         if (art) verify(art.visible, "the " + data.tag + " hero art started out hidden")
 
@@ -1439,5 +1441,52 @@ TestCase {
             audit(c, here, out)
         }
         return out
+    }
+
+    // A row scrolled under the Settings footer must not show through it. The
+    // row's type glyph is a Shape, which ignores the list's clip, so it once
+    // drew a second icon beside the gear. Checked at offsets that put a
+    // row's corner badge in the footer.
+    function test_no_row_glyph_shows_through_the_settings_footer() {
+        var many = []
+        for (var i = 0; i < 40; ++i)
+            many.push({ kind: i % 2 ? "album" : "playlist", id: "x" + i, title: "Row " + i,
+                        subtitle: "", imageUrl: "cdn/x" + i + ".jpg", pinned: false, trackCount: 3 })
+        library.setEntriesForTest(many)
+        pins.setItemsForTest([])
+        var host = showHost(960, 520)
+        var sb = host.sidebar
+        var list = findByName(sb, "sidebarLibraryList")
+        var row = findByName(sb, "sidebarSettingsRow")
+        var gear = findByName(sb, "sidebarSettingsGear")
+        var labels = findByName(sb, "sidebarSettingsLabels")
+        var footer = row.parent
+        var ground = Theme.surfaceHigh
+        for (var off = 0; off < 44; off += 11) {
+            list.contentY = off
+            settle(host.contentItem)
+            var img = grabImage(host.contentItem)
+            var f = footer.mapToItem(host.contentItem, 0, 0)
+            var g = gear.mapToItem(host.contentItem, 0, 0)
+            var l = labels.mapToItem(host.contentItem, 0, 0)
+            var bad = 0, first = ""
+            for (var y = Math.ceil(f.y) + 1; y < f.y + footer.height - 1; ++y) {
+                // The last few px hold the sidebar's border, drawn over all.
+                for (var x = Math.ceil(f.x) + 1; x < f.x + footer.width - Theme.space2; ++x) {
+                    var inGear = x >= g.x - 2 && x <= g.x + gear.width + 2
+                              && y >= g.y - 2 && y <= g.y + gear.height + 2
+                    var inLabels = labels.visible && x >= l.x - 2 && x <= l.x + labels.width + 2
+                                && y >= l.y - 2 && y <= l.y + labels.height + 2
+                    if (inGear || inLabels) continue
+                    var c = img.pixel(x, y)
+                    if (Math.abs(c.r - ground.r) + Math.abs(c.g - ground.g)
+                            + Math.abs(c.b - ground.b) > 0.06) {
+                        if (bad++ === 0) first = x + "," + y + " is " + c
+                    }
+                }
+            }
+            compare(bad, 0, "at scroll " + off + ", " + bad
+                    + " footer pixels are not the footer's colour, first " + first)
+        }
     }
 }

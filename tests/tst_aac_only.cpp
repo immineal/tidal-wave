@@ -244,7 +244,7 @@ private slots:
         QSignalSpy errorSpy(&player, &Player::error);
 
         player.playTracks(QVariantList{ oneTrack() }, 0);
-        QTRY_VERIFY2_WITH_TIMEOUT(player.duration() > 0 || !errorSpy.isEmpty(),
+        QTRY_VERIFY2_WITH_TIMEOUT(mp->duration() > 0 || !errorSpy.isEmpty(),
                                   "the track neither loaded nor failed", 10000);
         QVERIFY2(errorSpy.isEmpty(), qPrintable(errorSpy.value(0).value(0).toString()));
 

@@ -59,7 +59,7 @@ Item {
     // so the slide still runs and finishes in the frame it started.
     Behavior on panelWidth {
         enabled: !dragHandle.dragging
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // The slot does not animate until the window has said how wide it is: the
@@ -75,10 +75,11 @@ Item {
     // and any difference shows as page ground between the two edges.
     Behavior on reservedWidth {
         enabled: root.slotSettled && !dragHandle.dragging
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     function openSettings() { settingsPopup.open() }
+    function openNewPlaylist() { newPlaylistDialog.openEmpty() }
 
     // ── the rows the library list shows ──────────────────────────────────
 
@@ -154,8 +155,10 @@ Item {
 
     function fillLibModel(next, newKeys) {
         libModel.clear()
-        for (var i = 0; i < next.length; ++i)
-            libModel.append({ key: newKeys[i], entry: next[i] })
+        // One append of the lot: one insert for the view, not one per row.
+        var batch = []
+        for (var i = 0; i < next.length; ++i) batch.push({ key: newKeys[i], entry: next[i] })
+        libModel.append(batch)
     }
 
     // Rows that arrived while a pin was being dragged, held until the pointer
@@ -168,6 +171,7 @@ Item {
             root.deferredRows = next
             return
         }
+        var before = root.rows
         root.rows = next
 
         var i
@@ -200,8 +204,20 @@ Item {
 
         // Every rebuild hands over fresh objects, and a row that kept its key
         // can still have changed: `pinned` flips, a title or a cover url
-        // arrives. So the rows that did not move are handed the new entry too.
-        for (i = 0; i < next.length; ++i) libModel.setProperty(i, "entry", next[i])
+        // arrives. Only those rows are handed the new entry; a write costs.
+        var was = {}
+        for (i = 0; i < before.length; ++i) was[rowKey(before[i])] = before[i]
+        for (i = 0; i < next.length; ++i)
+            if (!sameRow(was[newKeys[i]], next[i])) libModel.setProperty(i, "entry", next[i])
+    }
+
+    // Field by field. The score only placed the row, and nothing shows it.
+    function sameRow(a, b) {
+        if (!a) return false
+        var k
+        for (k in b) if (k !== "score" && a[k] !== b[k]) return false
+        for (k in a) if (!(k in b)) return false
+        return true
     }
 
     readonly property int libraryTravelMs: 170
@@ -236,7 +252,7 @@ Item {
     readonly property int coverPlainIcon: Math.round(coverSize * 0.56)
     // The row's own inset inside the panel, and where a row's content starts
     // once the sidebar is open. 16 is the sidebar's left inset throughout.
-    readonly property int rowInset:  8
+    readonly property int rowInset:  Theme.space2
     readonly property int coverLeft: 16
 
     // The pinned rows are the leading run of the library list: the data layer
@@ -314,6 +330,39 @@ Item {
         pins.move(fromPin, toPin)
     }
 
+    // ── tracks carried in from a list ────────────────────────────────────
+
+    // Through Edits, as the picker adds: the duplicate question, the notice
+    // once Tidal shows it, and Undo.
+    function addCarried(uuid, title) {
+        var ids = TrackDrag.tracks.map(function (t) { return Number(t.id) })
+            .filter(function (id) { return id > 0 })
+        if (uuid.length > 0 && ids.length > 0) Edits.addTracksToPlaylist(uuid, title, ids)
+    }
+
+    // A carried track held near the list's top or bottom edge scrolls it,
+    // so a playlist out of sight can still be reached.
+    Timer {
+        id: carryScroll
+        interval: 16
+        repeat: true
+        running: TrackDrag.active && root.visible
+        readonly property real band: 32
+        onTriggered: {
+            var p = libList.mapFromItem(null, TrackDrag.scenePos.x, TrackDrag.scenePos.y)
+            if (p.x < 0 || p.x > libList.width || p.y < -band || p.y > libList.height + band) return
+            var step = p.y < band ? -Math.ceil((band - p.y) / 4)
+                     : p.y > libList.height - band ? Math.ceil((p.y - (libList.height - band)) / 4) : 0
+            if (step === 0) return
+            var lo = libList.originY
+            var hi = lo + Math.max(0, libList.contentHeight - libList.height)
+            var next = Math.max(lo, Math.min(hi, libList.contentY + step))
+            if (next === libList.contentY) return
+            libList.contentY = next
+            TrackDrag.refresh()
+        }
+    }
+
     // ── the pin menu ─────────────────────────────────────────────────────
 
     readonly property alias pinMenu: pinContextMenu
@@ -323,14 +372,43 @@ Item {
     // coordinates.
     function showPinMenu(x, y, data) {
         if (!data) return
+        // Only a playlist this account made can be deleted; a library row
+        // says so, a pinned item in the rail does not.
+        pinContextMenu.removeLabel = (data.kind === "playlist" && data.editable === true)
+                                     ? qsTr("Delete playlist…") : ""
         pinContextMenu.showPin(x, y, data.kind, data.id, data.title || "",
                                data.subtitle || "", data.imageUrl || "")
+    }
+
+    // ── the one tip for rows and rail icons ──────────────────────────────
+    // Beside the row it names, centred on it: above, Qt's place for a tip,
+    // it covered the row the pointer was about to move to.
+    property Item tipRow: null
+    function claimTip(row, wants) {
+        if (wants) root.tipRow = row
+        else if (root.tipRow === row) root.tipRow = null
+    }
+    ToolTip {
+        id: sideTip
+        objectName: "sidebarTip"
+        parent: root.tipRow || root
+        visible: root.tipRow !== null
+        text: root.tipRow ? root.tipRow.tipText : ""
+        delay: Theme.tooltipDelay
+        // The look is every tip's, from qml/style/ToolTip.qml.
+        x: parent.width + Theme.space2
+        y: Math.round((parent.height - height) / 2)
     }
 
     ContextMenu {
         id: pinContextMenu
         objectName: "sidebarPinMenu"
+        onRemoveRequested: deletePlaylistDialog.askFor(pinContextMenu.pinId,
+                                                       pinContextMenu.pinTitle)
     }
+
+    readonly property alias deleteDialog: deletePlaylistDialog
+    DeletePlaylistDialog { id: deletePlaylistDialog }
 
     // Coalesces a burst of keystrokes into one pass over the index. 120ms is
     // below the point where the list feels like it is lagging the typing.
@@ -376,7 +454,7 @@ Item {
         enabled: !root.navResetting
         // The chips on Collection travel on the same 140, so the two read as
         // one.
-        NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // Which of the three rows the page is, or null: an album, Settings or Now
@@ -392,7 +470,7 @@ Item {
     // interceptor and cannot write through a read-only property.
     property real navPresence: currentNavItem !== null ? 1 : 0
     Behavior on navPresence {
-        NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // Same gate as `slotSettled` above and for the same reason: the first
@@ -466,17 +544,16 @@ Item {
                 }
                 Text {
                     anchors.left: mark.right
-                    anchors.leftMargin: 8
+                    anchors.leftMargin: Theme.space2
                     anchors.right: parent.right
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: Theme.space3
                     anchors.verticalCenter: mark.verticalCenter
                     visible: root.showsWide
                     opacity: root.wideOpacity
                     text: "Tidal Wave"
                     color: Theme.textPrimary
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontBody
                     font.bold: true
-                    font.letterSpacing: 1
                     elide: Text.ElideRight
                 }
             }
@@ -514,8 +591,8 @@ Item {
                 color: Theme.border
                 height: 1
                 Layout.fillWidth: true
-                Layout.leftMargin: Math.round(14 + 2 * root.wideness)
-                Layout.rightMargin: Math.round(14 + 2 * root.wideness)
+                Layout.leftMargin: Math.round(Theme.space3 + Theme.space1 * root.wideness)
+                Layout.rightMargin: Math.round(Theme.space3 + Theme.space1 * root.wideness)
             }
             Item { Layout.fillWidth: true; Layout.preferredHeight: 14 }
 
@@ -526,8 +603,8 @@ Item {
             Item {
                 id: finderSlot
                 Layout.fillWidth: true
-                Layout.leftMargin: 12
-                Layout.rightMargin: 12
+                Layout.leftMargin: Theme.space3
+                Layout.rightMargin: Theme.space3
                 Layout.preferredHeight: Math.round(finder.implicitHeight * root.wideness)
 
                 LibraryFinder {
@@ -567,13 +644,16 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: newPlaylistDialog.openEmpty()
                 Keys.onSpacePressed:  newPlaylistDialog.openEmpty()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("New playlist")
+                Accessible.onPressAction: newPlaylistDialog.openEmpty()
 
                 Rectangle {
                     anchors.fill: parent
                     anchors.leftMargin:  root.rowInset
                     anchors.rightMargin: root.rowInset
                     radius: Theme.radiusRow
-                    color: newPlaylistHov.hovered ? Theme.surfaceHov : "transparent"
+                    color: newPlaylistHov.hovered ? Theme.hoverFill : "transparent"
                     border.width: newPlaylistRow.activeFocus ? 2 : 0
                     border.color: Theme.accent
 
@@ -601,8 +681,7 @@ Item {
                             name: "plus"
                             width: 13
                             height: 13
-                            strokeWidth: 1.8
-                            color: newPlaylistHov.hovered ? Theme.accent : Theme.textDim
+                            color: newPlaylistHov.hovered ? Theme.accentText : Theme.textDim
                         }
                     }
 
@@ -611,13 +690,13 @@ Item {
                         visible: root.showsWide
                         opacity: root.wideOpacity
                         anchors.left: plusTile.right
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: Theme.space3
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: Theme.space3
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("New playlist")
                         color: newPlaylistHov.hovered ? Theme.textPrimary : Theme.textSec
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontMeta
                         elide: Text.ElideRight
                     }
 
@@ -637,8 +716,9 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                bottomMargin: 8
+                bottomMargin: Theme.space2
                 model: libModel
+                reuseItems: true
                 // This list draws no selection, but a ListView still builds a
                 // highlight item and smooth-resizes it toward the current row,
                 // hanging out of the rail meanwhile. Untracked it stays 0 wide.
@@ -647,7 +727,12 @@ Item {
                 // the viewport is kept alive.
                 cacheBuffer: 240
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: ScrollBar {
+                    objectName: "sidebarLibraryScrollBar"
+                    policy: ScrollBar.AsNeeded
+                    // A long list keeps a handle the pointer can find and grab.
+                    minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
+                }
 
                 delegate: LibraryRow { }
 
@@ -678,7 +763,7 @@ Item {
                     NumberAnimation {
                         property: "opacity"
                         from: 0; to: 1
-                        duration: Theme.dur(140)
+                        duration: Theme.dur(Theme.motionMedium)
                         easing.type: Easing.OutCubic
                     }
                 }
@@ -692,7 +777,7 @@ Item {
                     x: 8
                     width: Math.max(0, libList.width - 16)
                     height: 2
-                    radius: 1
+                    radius: height / 2
                     z: 3
                     color: Theme.accent
                     y: (root.pinDragTo > root.pinDragFrom ? root.pinDragTo + 1 : root.pinDragTo)
@@ -700,17 +785,21 @@ Item {
                 }
 
                 Text {
+                    objectName: "sidebarEmptyText"
                     anchors.centerIn: parent
                     width: parent.width - 32
                     // There is no room to say any of this in a 68px rail, and
-                    // an empty rail is self-explanatory.
-                    visible: root.rows.length === 0 && root.showsWide
+                    // an empty rail is self-explanatory. A library still loading
+                    // is not an empty one, and nor is one that failed to load.
+                    visible: root.rows.length === 0 && root.showsWide && !library.loading
                     opacity: root.wideOpacity
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: root.searching ? qsTr("No matches") : qsTr("Nothing saved yet")
+                    text: root.searching ? qsTr("No matches")
+                        : library.loadFailed ? qsTr("Your collection could not be loaded")
+                        : qsTr("Nothing saved yet")
                     color: Theme.textDim
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontMeta
                 }
             }
         }
@@ -731,16 +820,19 @@ Item {
                 id: settingsRow
                 objectName: "sidebarSettingsRow"
                 anchors.fill: parent
-                anchors.margins: 6
+                anchors.margins: Theme.space2
 
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openSettings()
                 Keys.onSpacePressed:  root.openSettings()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("SettingsPanel", "Settings")
+                Accessible.onPressAction: root.openSettings()
 
                 Rectangle {
                     anchors.fill: parent
-                    anchors.leftMargin: 2
-                    anchors.rightMargin: 2
+                    anchors.leftMargin: Theme.spaceHalf
+                    anchors.rightMargin: Theme.spaceHalf
                     radius: Theme.radiusRow
                     color: settingsHover.hovered ? Theme.hoverFill : "transparent"
                     border.width: settingsRow.activeFocus ? 2 : 0
@@ -753,7 +845,6 @@ Item {
                         color: settingsHover.hovered ? Theme.textPrimary : Theme.textSec
                         width: 18
                         height: 18
-                        strokeWidth: 1.8
                         anchors.verticalCenter: parent.verticalCenter
                         // 16 from the panel edge once open, centred in the
                         // rail, travelling on `wideness`. The row's own 8px of
@@ -768,11 +859,11 @@ Item {
                         visible: root.showsWide
                         opacity: root.wideOpacity
                         anchors.left: gearItem.right
-                        anchors.leftMargin: 12
+                        anchors.leftMargin: Theme.space3
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: Theme.space3
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 1
+                        spacing: Theme.spaceHalf
 
                         Text {
                             objectName: "sidebarSettingsLabel"
@@ -782,7 +873,7 @@ Item {
                             // catalogue holds it once.
                             text: qsTranslate("SettingsPanel", "Settings")
                             color: Theme.textPrimary
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontBody
                             elide: Text.ElideRight
                         }
                         Text {
@@ -792,9 +883,9 @@ Item {
                             // Auth::displayNameFrom already picks the
                             // username over the email address.
                             text: auth.username.length > 0 ? auth.username
-                                                           : qsTr("My Account")
+                                                           : qsTr("My account")
                             color: Theme.textSec
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontMeta
                             elide: Text.ElideRight
                         }
                     }
@@ -805,8 +896,8 @@ Item {
                     // In the rail the labels are not on screen, so this is the
                     // only place the row says what it is.
                     ToolTip.visible: settingsHover.hovered
-                    ToolTip.text: qsTr("Settings (Ctrl+,)")
-                    ToolTip.delay: 450
+                    ToolTip.text: qsTr("Settings (%1)").arg(Shortcuts.display("settings"))
+                    ToolTip.delay: Theme.tooltipDelay
                 }
             }
         }
@@ -820,7 +911,7 @@ Item {
             objectName: "navCurrentIndicator"
             x: 0
             width: 3
-            radius: 2
+            radius: width / 2
             color: Theme.accent
             opacity: root.navPresence
             visible: opacity > 0.001
@@ -894,7 +985,7 @@ Item {
         // The border itself, drawn by the handle so the two cannot drift apart.
         Rectangle {
             anchors.right: parent.right
-            anchors.rightMargin: 3
+            anchors.rightMargin: Theme.space1
             width: 1
             height: parent.height
             color: dragHandle.containsMouse || dragHandle.dragging ? Theme.accent : Theme.border
@@ -916,9 +1007,8 @@ Item {
     function open(kind, id, data) {
         switch (kind) {
         case "playlist":
-            // The row carries the playlist's Tidal type, which is what
-            // PlaylistPage reads to decide whether the playlist is editable.
-            // Anything that is not "USER" opens read-only.
+            // The row carries the playlist's Tidal type for the header; whether
+            // it is editable comes from the playlist PlaylistPage fetches.
             root.navigate("playlist", {
                 playlistUuid:  id,
                 playlistTitle: data.title || "",
@@ -958,12 +1048,23 @@ Item {
 
     SettingsPanel { id: settingsPopup }
 
-    // Nothing is done with the answer here: the bridge raises playlistCreated,
-    // LibraryIndex adds the row and it arrives through `library.entries` like
-    // every other. The alias is a test's only handle on the reparented Popup.
+    // The row arrives on its own: the bridge raises playlistCreated, and
+    // LibraryIndex adds it through `library.entries` like every other. The
+    // new playlist opens, as it does from the picker. The alias is a test's
+    // only handle on the reparented Popup.
     readonly property alias playlistDialog: newPlaylistDialog
 
-    NewPlaylistDialog { id: newPlaylistDialog }
+    NewPlaylistDialog {
+        id: newPlaylistDialog
+        onPlaylistCreated: (playlist) => root.openCreated(playlist)
+    }
+
+    function openCreated(playlist) {
+        var uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
+        if (uuid.length > 0)
+            root.navigate("playlist", { playlistUuid: uuid, playlistTitle: playlist.title || "",
+                                        coverUrl: "", playlistType: "USER" })
+    }
 
     // ── inline components ────────────────────────────────────────────────
 
@@ -983,6 +1084,8 @@ Item {
 
         readonly property string kind:   modelData.kind
         readonly property string itemId: modelData.id
+        readonly property bool menuOpen: pinContextMenu.visible && pinContextMenu.pinKind === kind
+                                         && pinContextMenu.pinId === itemId
         readonly property string title:  modelData.title
         readonly property bool   pinned: modelData.pinned === true
         readonly property bool   hasArt: (modelData.imageUrl || "").length > 0
@@ -1002,22 +1105,46 @@ Item {
         readonly property bool draggable: pinned && !root.searching
                                           && root.pinnedCount > 1 && root.showsWide
         readonly property bool dragging:  root.pinDragging && root.pinDragFrom === index
+        readonly property bool takesTracks: kind === "playlist" && modelData.editable === true
 
         width: ListView.view ? ListView.view.width : 0
         height: root.libRowHeight + (blockBreak ? 11 : 0)
         // The row being dragged travels over its neighbours, not under them.
         z: dragging ? 2 : 0
 
-        activeFocusOnTab: true
+        // The library is one tab stop, the current row; the ListView walks it
+        // with the arrows. Eight rows of Tab never got out of the sidebar.
+        activeFocusOnTab: activeFocus || (ListView.view
+                          ? (ListView.isCurrentItem || ListView.view.currentIndex < 0) : true)
+        onActiveFocusChanged: if (activeFocus && ListView.view)
+                                  ListView.view.positionViewAtIndex(index, ListView.Contain)
         Keys.onReturnPressed: root.open(kind, itemId, modelData)
         Keys.onSpacePressed:  root.open(kind, itemId, modelData)
+        Keys.onPressed: (event) => {
+            var view = ListView.view
+            if (event.key === Qt.Key_Menu
+                    || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                var p = rowItem.mapToItem(root, root.rowInset + 16, rowItem.height)
+                root.showPinMenu(p.x, p.y, rowItem.modelData)
+                event.accepted = true
+            } else if (view && event.modifiers === Qt.NoModifier
+                       && (event.key === Qt.Key_Home || event.key === Qt.Key_End)) {
+                view.currentIndex = event.key === Qt.Key_Home ? 0 : view.count - 1
+                if (view.currentItem) view.currentItem.forceActiveFocus(Qt.TabFocusReason)
+                event.accepted = true
+            }
+        }
+        Accessible.role: Accessible.ListItem
+        Accessible.name: rowItem.title
+        Accessible.description: rowItem.modelData.subtitle || ""
+        Accessible.onPressAction: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData)
 
         Rectangle {
             objectName: "pinnedBlockBreak"
             property int rowIndex: rowItem.index
             visible: rowItem.blockBreak
             anchors.top: parent.top
-            anchors.topMargin: 5
+            anchors.topMargin: Theme.space1
             height: 1
             color: Theme.border
             // One rule for both shapes: it hugs the covers at the rail and
@@ -1037,8 +1164,12 @@ Item {
             anchors.rightMargin: root.rowInset
             height: root.libRowHeight
             radius: Theme.radiusRow
-            color: rowItem.dragging || rowHov.hovered ? Theme.surfaceHov : "transparent"
-            border.width: rowItem.activeFocus || rowItem.dragging ? 2 : 0
+            // Marked while its menu is open too, so the menu says which row,
+            // and while tracks carried over it would land in it.
+            color: trackDrop.containsDrag ? Theme.accentSoft
+                   : rowItem.dragging || rowHov.hovered || rowItem.menuOpen
+                   ? Theme.hoverFill : "transparent"
+            border.width: rowItem.activeFocus || rowItem.dragging || trackDrop.containsDrag ? 2 : 0
             border.color: Theme.accent
             // The lift. A transform rather than a y offset, because the row's
             // y belongs to the ListView.
@@ -1046,6 +1177,20 @@ Item {
 
             HoverHandler { id: rowHov; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData) }
+
+            // Tracks dropped here go in, as Add to playlist puts them; only a
+            // playlist this account made takes them, as in the picker.
+            DropArea {
+                id: trackDrop
+                objectName: "libraryRowTrackDrop"
+                anchors.fill: parent
+                keys: TrackDrag.keys
+                enabled: rowItem.takesTracks
+                onDropped: (drop) => {
+                    root.addCarried(rowItem.itemId, rowItem.title)
+                    drop.accept(Qt.CopyAction)
+                }
+            }
 
             // Right button only, so the tap handler above keeps every
             // left-click. Declared before the cover and the grip, so a
@@ -1094,7 +1239,7 @@ Item {
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     opacity: status === Image.Ready ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Theme.dur(140) } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
                 }
 
                 // The type. One glyph either way, a corner mark over artwork or
@@ -1118,8 +1263,10 @@ Item {
                     name: root.glyphFor(rowItem.kind)
                     width:  rowItem.hasArt ? root.coverBadgeIcon : root.coverPlainIcon
                     height: width
-                    strokeWidth: rowItem.hasArt ? 1.5 : 1.6
-                    color: rowItem.pinned ? Theme.accent : Theme.textDim
+                    color: rowItem.pinned ? Theme.accentText : Theme.textDim
+                    // A Shape ignores the list's clip; drawn into a layer it is
+                    // clipped like an image, so a row under the footer stays hidden.
+                    layer.enabled: true
                     // Centred in the badge, which is itself held off the
                     // corner. One item drawn in two places, so a row costs one
                     // glyph.
@@ -1152,15 +1299,15 @@ Item {
                 visible: root.showsWide
                 opacity: root.wideOpacity
                 anchors.left: cover.right
-                anchors.leftMargin: 10
+                anchors.leftMargin: Theme.space3
                 anchors.right: parent.right
                 // The grip's space is reserved whether or not it is showing,
                 // so the title does not jump when the pointer arrives.
-                anchors.rightMargin: rowItem.draggable ? 28 : 10
+                anchors.rightMargin: rowItem.draggable ? Theme.space8 : Theme.space3
                 anchors.verticalCenter: parent.verticalCenter
                 text: rowItem.title
                 color: Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 elide: Text.ElideRight
             }
 
@@ -1174,15 +1321,14 @@ Item {
                 width: 16
                 height: parent.height
                 anchors.right: parent.right
-                anchors.rightMargin: 6
+                anchors.rightMargin: Theme.space2
 
                 VectorIcon {
                     anchors.centerIn: parent
                     name: "grip"
                     width: 12
                     height: 12
-                    strokeWidth: 1.5
-                    color: rowItem.dragging ? Theme.accent : Theme.textDim
+                    color: rowItem.dragging ? Theme.accentText : Theme.textDim
                     opacity: rowHov.hovered || rowItem.dragging ? 1 : 0.45
                 }
 
@@ -1190,7 +1336,7 @@ Item {
                     id: dragArea
                     objectName: "pinDragArea"
                     anchors.fill: parent
-                    anchors.margins: -5          // 16 wide is a small target
+                    anchors.margins: -Theme.space1          // 16 wide is a small target
                     enabled: rowItem.draggable
                     cursorShape: rowItem.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                     // Otherwise the list reads the vertical drag as a flick
@@ -1226,14 +1372,14 @@ Item {
                 }
             }
 
-            // On every row, not only the truncated ones: in the rail the
-            // title is not on screen at all, so this is the only place the
-            // name is said.
-            ToolTip.visible: rowHov.hovered && !rowItem.dragging
-            ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
-                                                : rowItem.title
-            ToolTip.delay: 450
+            // Said only where the name is not on screen whole: in the rail,
+            // or cut off in the open panel. Drawn by root's sideTip.
             readonly property string subtitleOf: rowItem.modelData.subtitle || ""
+            readonly property string tipText: subtitleOf.length > 0
+                                              ? rowItem.title + " · " + subtitleOf : rowItem.title
+            readonly property bool wantsTip: rowHov.hovered && !rowItem.dragging
+                                             && (!root.showsWide || rowTitle.truncated)
+            onWantsTipChanged: root.claimTip(this, wantsTip)
         }
     }
 
@@ -1258,18 +1404,22 @@ Item {
         activeFocusOnTab: true
         Keys.onReturnPressed: activated()
         Keys.onSpacePressed:  activated()
+        Accessible.role: Accessible.PageTab
+        Accessible.name: navItem.label
+        Accessible.selected: navItem.current
+        Accessible.onPressAction: navItem.activated()
 
         Rectangle {
             anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            anchors.topMargin: 2
-            anchors.bottomMargin: 2
+            anchors.leftMargin: Theme.space2
+            anchors.rightMargin: Theme.space2
+            anchors.topMargin: Theme.spaceHalf
+            anchors.bottomMargin: Theme.spaceHalf
             radius: Theme.radiusRow
             color: navItem.current
-                   ? Theme.surfaceHov
+                   ? Theme.selectedFill
                    : sideHov.hovered ? Theme.hoverFill : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
+            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
             border.width: navItem.activeFocus ? 2 : 0
             border.color: Theme.accent
 
@@ -1277,8 +1427,8 @@ Item {
                 id: navGlyph
                 objectName: "navIcon"
                 name: navItem.icon
-                color: navItem.current ? Theme.accent : Theme.textSec
-                Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
+                color: navItem.current ? Theme.accentText : Theme.textSec
+                Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
                 anchors.verticalCenter: parent.verticalCenter
                 // 16 from the panel edge in the sidebar (8 here, inside the
                 // row's 8px inset), centred in the rail, and travelling
@@ -1292,14 +1442,14 @@ Item {
                 visible: root.showsWide
                 opacity: root.wideOpacity
                 anchors.left: navGlyph.right
-                anchors.leftMargin: 12
+                anchors.leftMargin: Theme.space3
                 anchors.right: parent.right
-                anchors.rightMargin: 10
+                anchors.rightMargin: Theme.space3
                 anchors.verticalCenter: parent.verticalCenter
                 text: navItem.label
                 color: navItem.current ? Theme.textPrimary : Theme.textSec
-                Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
-                font.pixelSize: 14
+                Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
+                font.pixelSize: Theme.fontBody
                 // Not animatable: a font weight is not a number Qt interpolates.
                 font.bold: navItem.current
                 elide: Text.ElideRight
@@ -1308,9 +1458,10 @@ Item {
             HoverHandler { id: sideHov; cursorShape: Qt.PointingHandCursor }
             TapHandler   { onTapped: navItem.activated() }
 
-            ToolTip.visible: sideHov.hovered && !root.showsWide
-            ToolTip.text: navItem.label
-            ToolTip.delay: 450
+            // In the rail only, where the label is not drawn.
+            readonly property string tipText: navItem.label
+            readonly property bool wantsTip: sideHov.hovered && !root.showsWide
+            onWantsTipChanged: root.claimTip(this, wantsTip)
         }
     }
 }

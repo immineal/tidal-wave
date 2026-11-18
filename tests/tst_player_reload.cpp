@@ -320,20 +320,20 @@ private slots:
         QSettings().clear();
     }
 
-    // ── a restore the user overtakes ────────────────────────────────────────
+    // ── a restored session ──────────────────────────────────────────────────
 
-    // The restored track's request is still out when the user presses Next.
+    // Nothing of the restored track was fetched when the user presses Next.
     // The track that loads is one the user asked for, so it plays.
-    void aTrackPickedWhileTheRestoreIsStillLoadingPlays() {
+    void aTrackPickedOnARestoredSessionPlays() {
         if (const char *why = obstacle()) QSKIP(why);
         QVERIFY(saveFiveRowSession());
 
         Launch b;
         QVERIFY(b.audioUp());
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+        QCOMPARE(b.client.asked, QList<qlonglong>());
 
         b.p().next();
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003}));
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1003}));
         QVERIFY(b.client.answer(1003, oneFileAt(m_server.url(QStringLiteral("/track")))));
 
         QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
@@ -342,15 +342,16 @@ private slots:
         QCOMPARE(currentId(b.p()), 1003);
     }
 
-    // Left alone, the restored track comes back paused where it was left.
-    // Signing in later restores through a player that already exists.
-    void theRestoredTrackComesBackPausedWhereItWasLeft_data() {
+    // Left alone, the restored track waits where it was left, with nothing
+    // fetched. Play plays it from there. Signing in later restores through a
+    // player that already exists.
+    void theRestoredTrackPlaysFromWhereItWasLeft_data() {
         QTest::addColumn<bool>("signedInAtStartup");
         QTest::newRow("at startup")    << true;
         QTest::newRow("on signing in") << false;
     }
 
-    void theRestoredTrackComesBackPausedWhereItWasLeft() {
+    void theRestoredTrackPlaysFromWhereItWasLeft() {
         if (const char *why = obstacle()) QSKIP(why);
         QFETCH(bool, signedInAtStartup);
         QVERIFY(saveFiveRowSession());
@@ -358,40 +359,39 @@ private slots:
         Launch b(signedInAtStartup);
         QVERIFY(b.audioUp());
         if (!signedInAtStartup) b.client.setUserId(kUser);
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
         QSignalSpy playingSpy(&b.p(), &Player::playingChanged);
-        QVERIFY(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/track")))));
-
-        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
-        QTRY_VERIFY_WITH_TIMEOUT(qAbs(b.mp()->position() - 12000) < 250, 5000);
         QTest::qWait(300);
-        QCOMPARE(b.mp()->playbackState(), QMediaPlayer::PausedState);
-        for (const QList<QVariant> &args : playingSpy)
-            QVERIFY2(!args.at(0).toBool(), "the restored track announced that it was playing");
+        QCOMPARE(b.client.asked, QList<qlonglong>());
+        QCOMPARE(currentId(b.p()), 1002);
+        QCOMPARE(b.p().position(), qint64(12000));
+        QVERIFY(playingSpy.isEmpty());
+        QVERIFY(b.mp()->source().isEmpty());
+
+        b.p().playPause();
+        QVERIFY(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(b.started(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(b.mp()->position() >= 11500, 5000);
     }
 
-    // A restored track Tidal has ruled out is dropped without a word, and the
-    // row that takes its place is still the restore's: it comes back paused.
-    void theRowAfterARuledOutRestoredTrackComesBackPaused() {
+    // Play on a restored track Tidal has ruled out moves on to the row after
+    // it, says so, and plays that one.
+    void playOnARuledOutRestoredTrackPlaysTheRowAfterIt() {
         if (const char *why = obstacle()) QSKIP(why);
         QVERIFY(saveFiveRowSession());
 
         Launch b;
         QVERIFY(b.audioUp());
         QSignalSpy errorSpy(&b.p(), &Player::error);
-        QSignalSpy playingSpy(&b.p(), &Player::playingChanged);
 
-        QVERIFY(b.client.answer(1002, ruledOut(), QStringLiteral("only a preview")));
+        b.p().playPause();
+        QVERIFY(b.client.answer(1002, ruledOut(), kGone));
         QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003}));
         QCOMPARE(currentId(b.p()), 1003);
         QVERIFY(b.client.answer(1003, oneFileAt(m_server.url(QStringLiteral("/track")))));
 
-        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
-        QTest::qWait(300);
-        QCOMPARE(b.mp()->playbackState(), QMediaPlayer::PausedState);
-        for (const QList<QVariant> &args : playingSpy)
-            QVERIFY2(!args.at(0).toBool(), "the row after a dropped one started playing");
-        QCOMPARE(errorSpy.count(), 0);
+        QTRY_VERIFY_WITH_TIMEOUT(b.started(), 10000);
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(), skipped(1002));
         QCOMPARE(b.p().queueCount(), 4);
     }
 
@@ -484,7 +484,7 @@ private slots:
     }
 
     // A restored track whose stream resolved and whose download then failed.
-    // The press on play is the user's: the track plays from where it was left.
+    // The next press on play asks again: the track plays from where it was left.
     void aRestoredTrackWhoseDownloadFailedPlaysOnThePress() {
         if (const char *why = obstacle()) QSKIP(why);
         QVERIFY(saveFiveRowSession());
@@ -492,6 +492,7 @@ private slots:
         Launch b;
         QVERIFY(b.audioUp());
         QSignalSpy errorSpy(&b.p(), &Player::error);
+        b.p().playPause();
         QVERIFY(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/gone")))));
         QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 10000);
         QCOMPARE(b.p().position(), qint64(12000));
@@ -549,6 +550,7 @@ private slots:
         qlonglong id = 3000;
         if (how == QLatin1String("restored")) {
             id = 1002;
+            a.p().playPause();
             QVERIFY(a.client.answer(id, noise));
         } else if (how == QLatin1String("ahead")) {
             // Downloaded while the track before it plays, handed over at its end.
@@ -642,11 +644,11 @@ private slots:
         } else if (move == QLatin1String("previous")) {
             a.p().previous();
         } else {
-            // The request made ahead of time stays out, so the row is asked
-            // for again when the track before it has run out.
+            // The request made ahead of time is taken over when the track
+            // before it has run out, so the row is asked for once.
             a.p().seek(29000);
-            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
-            QVERIFY(a.client.answer(8002, ruledOut(), kGone));
+            QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002LL, 10000);
+            QCOMPARE(a.client.asked, (QList<qlonglong>{from, 8002}));
         }
         QCOMPARE(currentId(a.p()), 8002);
         QVERIFY(a.client.answer(8002, ruledOut(), kGone));
@@ -665,9 +667,9 @@ private slots:
         QCOMPARE(errorSpy.count(), 1);
     }
 
-    // A step taken while the restored track is still loading is a step like
-    // any other: it passes over the withdrawn row, says so, and plays.
-    void aStepTakenDuringARestorePassesOverAWithdrawnTrack() {
+    // A step taken on a restored session is a step like any other: it passes
+    // over the withdrawn row, says so, and plays.
+    void aStepTakenOnARestoredSessionPassesOverAWithdrawnTrack() {
         if (const char *why = obstacle()) QSKIP(why);
         QVERIFY(saveFiveRowSession());
 
@@ -677,7 +679,7 @@ private slots:
         b.p().next();
         QVERIFY(b.client.answer(1003, ruledOut(), kGone));
 
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003, 1004}));
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1003, 1004}));
         QCOMPARE(currentId(b.p()), 1004);
         QCOMPARE(b.p().queueCount(), 4);
         QCOMPARE(errorSpy.count(), 1);
@@ -870,10 +872,11 @@ private slots:
         } else if (move == QLatin1String("previous")) {
             a.p().previous();
         } else {
-            // Asked for ahead of time and again when the track before it ran out.
+            // Asked for ahead of time, and that request is taken over when
+            // the track before it ran out.
             a.p().seek(29000);
-            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
-            QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
+            QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002LL, 10000);
+            QCOMPARE(a.client.asked, (QList<qlonglong>{from, 8002}));
         }
         QCOMPARE(currentId(a.p()), 8002);
         QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
@@ -1187,8 +1190,9 @@ private slots:
         QCOMPARE(a.client.asked, (QList<qlonglong>{5000, 5000}));
     }
 
-    // Removing the playing row aborts the preload of the row after it, which
-    // then loads as the playing one. The row after that is still fetched ahead.
+    // The row being fetched ahead is removed while its fetch is under way.
+    // The fetch is dropped and the new row ahead is fetched instead. The
+    // dropped one is no failure: put back, the track is fetched again.
     void anAbortedPreloadIsNotRememberedAsAFailedOne() {
         if (const char *why = obstacle()) QSKIP(why);
 
@@ -1197,23 +1201,23 @@ private slots:
         const int heldBefore = m_server.requestsHeld;
         const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
 
-        a.p().playTracks(contextOf(6000, 3), 0);
+        const QVariantList rows = contextOf(6000, 3);
+        a.p().playTracks(rows, 0);
         QVERIFY(a.client.answer(6000, track));
-        QTRY_VERIFY_WITH_TIMEOUT(a.loaded(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{6000, 6001}), 5000);
         QVERIFY(a.client.answer(6001, oneFileAt(m_server.url(QStringLiteral("/held")))));
         QTRY_COMPARE_WITH_TIMEOUT(m_server.requestsHeld, heldBefore + 1, 5000);
 
-        a.p().removeFromQueue(0);
-        QCOMPARE(currentId(a.p()), 6001);
-        QCOMPARE(a.client.asked, (QList<qlonglong>{6000, 6001, 6001}));
-        QVERIFY(a.client.answer(6001, track));
-        QTRY_VERIFY_WITH_TIMEOUT(!a.mp()->source().isEmpty() && a.loaded(), 10000);
+        a.p().removeFromQueue(1);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{6000, 6001, 6002}), 5000);
+        QVERIFY(a.client.answer(6002, track));
 
-        a.p().seek(6000);
+        a.p().playNext(QVariantList{ rows.at(1) });
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked,
-                                  (QList<qlonglong>{6000, 6001, 6001, 6002}), 5000);
+                                  (QList<qlonglong>{6000, 6001, 6002, 6001}), 5000);
+        QCOMPARE(currentId(a.p()), 6000);
     }
 
     // ── a disk with no room ─────────────────────────────────────────────────
@@ -1319,12 +1323,15 @@ private slots:
         QTest::newRow("play then pause, a step held paused")      << held     << 2;
         QTest::newRow("play, a restored track")                   << restored << 1;
         QTest::newRow("play then pause, a restored track")        << restored << 2;
+        QTest::newRow("play, pause, play, a restored track")      << restored << 3;
         QTest::newRow("pause, a load the user started")           << users    << 1;
         QTest::newRow("pause then play, a load the user started") << users    << 2;
     }
 
     // The stream request is still out when play or pause is pressed. The press
     // decides what the load ends in, shows at once, and a second one undoes it.
+    // A held step and a restored track have nothing under way: the first press
+    // on play starts the load.
     void aPressDuringALoadDecidesWhatItEndsIn() {
         if (const char *why = obstacle()) QSKIP(why);
         QFETCH(QString, load);
@@ -1356,7 +1363,9 @@ private slots:
         }
         Player &p = l->p();
         QCOMPARE(currentId(p), id);
-        QVERIFY(p.loading());
+        const bool resting = load != QLatin1String("users");
+        QCOMPARE(p.loading(), !resting);
+        if (resting) QVERIFY2(!l->client.asked.contains(id), "a track nobody plays was fetched");
         const QList<qlonglong> asked = l->client.asked;
         const bool saidAtFirst = p.playing();
         const bool playsAtFirst = plays;
@@ -1389,8 +1398,8 @@ private slots:
         QCOMPARE(p.playing(), plays);
         QVERIFY(!p.loading());
         QCOMPARE(l->client.asked.mid(0, asked.count()), asked);
-        // Only the row ahead may have been asked for since.
-        QVERIFY(l->client.asked.count() <= asked.count() + 1);
+        // Only the track itself, if play started its load, and the row ahead.
+        QVERIFY(l->client.asked.count() <= asked.count() + (resting ? 2 : 1));
         if (load == QLatin1String("restored")) {
             // From where it was left, either way.
             if (plays) QTRY_VERIFY_WITH_TIMEOUT(l->mp()->position() >= 11500, 5000);
@@ -1398,24 +1407,21 @@ private slots:
         }
     }
 
-    // Play pressed on a restored track makes the load the user's own. What
-    // goes wrong with it then is said, and a withdrawn track keeps its row.
-    void aPlayPressDuringARestoreMakesTheLoadTheUsers_data() {
+    // Play on a restored track that cannot be reached says so and keeps the
+    // row, and the next press asks again. One Tidal no longer has is passed
+    // over, also when the account came after the queue had moved on.
+    void aPlayPressOnARestoredTrack_data() {
         QTest::addColumn<bool>("withdrawn");
         QTest::addColumn<bool>("signedInLater");
-        QTest::addColumn<QString>("sentence");
-        const QString gone = QStringLiteral("This track is no longer available on Tidal.");
-        QTest::newRow("Tidal is out of reach")
-            << false << false << QStringLiteral("Could not load this track for playback.");
-        QTest::newRow("Tidal no longer has the track") << true << false << gone;
+        QTest::newRow("Tidal is out of reach")         << false << false;
+        QTest::newRow("Tidal no longer has the track") << true  << false;
         QTest::newRow("Tidal no longer has the track, signed in after a step")
-            << true << true << gone;
+            << true << true;
     }
 
-    void aPlayPressDuringARestoreMakesTheLoadTheUsers() {
+    void aPlayPressOnARestoredTrack() {
         QFETCH(bool, withdrawn);
         QFETCH(bool, signedInLater);
-        QFETCH(QString, sentence);
         QVERIFY(saveFiveRowSession());
 
         Launch b(!signedInLater);
@@ -1429,14 +1435,25 @@ private slots:
         }
         QCOMPARE(currentId(b.p()), 1002);
         QList<qlonglong> asked = b.client.asked;
-        QCOMPARE(asked.constLast(), 1002);
+        QVERIFY(!asked.contains(1002));
         QSignalSpy errorSpy(&b.p(), &Player::error);
         b.p().playPause();
         QVERIFY(withdrawn ? b.client.answer(1002, ruledOut(), kGone)
                           : b.client.answer(1002, StreamManifest(), QStringLiteral("Host not found")));
+        asked.append(1002);
 
         QCOMPARE(errorSpy.count(), 1);
-        QCOMPARE(errorSpy.at(0).at(0).toString(), sentence);
+        if (withdrawn) {
+            QCOMPARE(errorSpy.at(0).at(0).toString(), skipped(1002));
+            QCOMPARE(currentId(b.p()), 1003);
+            QCOMPARE(b.p().queueCount(), 4);
+            asked.append(1003);
+            QCOMPARE(b.client.asked, asked);
+            QVERIFY(b.p().loading());
+            return;
+        }
+        QCOMPARE(errorSpy.at(0).at(0).toString(),
+                 QStringLiteral("Could not load this track for playback."));
         QCOMPARE(currentId(b.p()), 1002);
         QCOMPARE(b.p().queueCount(), 5);
         QCOMPARE(b.client.asked, asked);
@@ -1525,7 +1542,7 @@ private slots:
         QVERIFY(a.audioUp());
         a.p().playTracks(contextOf(8000, last ? 1 : 3), 0);
         QVERIFY(a.client.answer(8000, track));
-        QTRY_VERIFY_WITH_TIMEOUT(a.started() && a.p().duration() > 0, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.started() && a.mp()->duration() > 0, 10000);
         if (paused) {
             a.p().playPause();
             QTRY_COMPARE_WITH_TIMEOUT(a.mp()->playbackState(), QMediaPlayer::PausedState, 5000);
@@ -1541,16 +1558,16 @@ private slots:
             return;
         }
         QTRY_VERIFY2_WITH_TIMEOUT(currentId(a.p()) == 8001, "the end never came", 8000);
+        if (paused) {
+            // A paused player moves on and waits there, with nothing fetched.
+            QTest::qWait(300);
+            QCOMPARE(a.client.asked, (QList<qlonglong>{8000}));
+            QVERIFY2(!a.started() && !a.p().playing(), "the track after a paused one played");
+            return;
+        }
         QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001}));
         QVERIFY(a.client.answer(8001, track));
-        if (paused) {
-            // A paused player moves on and waits there.
-            QTRY_VERIFY_WITH_TIMEOUT(!a.p().loading() && a.loaded(), 10000);
-            QTest::qWait(300);
-            QVERIFY2(!a.started() && !a.p().playing(), "the track after a paused one played");
-        } else {
-            QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the track after it never played", 10000);
-        }
+        QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the track after it never played", 10000);
     }
 
 private:

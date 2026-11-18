@@ -23,10 +23,10 @@ Only the latest release gets fixes. There are no maintenance branches.
 
 All of these are documented in the README's privacy section:
 
-* `~/.config/tidal-wave/credentials.json` holds the Tidal access and refresh
-  tokens as plain JSON. It is written mode 0600 and is not encrypted or kept in
-  a keyring, so anything running as your user can read it and use your Tidal
-  account.
+* `~/.config/tidal-wave/credentials.json` (under `$XDG_CONFIG_HOME` where that
+  is set; on macOS in `~/Library/Application Support/TidalWave/Tidal Wave/`) holds the Tidal access and refresh tokens as plain JSON. It is written
+  mode 0600 and is not encrypted or kept in a keyring, so anything running as
+  your user can read it and use your Tidal account.
 * The OAuth client id and secret are compiled into the binary
   (`kClientSecret` in `src/api/Auth.cpp`). Anyone with the binary can extract
   them.

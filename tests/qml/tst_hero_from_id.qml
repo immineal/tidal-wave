@@ -294,12 +294,11 @@ TestCase {
                 "the page asked about some other playlist")
     }
 
-    // playlistType decides whether the page lets the user edit the playlist,
-    // and an empty type reads as EDITORIAL, which is read-only.
+    // The header says whether the page lets the user edit the playlist.
     function test_playlist_opened_with_only_a_uuid_learns_that_it_is_editable() {
         bridge.setPlaylistForTest({ uuid: "pl-2", title: "Eigene Liste",
                                     description: "", numTracks: 3, duration: 600,
-                                    coverUrl: "", type: "USER" })
+                                    coverUrl: "", type: "USER", editable: true })
 
         var holder = makeHolder()
         var page = createTemporaryObject(playlistC, holder)
@@ -308,7 +307,7 @@ TestCase {
 
         compare(page.playlistType, "USER",
                 "the page never learned whose playlist this is")
-        verify(page.isUserPlaylist,
+        verify(page.playlistEditable,
                "a playlist the user owns opened read-only when reached by uuid")
     }
 

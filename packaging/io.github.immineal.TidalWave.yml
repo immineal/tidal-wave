@@ -34,6 +34,9 @@ finish-args:
   # pid 2; a second tray icon would be -2-2 and need its own own-name.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --own-name=org.kde.StatusNotifierItem-2-1
+  # The track-change notification, off unless Settings turns it on
+  # (src/ui/TrackNotifier.cpp).
+  - --talk-name=org.freedesktop.Notifications
   # Chromecast discovery: libavahi-client asks the host's avahi-daemon on the
   # system bus. Where this is refused the device list stays empty and nothing
   # else is affected.

@@ -52,8 +52,8 @@ TestCase {
         case 1: S.fill(page, { query: "suche", tracks: S.tracks(20), albums: S.albums(12),
                                artists: S.artists(12), playlists: S.playlists(12) }); break
         case 2: S.fill(page, { activeTab: 0 })
-                S.fill(page, { filteredTracks: S.tracks(20), filteredAlbums: S.albums(12),
-                               filteredArtists: S.artists(12), filteredPlaylists: S.playlists(12),
+                S.fill(page, { savedTracks: S.tracks(20), savedAlbums: S.albums(12),
+                               savedArtists: S.artists(12), savedPlaylists: S.playlists(12),
                                mixes: S.mixes(8) }); break
         case 3: S.fill(page, { albumId: 42 })
                 S.fill(page, { albumData: { title: "Album", artists: "Interpret", year: "2019",
@@ -62,10 +62,10 @@ TestCase {
                                tracks: S.tracks(14) }); break
         case 4: S.fill(page, { artistId: 7 })
                 S.fill(page, { artistData: { name: "Interpret", bio: "Eine Biografie.",
-                                             coverUrl750: "", similarArtists: S.artists(8) },
-                               topTracks: S.tracks(8), albums: S.albums(12) }); break
+                                             coverUrl750: "" },
+                               similarArtists: S.artists(8), topTracks: S.tracks(8), albums: S.albums(12) }); break
         case 5: S.fill(page, { playlistUuid: "uuid-flip" })
-                S.fill(page, { playlistType: "USER", playlistTitle: "Liste",
+                S.fill(page, { playlistType: "USER", playlistEditable: true, playlistTitle: "Liste",
                                playlistDuration: 3600, tracks: S.tracks(14) }); break
         case 6: S.fill(page, { mixId: "mix-flip" })
                 S.fill(page, { title: "Mix", subtitle: "Untertitel", tracks: S.tracks(14) }); break

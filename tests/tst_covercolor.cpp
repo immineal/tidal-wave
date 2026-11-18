@@ -127,6 +127,18 @@ QImage fullyTransparent() {
 
 } // namespace
 
+// OKLCH chroma, for the yellow rule, which is stated in OKLCH.
+static double okChroma(const QColor &c) {
+    auto lin = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+    const double r = lin(c.redF()), g = lin(c.greenF()), b = lin(c.blueF());
+    const double l = std::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const double m = std::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const double s = std::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    const double A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    const double B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    return std::hypot(A, B);
+}
+
 class TestCoverColor : public QObject {
     Q_OBJECT
 
@@ -297,7 +309,7 @@ private slots:
         QTest::newRow("red")   << QColor(255,   0,   0);
         QTest::newRow("neon")  << QColor( 57, 255,  20);
         QTest::newRow("cyan")  << QColor(  0, 255, 255);
-        QTest::newRow("amber") << QColor(255, 176,   0);
+        QTest::newRow("orange") << QColor(255, 110,   0);
     }
     void theClampMovesLightnessAndNotHue() {
         QFETCH(QColor, in);
@@ -326,6 +338,42 @@ private slots:
                  qPrintable(QStringLiteral("saturation fell to %1").arg(sat(out), 0, 'f', 3)));
         QVERIFY2(toLab(out).l < toLab(in).l,
                  "a neon was not darkened at all");
+    }
+
+    // On a dark ground a yellow sleeve keeps 70% of its chroma: clamped at
+    // full strength it reads olive. A light ground keeps its cream.
+    void aYellowSleeveIsCalmerOnADarkGround_data() {
+        QTest::addColumn<QColor>("in");
+        QTest::addColumn<bool>("yellow");
+        QTest::newRow("yellow")  << QColor(242, 197,   0) << true;
+        QTest::newRow("gold")    << QColor(224, 176,   0) << true;
+        QTest::newRow("lemon")   << QColor(217, 210,  90) << true;
+        QTest::newRow("mustard") << QColor(200, 160,  64) << true;
+        QTest::newRow("orange")  << QColor(255, 110,   0) << false;
+        QTest::newRow("red")     << QColor(200,  40,  40) << false;
+        QTest::newRow("blue")    << QColor( 32,  96, 192) << false;
+    }
+    void aYellowSleeveIsCalmerOnADarkGround() {
+        QFETCH(QColor, in);
+        QFETCH(bool, yellow);
+        const QColor calm = coverart::calmYellow(in);
+        const double ratio = okChroma(calm) / okChroma(in);
+        if (yellow)
+            QVERIFY2(std::abs(ratio - 0.7) <= 0.03,
+                     qPrintable(QStringLiteral("kept %1 of its chroma").arg(ratio, 0, 'f', 2)));
+        else
+            QCOMPARE(calm, in);
+
+        auto ground = [](const char *name, const char *key) {
+            return theme::palette(QString::fromLatin1(name), false, true)
+                .value(QString::fromLatin1(key)).value<QColor>();
+        };
+        for (const char *t : {"sea", "pine", "rust"})
+            QCOMPARE(coverart::bandTint(in, ground(t, "bg"), ground(t, "surfaceHigh")),
+                     coverart::clampToBand(calm, ground(t, "bg"), ground(t, "surfaceHigh")));
+        for (const char *t : {"sky", "sand", "clay"})
+            QCOMPARE(coverart::bandTint(in, ground(t, "bg"), ground(t, "surfaceHigh")),
+                     coverart::clampToBand(in, ground(t, "bg"), ground(t, "surfaceHigh")));
     }
 
     // A colour already inside the band is returned untouched.

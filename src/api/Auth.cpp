@@ -3,12 +3,14 @@
 #include "Auth.h"
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QUrlQuery>
 #include <QDateTime>
 #include <QPointer>
+#include <QSaveFile>
 #include <utility>
 
 namespace {
@@ -24,6 +26,11 @@ constexpr qint64 kRenewGapMs = 60000;
 // How often the clock is compared with the expiry. No timer is given the
 // whole wait: a timer's clock can stand still while the machine sleeps.
 constexpr int kExpiryCheckMs = 30000;
+
+// A refresh at start-up that got no answer is tried again after this,
+// doubling up to the cap, so a login host that is down is not hammered.
+constexpr int kRetryFirstMs = 5000;
+constexpr int kRetryMaxMs   = 300000;
 
 } // namespace
 
@@ -76,9 +83,17 @@ void Auth::endSession() {
     m_accessToken.clear();
     m_api->setAccessToken({});
     clearCredentials();
+    forgetUsername();
     answerRefused(false);
     emit sessionExpired();
     setState(State::LoggedOut);
+}
+
+// The name is the account's, so it goes with the session.
+void Auth::forgetUsername() {
+    if (m_username.isEmpty()) return;
+    m_username.clear();
+    emit usernameChanged();
 }
 
 void Auth::setState(State s) {
@@ -172,24 +187,26 @@ void Auth::refreshAccessToken() {
     form.addQueryItem("client_secret", kClientSecret);
 
     m_refreshing = true;
-    m_api->postForm("oauth2/token", form,
-                    [this, asked = m_refreshToken](QJsonObject obj, QString err) {
+    m_api->postFormWithStatus("oauth2/token", form,
+                    [this, asked = m_refreshToken](QJsonObject obj, QString err, int status) {
         m_refreshing = false;
         // Signed out while this was on its way: the answer is for no session.
         if (asked != m_refreshToken) return;
         if (!err.isEmpty()) {
-            if (obj.contains("error")) {
+            if (refreshRefused(status, obj)) {
                 endSession();
             } else {
-                // No error body means the network failed, e.g. right after
-                // boot. Retry and keep the saved session.
+                // The network, or a login host that is busy or down, e.g.
+                // right after boot. Retry and keep the saved session.
                 if (m_state != State::LoggedIn) {
-                    QTimer::singleShot(5000, this, &Auth::refreshAccessToken);
+                    QTimer::singleShot(m_retryMs, this, &Auth::refreshAccessToken);
+                    m_retryMs = qMin(m_retryMs * 2, kRetryMaxMs);
                 }
                 answerRefused(false);
             }
             return;
         }
+        m_retryMs = kRetryFirstMs;
         m_accessToken = obj["access_token"].toString();
         if (obj.contains("refresh_token")) {
             m_refreshToken = obj["refresh_token"].toString();
@@ -206,6 +223,13 @@ void Auth::refreshAccessToken() {
             fetchSession();
         }
     });
+}
+
+// RFC 6749 5.2: invalid_grant is a refresh token that is invalid, expired or
+// revoked, which Tidal answers with 400. Anything else may pass.
+bool Auth::refreshRefused(int httpStatus, const QJsonObject &body) {
+    return (httpStatus == 400 || httpStatus == 401)
+        && body["error"].toString() == QLatin1String("invalid_grant");
 }
 
 // Tidal's "username" is the email address on most accounts, so it comes last
@@ -254,12 +278,15 @@ void Auth::fetchSession() {
             }
             return;
         }
+        const qint64 before = m_userId;
         m_userId      = obj["userId"].toVariant().toLongLong();
         m_countryCode = obj["countryCode"].toString();
         m_api->setCountryCode(m_countryCode);
 
         m_api->get(QStringLiteral("users/%1").arg(m_userId), {},
-            [this](QJsonObject u, QString) {
+            [this, userId = m_userId](QJsonObject u, QString) {
+                // Signed out or ended meanwhile: saving would write the file again.
+                if (m_accessToken.isEmpty() || m_userId != userId) return;
                 const QString name = displayNameFrom(u);
                 if (!name.isEmpty() && name != m_username) {
                     m_username = name;
@@ -270,6 +297,9 @@ void Auth::fetchSession() {
 
         saveCredentials();
 
+        // A saved token signed in already; this check only confirms it.
+        // Each announcement loads the whole library.
+        if (m_state == State::LoggedIn && before == m_userId) return;
         // Emit before the state flips: QML fetches user-scoped data on the
         // state change, and TidalClient::userId is set by this signal.
         emit loginSucceeded();
@@ -277,8 +307,28 @@ void Auth::fetchSession() {
     });
 }
 
+// Under XDG_CONFIG_HOME where the desktop has one, and in the app's folder in
+// ~/Library/Application Support on macOS. Up to 0.4 the file was always under
+// ~/.config, so that copy is read when there is no other.
+QString Auth::credentialsPath() {
+#if defined(Q_OS_MACOS)
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+         + QStringLiteral("/credentials.json");
+#elif defined(Q_OS_UNIX)
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+         + QStringLiteral("/tidal-wave/credentials.json");
+#else
+    return legacyCredentialsPath();
+#endif
+}
+
+QString Auth::legacyCredentialsPath() {
+    return QDir::homePath() + QLatin1String(kCredsFile);
+}
+
 void Auth::loadCredentials() {
-    QString path = QDir::homePath() + kCredsFile;
+    QString path = credentialsPath();
+    if (!QFile::exists(path)) path = legacyCredentialsPath();
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return;
 
@@ -315,9 +365,8 @@ void Auth::loadCredentials() {
 }
 
 void Auth::saveCredentials() {
-    QString dir = QDir::homePath() + "/.config/tidal-wave";
-    QDir().mkpath(dir);
-    QString path = dir + "/credentials.json";
+    const QString path = credentialsPath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
 
     QJsonObject obj;
     obj["access_token"]  = m_accessToken;
@@ -327,15 +376,26 @@ void Auth::saveCredentials() {
     obj["country_code"]  = m_countryCode;
     obj["username"]      = m_username;
 
-    QFile f(path);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        f.write(QJsonDocument(obj).toJson());
+    // Written beside the file and renamed over it, so a crash or a full disk
+    // leaves the old session. Owner-only before the first byte goes in.
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) return;
+    if (!f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+        f.cancelWriting();
+        return;
     }
+    f.write(QJsonDocument(obj).toJson());
+    if (!f.commit()) return;
+    // The copy an earlier version left elsewhere, never the file just written
+    // under another name: XDG_CONFIG_HOME is often ~/.config itself.
+    const QString legacy = QFileInfo(legacyCredentialsPath()).canonicalFilePath();
+    if (!legacy.isEmpty() && legacy != QFileInfo(path).canonicalFilePath())
+        QFile::remove(legacy);
 }
 
 void Auth::clearCredentials() {
-    QFile::remove(QDir::homePath() + kCredsFile);
+    QFile::remove(credentialsPath());
+    QFile::remove(legacyCredentialsPath());   // the copy of an earlier version, if any
     m_refreshToken.clear();
     emit hasSavedCredentialsChanged();
 }
@@ -352,6 +412,8 @@ void Auth::logout() {
     m_userId = 0;
     m_api->setAccessToken({});
     clearCredentials();
+    forgetUsername();
     answerRefused(false);
+    emit loggedOut();
     setState(State::LoggedOut);
 }

@@ -96,11 +96,13 @@ Popup {
     // decides the width.
     width: Math.min(380, (parent ? parent.width : 380) - 48)
     modal: true
+    // Dims the app behind, as the queue panel does. Fusion's own is faint.
+    Overlay.modal: Rectangle { color: Theme.scrim }
     focus: true
     closePolicy: root.busy
                  ? Popup.NoAutoClose
                  : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-    padding: 20
+    padding: Theme.space5
 
     background: Rectangle {
         color: Theme.surfaceHigh
@@ -113,19 +115,19 @@ Popup {
     onOpened: nameField.forceActiveFocus()
 
     contentItem: ColumnLayout {
-        spacing: 12
+        spacing: Theme.space3
 
         // The heading and the way out, on one line.
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.space2
 
             Text {
                 objectName: "newPlaylistTitle"
                 Layout.fillWidth: true
                 text: qsTr("New playlist")
                 color: Theme.textPrimary
-                font.pixelSize: 16
+                font.pixelSize: Theme.fontTitle
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -133,19 +135,22 @@ Popup {
             Item {
                 id: dialogClose
                 objectName: "newPlaylistClose"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
                 // Disabled while a create is in flight, like Cancel and Escape.
                 // `enabled: false` stops the handlers and takes the item out of
                 // the tab order; the opacity only shows it.
                 enabled: !root.busy
                 opacity: enabled ? 1 : 0.45
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 activeFocusOnTab: enabled
                 Keys.onReturnPressed: root.close()
                 Keys.onEnterPressed:  root.close()
                 Keys.onSpacePressed:  root.close()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Close", "button, closes the dialog")
+                Accessible.onPressAction: root.close()
 
                 Rectangle {
                     anchors.fill: parent
@@ -157,13 +162,14 @@ Popup {
                 VectorIcon {
                     anchors.centerIn: parent
                     name: "x"
-                    width: 14; height: 14; strokeWidth: 1.8
-                    color: dialogClose.activeFocus ? Theme.accent
+                    width: 14; height: 14
+                    color: dialogClose.activeFocus ? Theme.accentText
                          : dialogCloseHov.hovered ? Theme.textPrimary
                          : Theme.textSec
                 }
                 HoverHandler { id: dialogCloseHov; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.close() }
+                // Exclusive on press, as in SettingsPanel's buttons.
+                TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.close() }
             }
         }
 
@@ -186,14 +192,14 @@ Popup {
                 id: nameField
                 objectName: "newPlaylistField"
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
+                anchors.leftMargin: Theme.space3
+                anchors.rightMargin: Theme.space3
                 color: Theme.textPrimary
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 clip: true
                 selectByMouse: true
-                selectionColor: Theme.accent
-                selectedTextColor: Theme.accentInk
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.textSelectionInk
                 verticalAlignment: TextInput.AlignVCenter
                 // The over-long case, stopped before it can be submitted.
                 // Applies to a paste as well as to typing.
@@ -215,7 +221,7 @@ Popup {
                 visible: nameField.text.length === 0
                 text: qsTr("Playlist name")
                 color: Theme.textDim
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }
@@ -226,15 +232,15 @@ Popup {
         // two stacked lines would make the dialog jump twice.
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.space2
 
             Text {
                 objectName: "newPlaylistError"
                 Layout.fillWidth: true
                 visible: root.errorText.length > 0
                 text: root.errorText
-                color: Theme.red
-                font.pixelSize: 12
+                color: Theme.redText
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
 
@@ -253,16 +259,16 @@ Popup {
                         .arg(nameField.text.length)
                         .arg(root.maxTitleLength)
                 color: nameField.text.length >= root.maxTitleLength
-                       ? Theme.red : Theme.textDim
-                font.pixelSize: 12
+                       ? Theme.redText : Theme.textDim
+                font.pixelSize: Theme.fontMeta
             }
         }
 
         // ── the two buttons ──────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: 2
-            spacing: 10
+            Layout.topMargin: Theme.spaceHalf
+            spacing: Theme.space3
 
             Item { Layout.fillWidth: true }
 
@@ -275,7 +281,7 @@ Popup {
                 accent: false
                 enabled: !root.busy
                 opacity: enabled ? 1 : 0.45
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 Layout.preferredWidth:  implicitWidth
                 Layout.preferredHeight: implicitHeight
                 onClicked: root.close()
@@ -292,7 +298,7 @@ Popup {
                 accent: true
                 enabled: root.canSubmit
                 opacity: enabled ? 1 : 0.45
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 Layout.preferredWidth:  implicitWidth
                 Layout.preferredHeight: implicitHeight
                 onClicked: root.submit()

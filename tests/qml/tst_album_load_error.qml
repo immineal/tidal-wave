@@ -396,6 +396,40 @@ TestCase {
                "Unsave is still on offer for an album that has been unsaved")
     }
 
+    // ── undo, as every other removal has it ─────────────────────────────
+    // The notice and Ctrl+Z wait for a read-back that shows the album gone.
+
+    function test_unsaving_a_dead_album_can_be_undone() {
+        seedDeadFavourite()
+        Toasts.dismiss()
+        Edits.clearHistory()
+        Edits.retryDelaysMs = [40, 40, 40, 40]
+        bridge.setReadBackLagForTest(2)
+        var win = openRefusedAlbumInWindow()
+        var page = win.page
+        clickCenter(buttonOn(page, "albumLoadErrorUnsave", "Unsave"))
+
+        verify(!Toasts.shown, "the notice came before Tidal showed the removal")
+        compare(Edits.count, 0, "Undo was on offer before Tidal showed the removal")
+        tryVerify(function () { return Toasts.shown }, 2000, "the removal was never confirmed")
+        compare(Toasts.text, "Album removed from your collection")
+        verify(Toasts.actionLabel.length > 0, "the confirmed removal offered no Undo")
+        compare(Edits.count, 1)
+        verify(page.unsaveDone, "the panel did not take the removal in")
+
+        Toasts.dismiss()
+        Edits.undoLast()
+        tryVerify(function () { return !Edits.undoing }, 2000, "the undo never finished")
+        verify(bridge.isAlbumFavorite(testCase.deadAlbumId), "the undo did not save the album again")
+        compare(Toasts.text, "Album back in your collection")
+        tryVerify(function () { return !page.unsaveDone }, 2000,
+                  "the panel still says the album was removed")
+        verify(buttonOn(page, "albumLoadErrorUnsave", "Unsave").visible,
+               "the album is saved again and the panel offers no Unsave")
+        Edits.retryDelaysMs = [500, 1000, 2000, 4000]
+        Edits.clearHistory()
+    }
+
     function test_an_album_that_is_not_in_the_library_offers_neither() {
         // Nothing seeded: a pinned row outlives the album leaving the library,
         // so the page is reachable with no favourites row behind it at all.

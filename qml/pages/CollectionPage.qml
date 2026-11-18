@@ -10,26 +10,134 @@ Rectangle {
 
     property int activeTab: 0
     property string searchPattern: ""
-    property var filteredTracks:    []
-    property var filteredAlbums:    []
-    property var filteredArtists:   []
-    property var filteredPlaylists: []
+    // Each tab's whole list, in the bridge's order. The views show it sorted
+    // and narrowed by the field through the models below. The tracks are the
+    // bridge's TrackRows, or a test's JS array.
+    property var savedTracks:    []
+    property var savedAlbums:    []
+    property var savedArtists:   []
+    property var savedPlaylists: []
     property var mixes: []
-    property bool loading:  false
-    // 0=default, 1=A-Z, 2=Z-A. Default is the order the library arrived in,
-    // which is most recently saved first: the favourites endpoints are asked
-    // for order=DATE. It is not persisted, so it is 0 on every visit.
-    property int  sortMode: 0
 
-    // Grid metrics for the four grids below, all derived from the grid's width
-    // alone. cellWidth is floored, so the columns never cross the viewport, and
-    // the remainder is split between the two edge insets.
+    // What the field lets through: the fields the bridge's search matched,
+    // lower-cased, as a plain substring. A key only removes and inserts rows,
+    // so the cards that stay keep their delegates and covers. Every tab's count
+    // follows each key; only the open tab's view does, the rest catch up when opened.
+    readonly property alias trackRows:    trackFilter
+    readonly property alias albumRows:    albumFilter
+    readonly property alias artistRows:   artistFilter
+    readonly property alias playlistRows: playlistFilter
+    readonly property alias mixRows:      mixFilter
+    // The liked tracks stay in C++ and become JS one row at a time, as drawn.
+    TrackModel {
+        id: trackFilter
+        source: root.savedTracks
+        sortKey: trackSort.key
+        descending: trackSort.descending
+        pattern: root.searchPattern
+        live: root.activeTab === 0
+    }
+    RowFilter {
+        id: albumFilter
+        source: root.sortItems(root.savedAlbums, root.sortMode)
+        fields: ["title", "artists"]
+        pattern: root.searchPattern
+        live: root.activeTab === 1
+    }
+    RowFilter {
+        id: artistFilter
+        source: root.sortItems(root.savedArtists, root.sortMode)
+        fields: ["name"]
+        pattern: root.searchPattern
+        live: root.activeTab === 2
+    }
+    RowFilter {
+        id: playlistFilter
+        source: root.sortItems(root.savedPlaylists, root.sortMode)
+        fields: ["title"]
+        pattern: root.searchPattern
+        live: root.activeTab === 3
+    }
+    // Tidal has no search over mixes, so the page filters its own list.
+    RowFilter {
+        id: mixFilter
+        source: root.mixes
+        fields: ["title", "subtitle"]
+        pattern: root.searchPattern
+        live: root.activeTab === 4
+    }
+    property bool loading: bridge.favoritesLoading
+    // The page asks for the mixes itself; an empty list before an answer is
+    // not an account without mixes.
+    property bool mixesLoading: false
+    property bool mixesLoaded: false
+    property bool mixesFailed: false
+
+    // How many rows the open tab shows, and whether its list could be read at
+    // all. A list that failed to load is not an empty library.
+    readonly property int tabCount: [trackFilter.count, albumFilter.count,
+                                     artistFilter.count, playlistFilter.count,
+                                     mixFilter.count][activeTab] || 0
+    readonly property var kindNames: ["tracks", "albums", "artists", "playlists", "mixes"]
+    readonly property bool tabUnavailable: activeTab === 4
+        ? (mixesFailed && mixes.length === 0)
+        : bridge.unloadedKinds.indexOf(kindNames[activeTab]) !== -1
+    // Which empty state the open tab shows, if any: "" for none, "failed" when
+    // the list did not load, "filter" when the field matches nothing, "empty"
+    // for a library that has none of the kind.
+    readonly property string emptyKind: {
+        if (tabCount > 0 || tabWaiting) return ""
+        if (activeTab === 4 ? !mixesLoaded && !mixesFailed : loading) return ""
+        if (activeTab === 1 && bridge.albumsLoading) return ""
+        if (activeTab === 2 && bridge.artistsLoading) return ""
+        if (activeTab === 3 && bridge.playlistsLoading) return ""
+        if (tabUnavailable) return "failed"
+        if (searchPattern.trim().length > 0) return "filter"
+        return "empty"
+    }
+
+    // The open tab's list is still on its way and none of it is here yet.
+    readonly property bool tabWaiting: {
+        switch (activeTab) {
+        case 1: return bridge.albumsLoading && albumFilter.count === 0
+        case 2: return bridge.artistsLoading && artistFilter.count === 0
+        case 3: return bridge.playlistsLoading && playlistFilter.count === 0
+        case 4: return mixesLoading && mixes.length === 0
+        }
+        return false
+    }
+    // 0=default, 1=A-Z, 2=Z-A; albums also 3=artist, 4=year. Default is the
+    // order the bridge hands over: newest saved first, playlists by the later
+    // of last played and added. It is not persisted, so it is 0 on every visit.
+    property int  sortMode: 0
+    // One list for every tab, so a tab switch keeps the pills; the last two
+    // are shown on the albums tab only.
+    readonly property var sortLabels: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A"),
+        qsTr("Artist", "sorts albums by artist"), qsTr("Year", "sorts albums by release, newest first")]
+    function sortCountOn(tab) { return tab === 1 ? 5 : 3 }
+    // Liked tracks sort in their column headings instead; see TrackListHeader.
+    TrackListHeader.Sort {
+        id: trackSort
+        onKeyChanged: contentEntry.restart()
+        onDescendingChanged: contentEntry.restart()
+    }
+    // What Default means on the current tab, for the pill's tooltip.
+    readonly property string defaultOrderHint: [
+        "",
+        qsTr("Default: most recently saved first"),
+        qsTr("Default: most recently followed first"),
+        qsTr("Default: most recently played or added first")
+    ][activeTab] || ""
+
+    // Grid metrics for the four grids, from the grid's width alone. A cell
+    // holds half a gutter each side of its card, so the cells start half a
+    // gutter left of the inset and the first card lines up with the title.
     readonly property int gridTargetCell: 184
     readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
-    readonly property int gridGutter: 24     // breathing room in a cell, split either side of the card
-    readonly property int gridEdge: 24       // the pane inset, matching the header above
+    readonly property int gridGutter: Theme.space6     // breathing room in a cell, split either side of the card
+    readonly property int gridEdge: Theme.space6       // the pane inset, matching the header above
 
-    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge) }
+    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge + gridGutter) }
     function gridColumns(w) {
         var avail = gridSpace(w)
         var n = Math.max(1, Math.round(avail / gridTargetCell))
@@ -41,9 +149,7 @@ Rectangle {
     function gridCell(w) {
         return Math.max(1, Math.floor(gridSpace(w) / gridColumns(w)))
     }
-    function gridLeft(w) {
-        return gridEdge + Math.floor((gridSpace(w) - gridColumns(w) * gridCell(w)) / 2)
-    }
+    function gridLeft(w) { return gridEdge - gridGutter / 2 }
     // Chosen so that width - leftMargin - rightMargin is exactly columns *
     // cellWidth, the figure GridView divides by cellWidth to count its columns.
     function gridRight(w) {
@@ -54,20 +160,21 @@ Rectangle {
 
     // ── the content area changing under the tabs and the sort pills ──────
     // A tab switch and a re-sort both replace the content outright, so it fades
-    // in. Every view is modelled on a JS array, which a view can only read as a
-    // model reset, so there is no reorder to animate.
+    // in. A re-sort hands the RowFilter a new array, which is a model reset, so
+    // there is no reorder to animate.
     property real contentIn: 1
     NumberAnimation {
         id: contentEntry
         target: root
         property: "contentIn"
         from: 0; to: 1
-        duration: Theme.dur(170)
+        duration: Theme.dur(Theme.motionMedium)
         easing.type: Easing.OutCubic
     }
 
     onActiveTabChanged: {
-        updateFilteredContent()
+        // Artist and Year are the albums' alone.
+        if (sortMode >= sortCountOn(activeTab)) sortMode = 0
         if (activeTab === 4 && mixes.length === 0) loadMixes()
         contentEntry.restart()
     }
@@ -81,21 +188,37 @@ Rectangle {
 
     function sortItems(items, mode) {
         if (mode === 0) return items
-        var copy = items.slice()
-        copy.sort(function(a, b) {
-            var titleA = (a.title || a.name || "").toLowerCase()
-            var titleB = (b.title || b.name || "").toLowerCase()
-            return mode === 1 ? titleA.localeCompare(titleB) : titleB.localeCompare(titleA)
-        })
-        return copy
+        function name(x) { return (x.title || x.name || "").toLowerCase() }
+        function year(x) { return String(x.releaseDate || "") }
+        function compare(a, b) {
+            switch (mode) {
+            case 1: return name(a).localeCompare(name(b))
+            case 2: return name(b).localeCompare(name(a))
+            // An artist's albums oldest first, as a discography reads.
+            case 3: return String(a.artists || "").toLowerCase().localeCompare(String(b.artists || "").toLowerCase())
+                           || year(a).localeCompare(year(b)) || name(a).localeCompare(name(b))
+            // Newest first; an album with no date goes last.
+            case 4: return (year(a) === "") - (year(b) === "") || year(b).localeCompare(year(a))
+                           || name(a).localeCompare(name(b))
+            }
+            return 0
+        }
+        // Ties keep the list's order. The engine's sort is not stable, and the
+        // whole list is sorted before the field narrows it.
+        var rows = []
+        for (var i = 0; i < items.length; ++i) rows.push({ item: items[i], at: i })
+        rows.sort(function (p, q) { return compare(p.item, q.item) || p.at - q.at })
+        return rows.map(function (r) { return r.item })
     }
 
     Connections {
         target: bridge
-        function onFavoriteTracksChanged() { root.updateFilteredContent() }
-        function onFavoriteAlbumsChanged() { root.updateFilteredContent() }
-        function onFavoriteArtistsChanged() { root.updateFilteredContent() }
-        function onFavoritePlaylistsChanged() { root.updateFilteredContent() }
+        function onOfflineChanged() { if (!bridge.offline && root.mixesFailed) root.loadMixes() }
+        // Only the list that changed, so a like does not reset the other tabs.
+        function onFavoriteTracksChanged() { root.savedTracks = bridge.favoriteTrackRows() }
+        function onFavoriteAlbumsChanged() { root.savedAlbums = bridge.searchFavoriteAlbums("") }
+        function onFavoriteArtistsChanged() { root.savedArtists = bridge.searchFavoriteArtists("") }
+        function onFavoritePlaylistsChanged() { root.savedPlaylists = bridge.searchFavoritePlaylists("") }
     }
 
     // The two grids' Remove rows, and what they say when the server refuses.
@@ -104,16 +227,22 @@ Rectangle {
     readonly property alias favoriteAction: collectionFav
     ContextMenu.FavoriteAction { id: collectionFav }
 
+    // The whole lists, read again when the bridge says one changed. Typing
+    // never comes here: the RowFilters narrow what is already loaded.
     function updateFilteredContent() {
-        filteredTracks    = bridge.searchFavoriteTracks(searchPattern)
-        filteredAlbums    = bridge.searchFavoriteAlbums(searchPattern)
-        filteredArtists   = bridge.searchFavoriteArtists(searchPattern)
-        filteredPlaylists = bridge.searchFavoritePlaylists(searchPattern)
+        savedTracks    = bridge.favoriteTrackRows()
+        savedAlbums    = bridge.searchFavoriteAlbums("")
+        savedArtists   = bridge.searchFavoriteArtists("")
+        savedPlaylists = bridge.searchFavoritePlaylists("")
     }
 
     function loadMixes() {
+        mixesLoading = true
         bridge.fetchHomeMixes(function(mixList, err) {
-            if (err.length > 0) return
+            mixesLoading = false
+            if (err.length > 0) { mixesFailed = true; return }
+            mixesFailed = false
+            mixesLoaded = true
             var items = []
             for (var i = 0; i < mixList.length; i++) {
                 items.push(mixList[i])
@@ -128,239 +257,158 @@ Rectangle {
 
         // A ColumnLayout reads Layout.preferredHeight, not a plain height, so
         // these spacers have to declare it or they collapse to nothing.
-        Item { Layout.preferredHeight: 24 }
+        Item { Layout.preferredHeight: Theme.space6 }
         Text {
-            Layout.leftMargin: 24
-            text: qsTr("My Collection")
+            objectName: "collectionTitle"
+            Layout.leftMargin: Theme.space6
+            text: qsTr("Collection")
             color: Theme.textPrimary
-            font.pixelSize: 28; font.bold: true
+            font.pixelSize: Theme.fontDisplay; font.bold: true
         }
-        Item { Layout.preferredHeight: 16 }
+        Item { Layout.preferredHeight: Theme.space4 }
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            spacing: 16
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
+            spacing: Theme.space4
 
-            // A Flow, not a Row: five tab labels with counts are wider than the
-            // pane at 640, so they wrap. The sort pills stay right.
-            Flow {
+            // It wraps: five tab labels with counts are wider than the pane
+            // at 640. The sort pills stay right.
+            TabStrip {
                 id: tabsRow
-                objectName: "collectionTabsRow"
+                namePrefix: "collection"
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 4
-
-                // ── the highlight, as one pill that travels ────────────────
-                // One pill that moves between the chips. Only `markT` is
-                // animated: the geometry is read live off the two chips, whose
-                // widths change with every count.
-                property Item markFrom: null
-                property Item markTo:   null
-                property real markT:    1
-                // The reset to 0 that starts a travel is the one write to markT
-                // that must not animate, or the pill would run backwards to the
-                // chip it is already on before setting off.
-                property bool markResetting: false
-                // The first placement is an initialisation, not a move. Without
-                // the gate the pill would grow out of the row's left edge on
-                // every visit to the page.
-                property bool markSettled: false
-
-                Behavior on markT {
-                    enabled: !tabsRow.markResetting
-                    NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+                model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
+                labelFor: function (index, name) {
+                    var counts = [trackFilter.count, albumFilter.count, artistFilter.count,
+                                  playlistFilter.count, mixFilter.count]
+                    var waiting = [root.loading, bridge.albumsLoading, bridge.artistsLoading,
+                                   bridge.playlistsLoading, root.mixesLoading || !root.mixesLoaded && !root.mixesFailed]
+                    // A list on its way has no count yet; "(0)" would read as empty.
+                    if (waiting[index] && counts[index] === 0) return name
+                    // Tab name followed by how many items it holds
+                    return qsTr("%1 (%2)").arg(name)
+                                          .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
                 }
-
-                // The end it set off from, or the destination itself when there
-                // is none, which makes the lerp degenerate. That covers the
-                // first placement and a model rebuild.
-                readonly property Item markA: markFrom ? markFrom : markTo
-                readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
-                readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
-                readonly property real markW: markTo ? markA.width  + (markTo.width  - markA.width)  * markT : 0
-                readonly property real markH: markTo ? markA.height + (markTo.height - markA.height) * markT : 0
-
-                function retarget(animate) {
-                    var next = tabsRepeater.itemAt(root.activeTab)
-                    if (next === null || next === tabsRow.markTo) return
-                    tabsRow.markFrom = (animate && tabsRow.markTo !== null) ? tabsRow.markTo : next
-                    tabsRow.markTo   = next
-                    tabsRow.markResetting = true
-                    tabsRow.markT = 0
-                    tabsRow.markResetting = false
-                    tabsRow.markT = 1
-                }
-
-                // Inside the row, not on the page's root: activeTab can arrive
-                // as an initial property, before this row exists.
-                Connections {
-                    target: root
-                    function onActiveTabChanged() { tabsRow.retarget(tabsRow.markSettled) }
-                }
-
-                Component.onCompleted: {
-                    retarget(false)
-                    Qt.callLater(function () { tabsRow.markSettled = true })
-                }
-
-                Repeater {
-                    id: tabsRepeater
-                    model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
-                    // itemAt() is a function call and not a dependency, so the
-                    // pill is aimed again as the chips arrive.
-                    onItemAdded: function (index, item) { tabsRow.retarget(false) }
-                    Rectangle {
-                        id: collectionTab
-                        required property string modelData
-                        required property int    index
-                        height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusChip
-                        // Every chip rests on the same surface, including the
-                        // current one. The pill marks it, drawn here in slices.
-                        color: Theme.surfaceHigh
-                        border.width: collectionTab.activeFocus ? 2 : 0
-                        border.color: Theme.accent
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: { root.activeTab = index }
-                        Keys.onSpacePressed:  { root.activeTab = index }
-
-                        // Whether the accent's copy of the label covers every
-                        // pixel the chip's own copy occupies.
-                        readonly property bool labelFullyInked:
-                               inkWindow.visible
-                            && inkWindow.x <= tl.x
-                            && inkWindow.x + inkWindow.width  >= tl.x + tl.width
-                            && inkWindow.y <= tl.y
-                            && inkWindow.y + inkWindow.height >= tl.y + tl.height
-
-                        // This chip's slice of the pill: a Flow lays out
-                        // anything added to it. The clip reaches 2px past the
-                        // chip, half the row's gap, so the slices meet.
-                        Item {
-                            anchors.fill: parent
-                            anchors.margins: -2
-                            clip: true
-                            Rectangle {
-                                objectName: "collectionTabPillSlice"
-                                x: tabsRow.markX - collectionTab.x + 2
-                                y: tabsRow.markY - collectionTab.y + 2
-                                width:  tabsRow.markW
-                                height: tabsRow.markH
-                                radius: Theme.radiusChip
-                                color: Theme.accent
-                            }
-                        }
-
-                        Text {
-                            id: tl; objectName: "collectionTabLabel"; anchors.centerIn: parent
-                            text: {
-                                var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.mixes.length]
-                                // Tab name followed by how many items it holds
-                                return qsTr("%1 (%2)").arg(modelData)
-                                                      .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
-                            }
-                            // Always the ink of the resting surface. The
-                            // accent's ink is the copy below.
-                            color: Theme.textSec
-                            // Hidden where the copy covers every pixel of it:
-                            // two Texts in one place blend at the glyphs'
-                            // antialiased edge.
-                            visible: !collectionTab.labelFullyInked
-                            // A font weight does not interpolate, so it lands
-                            // in the frame of the click.
-                            font.pixelSize: 14; font.bold: root.activeTab === index
-                        }
-
-                        // The label again in the accent's ink, clipped to the
-                        // pill, so every glyph pixel is on the fill its ink was
-                        // chosen for. The two inks cannot cross-fade legibly.
-                        Item {
-                            id: inkWindow
-                            objectName: "collectionTabInk"
-                            // The pill in this chip's coordinates, clamped on
-                            // both axes since the row wraps. Not
-                            // `top`/`bottom`: Item has those as final members.
-                            readonly property real coveredLeft:   Math.max(0, tabsRow.markX - collectionTab.x)
-                            readonly property real coveredRight:  Math.min(collectionTab.width, tabsRow.markX + tabsRow.markW - collectionTab.x)
-                            readonly property real coveredTop:    Math.max(0, tabsRow.markY - collectionTab.y)
-                            readonly property real coveredBottom: Math.min(collectionTab.height, tabsRow.markY + tabsRow.markH - collectionTab.y)
-                            x: coveredLeft
-                            y: coveredTop
-                            width:  Math.max(0, coveredRight - coveredLeft)
-                            height: Math.max(0, coveredBottom - coveredTop)
-                            clip: true
-                            visible: width > 0 && height > 0
-                            Text {
-                                objectName: "collectionTabInkLabel"
-                                x: tl.x - inkWindow.x
-                                y: tl.y - inkWindow.y
-                                text: tl.text
-                                font: tl.font
-                                color: Theme.accentInk
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.activeTab = index }
-                        }
-                    }
-                }
+                currentIndex: root.activeTab
+                onActivated: (index) => { root.activeTab = index }
             }
 
+            // Plain words with a line under the chosen one: the tab strip
+            // beside it already carries the row's one accent pill. The card
+            // tabs only: Liked tracks sorts in its column headings.
             Row {
-                visible: root.activeTab < 4
+                visible: root.activeTab >= 1 && root.activeTab < 4
                 Layout.alignment: Qt.AlignVCenter
-                spacing: 4
+                spacing: Theme.space1
                 Repeater {
-                    model: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A")]
+                    model: root.sortLabels
                     Rectangle {
                         required property string modelData
                         required property int    index
-                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusChip
-                        color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
+                        id: sortPill
+                        objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
+                        visible: index < root.sortCountOn(root.activeTab)
+                        readonly property string hint: index === 0 ? root.defaultOrderHint : ""
+                        readonly property bool chosen: root.sortMode === index
+                        // Sized for the bold label, so choosing one moves nothing.
+                        height: 30; width: sortBoldWidth.implicitWidth + Theme.space4; radius: Theme.radiusButton
+                        color: sortHov.hovered && !chosen ? Theme.hoverFill : "transparent"
+                        // One of three, so it reads as a radio button.
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: root.sortMode = index
+                        Keys.onSpacePressed:  root.sortMode = index
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: modelData
+                        Accessible.description: hint
+                        Accessible.checkable: true
+                        Accessible.checked: root.sortMode === index
+                        Accessible.onPressAction: root.sortMode = index
+                        Accessible.onToggleAction: root.sortMode = index
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radiusButton
+                            color: "transparent"
+                            border.width: sortPill.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
                         Text {
                             id: sortLbl; anchors.centerIn: parent
+                            objectName: "collectionSortLabel"
                             text: modelData
-                            color: root.sortMode === index ? Theme.accentInk : Theme.textSec
-                            font.pixelSize: 13
+                            color: sortPill.chosen ? Theme.textPrimary : Theme.textSec
+                            font.pixelSize: Theme.fontMeta
+                            font.bold: sortPill.chosen
+                        }
+                        Text {
+                            id: sortBoldWidth
+                            visible: false
+                            text: modelData
+                            font.pixelSize: Theme.fontMeta
+                            font.bold: true
+                        }
+                        Rectangle {
+                            objectName: "collectionSortUnderline"
+                            visible: sortPill.chosen
+                            anchors.horizontalCenter: sortLbl.horizontalCenter
+                            anchors.top: sortLbl.bottom
+                            anchors.topMargin: Theme.spaceHalf
+                            width: sortLbl.implicitWidth
+                            height: 2
+                            radius: height / 2
+                            color: Theme.accent
                         }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.sortMode = index
                         }
+                        HoverHandler { id: sortHov }
+                        ToolTip.visible: hint.length > 0 && (sortHov.hovered || sortPill.activeFocus)
+                        ToolTip.text: hint
+                        ToolTip.delay: Theme.tooltipDelay
                     }
                 }
             }
         }
 
-        Item { Layout.preferredHeight: 10 }
+        Item { Layout.preferredHeight: Theme.space3 }
 
         // The field gets its own row: with the tabs and the sort pills the
         // header overflows the pane. "New playlist" shares this row, directly
         // over the grid it adds to.
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            spacing: 12
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
+            spacing: Theme.space3
 
             SearchBar {
                 id: collectionSearch
                 objectName: "collectionSearch"
                 // A whole phrase per tab: German cannot take "Search saved " + a noun
                 placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
-                              qsTr("Search saved artists…"), qsTr("Search saved playlists…")
+                              qsTr("Search saved artists…"), qsTr("Search saved playlists…"),
+                              qsTr("Search mixes…")
                              ][root.activeTab] || qsTr("Search saved items…")
                 Layout.fillWidth: true
+                onTextEdited: (txt) => { root.searchPattern = txt }
+            }
+
+            // A pick from what the tab shows now, field filter included.
+            PillButton {
+                objectName: "collectionSurpriseButton"
+                text: root.activeTab === 0 ? qsTranslate("AlbumPage", "Shuffle")
+                                           : qsTr("Surprise me", "opens a random album, artist, playlist or mix of the tab")
+                icon: "shuffle"
+                accent: false
+                enabled: root.tabCount > 0
+                opacity: enabled ? 1 : 0.45
+                Layout.preferredWidth:  implicitWidth
                 Layout.preferredHeight: 36
-                onTextEdited: (txt) => {
-                    root.searchPattern = txt
-                    root.updateFilteredContent()
-                }
+                onClicked: root.surprise()
             }
 
             PillButton {
@@ -379,51 +427,75 @@ Rectangle {
             }
         }
 
-        Item { Layout.preferredHeight: 16 }
+        Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
+
+        // Over the rows, inset as they are.
+        TrackListHeader {
+            id: tracksHeader
+            objectName: "collectionTracksHeader"
+            visible: root.activeTab === 0
+            Layout.fillWidth: true
+            Layout.leftMargin: tracksList.leftMargin
+            Layout.rightMargin: tracksList.rightMargin
+            sort: trackSort
+            showAdded: true
+            opacity: root.contentIn
+        }
 
         // Tracks Tab: virtualized ListView
         ListView {
             id: tracksList
+            objectName: "collectionTracksList"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 0
             opacity: root.contentIn
             clip: true
-            property var sortedTracks: root.sortItems(root.filteredTracks, root.sortMode)
-            model: root.activeTab === 0 ? sortedTracks : []
+            // Bound on every tab, so a tab switch keeps the rows and the scroll.
+            model: trackFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             boundsBehavior: Flickable.StopAtBounds
+            // The rows' inset: a vertical ListView puts its delegates at x 0
+            // whatever x they ask for, so the view's margins inset them.
+            leftMargin: Theme.space4
+            // Plus the scroll bar's lane, so the rows end as far from its inner
+            // edge as they start from the left edge.
+            rightMargin: Theme.space4 + Math.round(vbar.width - vbar.leftPadding)
 
             // The fields are passed as they came off the API. TrackRow takes
             // them as `var` and decides what a missing or mistyped one shows.
             delegate: TrackRow {
-                width: tracksList.width - 32
-                x: 16
+                width: tracksList.width - tracksList.leftMargin - tracksList.rightMargin
+                showAdded:   true
                 trackNum:    index + 1
                 title:       modelData.title
                 artists:     modelData.artists
                 albumTitle:  modelData.albumTitle
                 durationStr: modelData.durationStr
                 coverUrl:    modelData.coverUrl80
-                // Both ids are undefined on a partial payload, and undefined
-                // equals undefined, which would mark every row as playing.
-                isPlaying:   Number(modelData.id) > 0
-                             && player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
                 onPlayRequested: {
-                    player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))
+                    player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
                     // "Liked Songs" is not a kind the sidebar orders and
                     // markPlayed() drops it, so the track's album stands in.
                     // Recorded after the source so it is the newer of the two.
                     if (Number(modelData.albumId) > 0)
                         library.markPlayed("album", "" + modelData.albumId)
-                    player.playTracks(tracksList.sortedTracks, index)
+                    player.playTracks(trackFilter.shownRows(), index)
                 }
             }
 
             ScrollBar.vertical: ScrollBar {
+                id: vbar
+                objectName: "collectionTracksScrollBar"
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: tracksList }
         }
 
         // Tab 1: Albums Tab (virtualized GridView)
@@ -435,14 +507,17 @@ Rectangle {
             visible: root.activeTab === 1
             opacity: root.contentIn
             clip: true
-            property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
-            model: root.activeTab === 1 ? sortedAlbums : []
+            model: albumFilter
+            reuseItems: true
+            // The model is set once, so nothing else hands the keyboard a card
+            // again when rows come back after none matched.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -450,7 +525,9 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
+                // A FocusScope, so the grid's focus on its current cell lands on
+                // the card inside; the grid is one tab stop and the arrows walk it.
                 id: albumDelegate
                 width: albumsGrid.cellWidth
                 height: albumsGrid.cellHeight
@@ -458,21 +535,25 @@ Rectangle {
                 required property int index
 
                 MediaCard {
+                    focus: true
+                    tabStop: albumDelegate.GridView.isCurrentItem || albumDelegate.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) albumDelegate.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(albumsGrid.cellWidth)
                     title: modelData.title
                     subtitle: modelData.artists
+                    artistList: modelData.artistList || []
                     coverUrl: modelData.coverUrl
                     mediaType: "album"
                     itemId: "" + modelData.id
                     // The tile's own menu has Pin, the queue actions and this.
-                    removeLabel: qsTr("Remove from library")
+                    removeLabel: qsTr("Remove from collection")
                     // The tile is the anchor, not the grid: it is what was
                     // right-clicked. It survives a refusal, because the grid is
                     // only rebuilt when the removal lands.
                     onRemoveRequested: root.favoriteAction.toggleAlbum(albumDelegate.modelData.id, true,
                                                                       albumDelegate)
-                    onClicked: navigateTo("album", { albumId: modelData.id })
+                    onClicked: root.openAlbum(modelData)
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
                             if (err || tracks.length === 0) return
@@ -490,25 +571,31 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: albumsGrid }
         }
 
         // Tab 2: Artists Tab (virtualized GridView)
         GridView {
             id: artistsGrid
+            objectName: "collectionArtistsGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 2
             opacity: root.contentIn
             clip: true
-            property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
-            model: root.activeTab === 2 ? sortedArtists : []
+            model: artistFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -516,7 +603,7 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
                 id: artistDelegate
                 width: artistsGrid.cellWidth
                 height: artistsGrid.cellHeight
@@ -524,6 +611,9 @@ Rectangle {
                 required property int index
 
                 MediaCard {
+                    focus: true
+                    tabStop: artistDelegate.GridView.isCurrentItem || artistDelegate.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) artistDelegate.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(artistsGrid.cellWidth)
                     title: modelData.name
@@ -537,31 +627,38 @@ Rectangle {
                     // As on the album grid above.
                     onRemoveRequested: root.favoriteAction.toggleArtist(artistDelegate.modelData.id, true,
                                                                        artistDelegate)
-                    onClicked: navigateTo("artist", { artistId: modelData.id })
+                    onClicked: root.openArtist(modelData)
                 }
             }
 
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: artistsGrid }
         }
 
         // Tab 3: Playlists Tab (virtualized GridView)
         GridView {
             id: playlistsGrid
+            objectName: "collectionPlaylistsGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
+            visible: root.activeTab === 3 && playlistFilter.count > 0
             opacity: root.contentIn
             clip: true
-            model: root.activeTab === 3 ? root.filteredPlaylists : []
+            model: playlistFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -569,26 +666,23 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
+                id: playlistsGridCell
                 width: playlistsGrid.cellWidth
                 height: playlistsGrid.cellHeight
                 MediaCard {
+                    focus: true
+                    tabStop: playlistsGridCell.GridView.isCurrentItem || playlistsGridCell.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) playlistsGridCell.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     objectName: "collectionPlaylistCard"
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(playlistsGrid.cellWidth)
                     title: modelData.title
-                    subtitle: qsTr("%n track(s)", "", modelData.numTracks)
+                    subtitle: qsTr("%Ln track(s)", "", modelData.numTracks)
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "playlist"
                     itemId: modelData.uuid || ""
-                    onClicked: navigateTo("playlist", {
-                        playlistUuid: modelData.uuid,
-                        playlistTitle: modelData.title,
-                        coverUrl: modelData.coverUrl || "",
-                        playlistDescription: modelData.description || "",
-                        playlistDuration: modelData.duration || 0,
-                        playlistType: modelData.type || ""
-                    })
+                    onClicked: root.openPlaylist(modelData)
                     onPlayClicked: {
                         bridge.markPlaylistPlayed(modelData.uuid)
                         bridge.fetchPlaylistTracks(modelData.uuid, function(tracks, err) {
@@ -604,26 +698,29 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: playlistsGrid }
         }
 
         // Empty state for playlists
         Item {
-            visible: root.activeTab === 3 && root.filteredPlaylists.length === 0 && !root.loading
+            visible: root.activeTab === 3 && root.emptyKind === "empty"
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyPlaylistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "playlist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyPlaylistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "playlist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
                 // An account with no playlists is the one that needs one.
                 PillButton {
                     objectName: "collectionEmptyNewPlaylistButton"
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 4
+                    Layout.topMargin: Theme.space1
                     text: qsTr("New playlist")
                     icon: "plus"
                     accent: true
@@ -635,18 +732,22 @@ Rectangle {
         // Tab 4: Mixes (GridView)
         GridView {
             id: mixesGrid
+            objectName: "collectionMixesGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.activeTab === 4 && root.mixes.length > 0
+            visible: root.activeTab === 4 && mixFilter.count > 0
             opacity: root.contentIn
             clip: true
-            model: root.activeTab === 4 ? root.mixes : []
+            model: mixFilter
+            reuseItems: true
+            // As on the albums grid.
+            onCountChanged: if (count > 0 && currentIndex < 0) currentIndex = 0
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
-            topMargin: 16
+            topMargin: Theme.space4
             // Flickable only moves to contentX = -leftMargin by itself when the
             // view can flick that way, and a vertical grid cannot. The inset
             // follows the pane width, so it is re-applied here.
@@ -654,10 +755,14 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
+                id: mixesGridCell
                 width: mixesGrid.cellWidth
                 height: mixesGrid.cellHeight
                 MediaCard {
+                    focus: true
+                    tabStop: mixesGridCell.GridView.isCurrentItem || mixesGridCell.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) mixesGridCell.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(mixesGrid.cellWidth)
                     title: modelData.title
@@ -665,7 +770,7 @@ Rectangle {
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "mix"
                     itemId: "" + modelData.id
-                    onClicked: navigateTo("mix", { mixId: modelData.id, title: modelData.title, subtitle: modelData.subtitle, coverUrl: modelData.coverUrl, mixType: modelData.mixType || "" })
+                    onClicked: root.openMix(modelData)
                     onPlayClicked: {
                         bridge.fetchMixTracks(modelData.id, function(tracks, err) {
                             if (err || tracks.length === 0) return
@@ -680,63 +785,140 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
+            WheelStep { view: mixesGrid }
         }
 
         // Empty state for mixes
         Item {
-            visible: root.activeTab === 4 && root.mixes.length === 0
+            visible: root.activeTab === 4 && root.emptyKind === "empty"
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyMixesIcon"; Layout.alignment: Qt.AlignHCenter; name: "mix"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyMixesIcon"; Layout.alignment: Qt.AlignHCenter; name: "mix"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
 
         // Empty state for tracks
         Item {
-            visible: root.activeTab === 0 && root.filteredTracks.length === 0 && !root.loading
+            visible: root.activeTab === 0 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyTracksIcon"; Layout.alignment: Qt.AlignHCenter; name: "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved tracks"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Like tracks to see them here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyTracksIcon"; Layout.alignment: Qt.AlignHCenter; name: "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved tracks"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Like tracks to see them here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
 
         // Empty state for albums
         Item {
-            visible: root.activeTab === 1 && root.filteredAlbums.length === 0 && !root.loading
+            visible: root.activeTab === 1 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyAlbumsIcon"; Layout.alignment: Qt.AlignHCenter; name: "album"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyAlbumsIcon"; Layout.alignment: Qt.AlignHCenter; name: "album"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
+            }
+        }
+
+        // The field matches nothing on this tab. Not the empty library's
+        // copy: the library may hold plenty.
+        Item {
+            objectName: "collectionNoMatches"
+            visible: root.emptyKind === "filter"
+            opacity: root.contentIn
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                spacing: Theme.space3
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "search"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text {
+                    objectName: "collectionNoMatchesText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Nothing matches \"%1\"").arg(root.searchPattern.trim())
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Try other words, or clear the search to see everything.")
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                }
+            }
+        }
+
+        // The list never arrived: offline, or Tidal did not answer. The
+        // connection notice above the page offers the retry.
+        Item {
+            objectName: "collectionUnavailable"
+            visible: root.emptyKind === "failed"
+            opacity: root.contentIn
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                spacing: Theme.space3
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: ["heart", "album", "artist", "playlist", "mix"][root.activeTab] || "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text {
+                    objectName: "collectionUnavailableText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: root.activeTab === 4 ? qsTr("Mixes could not be loaded")
+                                               : qsTr("Your collection could not be loaded")
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Tidal could not be reached. It loads again by itself once the connection is back.")
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                }
+                PillButton {
+                    objectName: "collectionUnavailableRetry"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: Theme.space1
+                    text: qsTr("Try again")
+                    accent: false
+                    onClicked: {
+                        if (root.activeTab === 4) root.loadMixes()
+                        else bridge.retryConnection()
+                    }
+                }
             }
         }
 
         // Empty state for artists
         Item {
-            visible: root.activeTab === 2 && root.filteredArtists.length === 0 && !root.loading
+            visible: root.activeTab === 2 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
-                VectorIcon { objectName: "collectionEmptyArtistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "artist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No followed artists"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Follow artists to see them here"); color: Theme.textSec; font.pixelSize: 13 }
+                spacing: Theme.space3
+                VectorIcon { objectName: "collectionEmptyArtistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "artist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No followed artists"); color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Follow artists to see them here"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             }
         }
     }
@@ -745,12 +927,78 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
+    // What a card's click opens; Surprise me opens the same.
+    function openAlbum(m)  { navigateTo("album", { albumId: m.id }) }
+    function openArtist(m) { navigateTo("artist", { artistId: m.id }) }
+    function openPlaylist(m) {
+        navigateTo("playlist", {
+            playlistUuid: m.uuid,
+            playlistTitle: m.title,
+            coverUrl: m.coverUrl || "",
+            playlistDescription: m.description || "",
+            playlistDuration: m.duration || 0,
+            playlistType: m.type || ""
+        })
+    }
+    function openMix(m) {
+        navigateTo("mix", { mixId: m.id, title: m.title, subtitle: m.subtitle,
+                            coverUrl: m.coverUrl, mixType: m.mixType || "" })
+    }
+
+    // The tab's rows as shown: the field's filter and the chosen order.
+    function shownItems() {
+        switch (root.activeTab) {
+        case 0: return trackFilter.rows()
+        case 1: return albumFilter.rows()
+        case 2: return artistFilter.rows()
+        case 3: return playlistFilter.rows()
+        case 4: return mixFilter.rows()
+        }
+        return []
+    }
+
+    // Tracks: all of them, shuffled, from a random one, as a detail page's
+    // Shuffle does. The other tabs: open one at random.
+    function surprise() {
+        if (root.activeTab === 0) {
+            // The tracks go to the player as they are, not through JS.
+            if (trackFilter.count === 0) return
+            var at = Math.floor(Math.random() * trackFilter.count)
+            var t = trackFilter.get(at)
+            player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
+            // The track's album stands in, as for a row's play.
+            if (Number(t.albumId) > 0)
+                library.markPlayed("album", "" + t.albumId)
+            player.setShuffle(true)
+            player.playTracks(trackFilter.shownRows(), at)
+            return
+        }
+        var items = root.shownItems()
+        if (!items || items.length === 0) return
+        var pick = Math.floor(Math.random() * items.length)
+        switch (root.activeTab) {
+        case 1: root.openAlbum(items[pick]); break
+        case 2: root.openArtist(items[pick]); break
+        case 3: root.openPlaylist(items[pick]); break
+        case 4: root.openMix(items[pick]); break
+        }
+    }
+
     // Both "New playlist" buttons open the one dialog. Nothing is reloaded on
     // success: the bridge emits favoritePlaylistsChanged and the lists rebuild.
-    // The alias is a test's handle on a Popup, which reparents to the overlay.
+    // The new playlist opens, as it does from the picker. The alias is a
+    // test's handle on a Popup, which reparents to the overlay.
     readonly property alias playlistDialog: newPlaylistDialog
 
-    NewPlaylistDialog { id: newPlaylistDialog }
+    NewPlaylistDialog {
+        id: newPlaylistDialog
+        onPlaylistCreated: (playlist) => {
+            var uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
+            if (uuid.length > 0)
+                root.openPlaylist({ uuid: uuid, title: playlist.title || "", type: "USER" })
+        }
+    }
 
-    LoadingOverlay { loading: root.loading }
+    // Below the tabs, chips and sort, which stay in reach while it loads.
+    Skeleton { loading: root.loading || root.tabWaiting; kind: root.activeTab === 0 ? "rows" : "grid"; topInset: viewsTop.y }
 }

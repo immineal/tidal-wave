@@ -26,7 +26,7 @@ Rectangle {
     // The gap between the speaker and the readout under it, spent inside the
     // readout as top padding and not as column spacing: the two are one hover
     // target, and a dead strip between them would drop the flyout.
-    readonly property int volumeStackGap: 4
+    readonly property int volumeStackGap: Theme.space1
 
     // IconButton's box leaves 7px empty below an 18px glyph, which Now
     // Playing's bare speaker does not have. The readout is lifted over it and
@@ -38,6 +38,8 @@ Rectangle {
     // the speaker, the readout and the flyout are what tst_output_picker.qml
     // drives.
     readonly property alias queueButton:  queueBtn
+    // How long a carried track waits over the queue button before it opens.
+    property int queueSpringMs: 600
     readonly property alias volumeButton:      volBtn
     readonly property alias volumePercentText: volPct
     // The two of them as one object. The group's width is measured from here:
@@ -103,28 +105,38 @@ Rectangle {
     }
     Component.onCompleted: updateLikedState()
 
+    // The side groups' widths. Both 280 where the bar has room, so the
+    // transport sits in the middle. Below that the right group keeps its own
+    // width and the title gets the rest, down to 200; nothing depends on
+    // whether a track is loaded.
+    readonly property real sideRoom: barRow.width - centreCol.implicitWidth
+    readonly property bool sidesEven: sideRoom >= 2 * 280
+    readonly property real rightWidth:
+        sidesEven ? Math.max(rightGroup.implicitWidth, 280) : rightGroup.implicitWidth
+    readonly property real leftWidth:
+        sidesEven ? 280 : Math.max(200, Math.min(280, sideRoom - rightGroup.implicitWidth))
+
     RowLayout {
+        id: barRow
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
+        anchors.leftMargin: Theme.space4
+        anchors.rightMargin: Theme.space4
         spacing: 0
 
         // ── Track info (left) ──────────────────────────
+        // The two side groups hold one width with or without a track, so
+        // the transport and the seek bar never move when playback starts.
         RowLayout {
             id: leftGroup
-            Layout.preferredWidth: 280
+            Layout.fillWidth: false
+            Layout.preferredWidth: root.leftWidth
             Layout.minimumWidth: 200
-            spacing: 12
+            spacing: Theme.space3
 
-            Rectangle {
+            CoverArt {
                 objectName: "playerBarCover"
-                width: 56; height: 56; radius: Theme.radiusArt
-                color: Theme.surfaceHigh; clip: true
-                Image {
-                    anchors.fill: parent
-                    source: hasTrack ? "image://tidal/" + track.coverUrl : ""
-                    fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                }
+                width: 56; height: 56
+                source: hasTrack ? (track.coverUrl || "") : ""
                 MouseArea {
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                     onClicked: root.showNowPlaying()
@@ -132,13 +144,44 @@ Rectangle {
             }
 
             ColumnLayout {
-                Layout.fillWidth: true; spacing: 3; clip: true
+                Layout.fillWidth: true; spacing: Theme.space1
 
-                Text {
+                // The title as wide as its words, and the heart right after
+                // it, overhanging the line so the column keeps its height.
+                Item {
+                    id: titleLine
                     Layout.fillWidth: true
-                    text: hasTrack ? track.title : qsTr("No track playing")
-                    color: Theme.textPrimary; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
+                    implicitHeight: titleText.implicitHeight
+
+                    Text {
+                        id: titleText
+                        objectName: "playerBarTitle"
+                        width: Math.min(implicitWidth, titleLine.width - likeBtn.width)
+                        text: hasTrack ? track.title : qsTr("No track playing")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody; font.bold: true; elide: Text.ElideRight
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
+                    }
+
+                    // Like is the only thing in this group that acts on the
+                    // track. The Now Playing arrow opens a view, so it sits
+                    // with the queue button.
+                    IconButton {
+                        id: likeBtn
+                        objectName: "playerLikeButton"
+                        // After the title's ink: an elided title ends short of
+                        // its box, by up to a glyph.
+                        x: titleText.x + Math.min(titleText.width, titleText.contentWidth)
+                        anchors.verticalCenter: titleText.verticalCenter
+                        visible: root.hasTrack
+                        icon: root.isLiked ? "heart-filled" : "heart"
+                        size: 16
+                        active: root.isLiked
+                        label: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
+                        // Anchored on the bar, not on this button: IconButton binds the
+                        // shared tool tip, so anchored here its delay, visibility and
+                        // text would apply to the refusal.
+                        onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
+                    }
                 }
                 // One hover target and one tab stop per artist. What is not a
                 // name keeps the left group's own job of opening Now Playing.
@@ -159,7 +202,7 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         namePrefix: "playerBar"
-                        fontPixelSize: 12
+                        fontPixelSize: Theme.fontMeta
                         artistList: root.artistList
                         joinedText: hasTrack ? track.artists : ""
                         // 0 on purpose: the bar's joined fallback is not a link
@@ -168,102 +211,102 @@ Rectangle {
                         fallbackArtistId: 0
                     }
                 }
-                Rectangle {
-                    objectName: "qualityBadge"
-                    visible: hasTrack && player.audioQuality.length > 0
-                    height: 16; width: ql.implicitWidth + 8; radius: Theme.radiusBadge
-                    color: {
-                        var q = player.audioQuality
-                        if (q === "HI_RES_LOSSLESS") return Theme.accentWash
-                        if (q === "LOSSLESS") return Theme.greenWash
-                        return Theme.surfaceHigh
-                    }
-                    Text {
-                        id: ql; objectName: "qualityBadgeText"
-                        anchors.centerIn: parent
-                        text: player.qualityLabel(player.audioQuality)
-                        color: Theme.textPrimary; font.pixelSize: 9; font.bold: true
+                // The badge's line is held with or without a badge, so the
+                // two lines above do not jump when a track starts.
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: barBadge.implicitHeight
+                    QualityBadge {
+                        id: barBadge
+                        visible: hasTrack && quality.length > 0
+                        width: Math.min(implicitWidth, parent.width)
                     }
                 }
-            }
-
-            // Like is the only thing in this group that acts on the track. The
-            // Now Playing arrow opens a view, so it sits with the queue button.
-            IconButton {
-                id: likeBtn
-                objectName: "playerLikeButton"
-                visible: root.hasTrack
-                icon: root.isLiked ? "heart-filled" : "heart"
-                size: 16
-                iconColor: root.isLiked ? Theme.accent : Theme.textSec
-                ToolTip.visible: likeTipHov.hovered
-                ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
-                ToolTip.delay: 600
-                HoverHandler { id: likeTipHov }
-                // Anchored on the bar, not on this button. The three ToolTip
-                // lines above bind the shared tool tip, so anchored here the
-                // hint's delay, visibility and text would apply to the refusal.
-                onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
             }
         }
 
         // ── Central controls ───────────────────────────
         ColumnLayout {
-            Layout.fillWidth: true; spacing: 4
+            id: centreCol
+            Layout.fillWidth: true; spacing: Theme.space1
             // Never squeeze the transport: its buttons and gaps cannot shrink,
             // and without this the row layout hands the column less and the
             // buttons spill over each other.
             Layout.minimumWidth: implicitWidth
 
             RowLayout {
-                Layout.alignment: Qt.AlignHCenter; spacing: 8
+                Layout.alignment: Qt.AlignHCenter; spacing: Theme.space2
 
-                IconButton { icon: "shuffle"; size: 18; iconColor: player.shuffle ? Theme.accent : Theme.textSec; onClicked: player.setShuffle(!player.shuffle) }
-                IconButton { icon: "previous"; size: 22; iconColor: Theme.textPrimary; onClicked: player.previous() }
+                IconButton {
+                    objectName: "playerBarShuffle"
+                    icon: "shuffle"; size: 18
+                    label: qsTr("Shuffle")
+                    checkable: true; active: player.shuffle
+                    onClicked: player.setShuffle(!player.shuffle)
+                }
+                IconButton {
+                    objectName: "playerBarPrevious"
+                    icon: "previous"; size: 22; iconColor: Theme.textPrimary
+                    label: qsTr("Previous track")
+                    onClicked: player.previous()
+                }
 
                 Rectangle {
                     id: playPauseBtn
                     objectName: "playerBarPlayButton"
-                    width: 40; height: 40; radius: 20; color: Theme.textPrimary
+                    width: 40; height: 40; radius: width / 2; color: Theme.textPrimary
                     border.width: activeFocus ? 2 : 0
                     border.color: Theme.accent
                     activeFocusOnTab: true
                     Keys.onReturnPressed: player.playPause()
                     Keys.onSpacePressed:  player.playPause()
+                    Accessible.role: Accessible.Button
+                    Accessible.name: player.playing ? qsTr("Pause") : qsTr("Play")
+                    Accessible.onPressAction: player.playPause()
                     VectorIcon {
                         anchors.centerIn: parent
                         name: player.playing ? "pause" : "play"
                         color: Theme.bg
                         width: 24
                         height: 24
-                        strokeWidth: 1.5
                         visible: !player.loading
                     }
-                    // The still-loading state of the play button. No label
-                    // fits in a 40px disc, so the mark is all there is.
-                    VectorIcon {
+                    // A turning ring while the track loads, where three dots
+                    // read as a menu.
+                    BusyRing {
+                        objectName: "playerBarLoadingRing"
                         anchors.centerIn: parent
-                        name: "more"
+                        width: 22; height: 22
                         color: Theme.bg
-                        width: 18; height: 18
                         visible: player.loading
+                        running: player.loading
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
                     TapHandler   { onTapped: player.playPause() }
                     LoadErrorTip { }
                 }
 
-                IconButton { icon: "next"; size: 22; iconColor: Theme.textPrimary; onClicked: player.next() }
                 IconButton {
+                    objectName: "playerBarNext"
+                    icon: "next"; size: 22; iconColor: Theme.textPrimary
+                    label: qsTr("Next track")
+                    onClicked: player.next()
+                }
+                IconButton {
+                    objectName: "playerBarRepeat"
+                    label: player.repeatMode === 2 ? qsTr("Repeat: one track")
+                         : player.repeatMode === 1 ? qsTr("Repeat: all")
+                                                   : qsTr("Repeat: off")
                     icon: player.repeatMode === 2 ? "repeat-one" : "repeat"
                     size: 18
-                    iconColor: player.repeatMode > 0 ? Theme.accent : Theme.textSec
+                    active: player.repeatMode > 0
                     onClicked: player.setRepeatMode((player.repeatMode + 1) % 3)
                 }
             }
 
             SeekBar {
-                Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
+                objectName: "playerBarSeekBar"
+                Layout.fillWidth: true; Layout.leftMargin: Theme.space4; Layout.rightMargin: Theme.space4
                 position: player.position; duration: player.duration
                 onSeeked: (ms) => player.seek(ms)
             }
@@ -272,8 +315,10 @@ Rectangle {
         // ── Right controls ─────────────────────────────
         RowLayout {
             id: rightGroup
-            // Bound to the group's own implicit width, so the row layout cannot
-            // squeeze it and clip the queue button off a narrow window.
+            // rightWidth, never below its own implicit width, or a narrow
+            // window would clip the queue button.
+            Layout.fillWidth: false
+            Layout.preferredWidth: root.rightWidth
             Layout.minimumWidth: implicitWidth
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
             // The 8px gaps are a margin on each control, not one `spacing: 8`.
@@ -283,12 +328,65 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
+            // A running sleep timer, so it is seen on every page. Opens Now
+            // Playing, where the timer is set.
+            Rectangle {
+                id: sleepIndicator
+                objectName: "playerBarSleepIndicator"
+                readonly property var host: Window.window
+                readonly property bool active: !!host && host.sleepTimerActive === true
+                visible: active
+                Layout.alignment: Qt.AlignVCenter
+                Layout.leftMargin: Theme.space2
+                implicitWidth: sleepRow.implicitWidth + 2 * Theme.space2
+                implicitHeight: 24
+                radius: Theme.radiusChip
+                color: sleepHov.hovered ? Qt.tint(Theme.accentTint, Theme.hoverFill) : Theme.accentTint
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.accent
+                activeFocusOnTab: active
+                Keys.onReturnPressed: root.showNowPlaying()
+                Keys.onSpacePressed:  root.showNowPlaying()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Sleep timer: %1", "player bar, the time left or End of track")
+                                     .arg(sleepLabel.text)
+                Accessible.onPressAction: root.showNowPlaying()
+                ToolTip.visible: sleepHov.hovered
+                ToolTip.text: qsTranslate("NowPlayingPage", "Sleep timer")
+                ToolTip.delay: Theme.tooltipDelay
+
+                Row {
+                    id: sleepRow
+                    anchors.centerIn: parent
+                    spacing: Theme.space1
+                    VectorIcon {
+                        name: "clock"; width: 14; height: 14
+                        color: Theme.accentText
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        id: sleepLabel
+                        objectName: "playerBarSleepLabel"
+                        Component.onCompleted: Theme.tabularFigures(sleepLabel)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: !sleepIndicator.active ? ""
+                              : sleepIndicator.host.sleepStopAtEndOfTrack === true
+                                ? qsTranslate("NowPlayingPage", "End of track")
+                                : sleepIndicator.host.formatSleepTime(sleepIndicator.host.sleepTimeLeft)
+                        color: Theme.accentText
+                        font.pixelSize: Theme.fontMeta; font.bold: true
+                    }
+                }
+                HoverHandler { id: sleepHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler   { onTapped: root.showNowPlaying() }
+            }
+
             // The speaker over the readout as one object, so the flyout
             // parented to it stands over both. Nothing here is given a `width`
             // or a `height`: a Layout owns its children's size.
             ColumnLayout {
                 id: volStack
-                Layout.leftMargin: 8
+                Layout.leftMargin: Theme.space2
                 Layout.alignment: Qt.AlignVCenter
                 // Zero on purpose: the gap is the readout's own top padding
                 // (see volumeStackGap), so there is no dead strip between them.
@@ -298,9 +396,18 @@ Rectangle {
                     id: volBtn
                     objectName: "playerBarVolumeButton"
                     Layout.alignment: Qt.AlignHCenter
-                    icon: player.muted ? "vol-mute" : (player.volume < 0.3 ? "vol-low" : player.volume < 0.7 ? "vol-mid" : "vol-high")
-                    size: 18; iconColor: Theme.textSec
+                    icon: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
+                    size: 18
+                    // The flyout is what its hover brings up.
+                    showTip: false
+                    label: player.muted ? qsTr("Unmute") : qsTr("Mute")
                     onClicked: player.setMuted(!player.muted)
+                    // Focus shows the flyout, and the arrows move it, so the
+                    // volume does not need a pointer.
+                    Keys.onUpPressed:   volumeFlyout.slider.stepBy(volumeFlyout.slider.stepSize)
+                    Keys.onDownPressed: volumeFlyout.slider.stepBy(-volumeFlyout.slider.stepSize)
+                    Accessible.description: volPct.text
+                    VolumeWheel { }
                 }
 
                 // The level, in words, at rest. Layout.preferredWidth and not
@@ -309,6 +416,7 @@ Rectangle {
                 Text {
                     id: volPct
                     objectName: "playerBarVolumePercent"
+                    Component.onCompleted: Theme.tabularFigures(volPct)
                     Layout.preferredWidth: root.volumePercentWidth
                     Layout.alignment: Qt.AlignHCenter
                     // Up over the empty bottom of the speaker's tap target, and
@@ -321,15 +429,16 @@ Rectangle {
                     text: qsTr("%1%").arg(
                         Math.round((player.muted ? 0 : player.volume) * 100)
                             .toLocaleString(Qt.locale(), 'f', 0))
-                    color: Theme.textDim; font.pixelSize: 12
+                    color: Theme.textDim; font.pixelSize: Theme.fontMeta
                     HoverHandler { id: volPctHov }
+                    VolumeWheel { }
                 }
             }
 
             OutputPicker {
                 id: outputBtn
                 objectName: "playerBarOutputButton"
-                Layout.leftMargin: 8
+                Layout.leftMargin: Theme.space2
                 size: 20
             }
 
@@ -338,34 +447,62 @@ Rectangle {
             IconButton {
                 id: nowPlayingBtn
                 objectName: "playerBarNowPlayingButton"
-                visible: root.hasTrack
-                Layout.leftMargin: 8
+                // Laid out with no track too, so nothing beside it moves.
+                opacity: root.hasTrack ? 1 : 0
+                enabled: root.hasTrack
+                Layout.leftMargin: Theme.space2
                 icon: "chevron-up"
                 size: 18
                 iconColor: Theme.textSec
-                ToolTip.visible: nowPlayingTipHov.hovered
-                ToolTip.text: qsTr("Open Now Playing", "player bar button, opens the full-page player")
-                ToolTip.delay: 600
-                HoverHandler { id: nowPlayingTipHov }
+                label: qsTr("Open now playing", "player bar button, opens the full-page player")
                 onClicked: root.showNowPlaying()
             }
 
             IconButton {
                 id: queueBtn
-                Layout.leftMargin: 8
+                objectName: "playerBarQueueButton"
+                Layout.leftMargin: Theme.space2
+                label: qsTr("Queue", "noun, opens the play queue")
                 icon: "queue"; size: 20
                 iconColor: Theme.textSec
+                active: queueDrop.containsDrag
+                lit: queueDrop.containsDrag
                 onClicked: root.showQueue()
+
+                // A track carried here goes to the end of the queue; held
+                // here a moment, it opens the queue to be dropped in place.
+                DropArea {
+                    id: queueDrop
+                    objectName: "playerBarQueueDrop"
+                    anchors.fill: parent
+                    keys: TrackDrag.keys
+                    // A queue row is in the queue already.
+                    enabled: TrackDrag.origin !== "queue"
+                    onDropped: (drop) => {
+                        var tracks = TrackDrag.tracks
+                        player.addToQueue(tracks)
+                        Toasts.show(qsTranslate("TrackRow", "%Ln track(s) added to queue",
+                                                "queue confirmation", tracks.length))
+                        drop.accept(Qt.CopyAction)
+                    }
+                }
+                Timer {
+                    interval: root.queueSpringMs
+                    running: queueDrop.containsDrag
+                             && !(queueBtn.Window.window && queueBtn.Window.window.queueOpen === true)
+                    onTriggered: root.showQueue()
+                }
             }
         }
     }
 
     // ── the volume on hover ──────────────────────────────────────────────
     // Pointing at the speaker or the readout brings the slider up over the
-    // bar. Hover only, and it withdraws while the output menu is open: both
-    // draw upwards out of the bar and would otherwise overlap.
+    // bar, and so does keyboard focus on the speaker. It withdraws while the
+    // output menu is open: both draw upwards and would overlap.
     readonly property bool wantVolumeFlyout:
-        !outputBtn.menuVisible && (volBtn.hovered || volPctHov.hovered)
+        !outputBtn.menuVisible
+        && (volBtn.hovered || volPctHov.hovered || volBtn.activeFocus)
 
     VolumeFlyout {
         id: volumeFlyout
@@ -403,7 +540,7 @@ Rectangle {
         // Playing the transport row has the Up Next list under it.
         x: parent ? Math.round((parent.width - flyoutWidth) / 2) : 0
         y: -flyoutHeight - 6
-        padding: 10
+        padding: Theme.space3
 
         // Hover decides when this goes away, not a click somewhere else: an
         // auto-close would fight the timer below and swallow the click that
@@ -430,11 +567,11 @@ Rectangle {
 
         enter: Transition {
             NumberAnimation { property: "opacity"; from: 0; to: 1
-                              duration: Theme.dur(120); easing.type: Easing.OutCubic }
+                              duration: Theme.dur(Theme.motionFast); easing.type: Easing.OutCubic }
         }
         exit: Transition {
             NumberAnimation { property: "opacity"; from: 1; to: 0
-                              duration: Theme.dur(120); easing.type: Easing.OutCubic }
+                              duration: Theme.dur(Theme.motionFast); easing.type: Easing.OutCubic }
         }
 
         background: Rectangle {
@@ -502,67 +639,39 @@ Rectangle {
             }
         }
 
-        // ── making four sinks on one card distinguishable ────────────────
-        // ALSA and PipeWire name a sink after the card first and the socket
-        // last, so sinks on one card differ only at the end. A shared prefix
-        // folds to a leading ellipsis, and the rest elides in the middle.
+        // The rows as drawn: {id, label, fullLabel, isDefault}. Sinks on one
+        // card differ only at the end of the name, so the menu grows to the
+        // longest name and a name past that elides in the middle.
+        readonly property var localRows: picker.localDevices.map(function (d) {
+            return { id: d.id, label: d.label, fullLabel: d.label,
+                     isDefault: d.isDefault === true }
+        })
 
-        // The shortest shared prefix worth hiding. Below this the shared part
-        // is not what is costing the row its name, and folding would read
-        // worse: "Speaker Left" must not become "... Left".
-        readonly property int sharedPrefixFloor: 16
+        // Room left of the button's right edge, read as the menu opens. A bar
+        // squeezed past the window still keeps the menu inside it.
+        property real menuRoom: Theme.menuMaxWidth
 
-        // The rows as drawn: {id, label, fullLabel, isDefault}, where `label`
-        // may have been folded and `fullLabel` is always what the backend said.
-        readonly property var localRows: picker.foldSharedPrefixes(picker.localDevices)
+        // A layout change hands the page to the other copy of the picker, and
+        // fullscreen is one: the menu would be left floating over the page.
+        readonly property bool hostFullScreen:
+            Window.window ? Window.window.fullScreen === true : false
+        onHostFullScreenChanged: menu.close()
+        onVisibleChanged: if (!visible) menu.close()
 
-        // The longest prefix two labels share, cut back to the last whole word.
-        // Empty for two equal strings: there is nothing to tell apart.
-        function sharedPrefix(a, b) {
-            if (a === b) return ""
-            var n = Math.min(a.length, b.length)
-            var i = 0
-            while (i < n && a.charAt(i) === b.charAt(i)) ++i
-            var cut = a.substring(0, i).lastIndexOf(" ")
-            return cut > 0 ? a.substring(0, cut) : ""
-        }
-
-        function foldSharedPrefixes(devices) {
-            var rows = []
-            var i, j
-            for (i = 0; i < devices.length; ++i)
-                rows.push({ id:        devices[i].id,
-                            label:     devices[i].label,
-                            fullLabel: devices[i].label,
-                            isDefault: devices[i].isDefault === true })
-
-            for (i = 0; i < rows.length; ++i) {
-                // "System default" is a sentinel with an empty id, not a piece
-                // of hardware, and shares no card name with anything.
-                if (!rows[i].id) continue
-                // The shortest prefix this device shares with a neighbour, not
-                // the longest: sinks on one card can agree right up to a final
-                // digit, and the part to lose is the card name they all share.
-                var best = ""
-                for (j = 0; j < rows.length; ++j) {
-                    if (j === i || !rows[j].id) continue
-                    var p = picker.sharedPrefix(rows[i].fullLabel, rows[j].fullLabel)
-                    if (p.length < picker.sharedPrefixFloor) continue
-                    if (best.length === 0 || p.length < best.length) best = p
-                }
-                if (best.length === 0) continue
-                var rest = rows[i].fullLabel.substring(best.length)
-                                            .replace(/^[\s:,\-]+/, "")
-                if (rest.length === 0) continue
-                rows[i].label = "… " + rest
-            }
-            return rows
-        }
-
-        function openMenu() {
+        // From the keyboard the first row takes the focus, so the arrows and
+        // Enter work at once; a click leaves no ring on a row.
+        function openMenu(fromKeyboard) {
             picker.reloadDevices()
+            var right = picker.mapToItem(null, picker.width, 0).x
+            if (picker.Window.window)
+                right = Math.min(right, picker.Window.window.width - Theme.menuWindowMargin)
+            picker.menuRoom = right - Theme.menuWindowMargin
             if (picker.castSource) picker.castSource.startScan()
             menu.open()
+            if (fromKeyboard === true) {
+                var first = menuContent.nextItemInFocusChain(true)
+                if (first) first.forceActiveFocus(Qt.TabFocusReason)
+            }
         }
 
         // Picking a local output while casting has to stop the cast as well,
@@ -583,12 +692,15 @@ Rectangle {
         height: Math.max(size + 12, 32)
 
         activeFocusOnTab: true
-        Keys.onReturnPressed: picker.openMenu()
-        Keys.onSpacePressed:  picker.openMenu()
+        Keys.onReturnPressed: picker.openMenu(true)
+        Keys.onSpacePressed:  picker.openMenu(true)
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("Audio output", "player bar button, picks a speaker or a cast target")
+        Accessible.onPressAction: picker.openMenu()
 
         ToolTip.visible: outHov.hovered
         ToolTip.text: qsTr("Audio output", "player bar button, picks a speaker or a cast target")
-        ToolTip.delay: 600
+        ToolTip.delay: Theme.tooltipDelay
 
         Rectangle {
             anchors.fill: parent
@@ -601,11 +713,10 @@ Rectangle {
         VectorIcon {
             anchors.centerIn: parent
             name: picker.casting ? "cast" : "speaker"
-            color: picker.casting ? Theme.accent
+            color: picker.casting ? Theme.accentText
                  : outHov.hovered ? Theme.textPrimary : Theme.textSec
             width: picker.size
             height: picker.size
-            strokeWidth: 1.5
         }
 
         HoverHandler { id: outHov; cursorShape: Qt.PointingHandCursor }
@@ -615,8 +726,12 @@ Rectangle {
             id: menu
             objectName: "outputMenu"
             x: picker.width - width
-            width: 260
-            padding: 6
+            width: Math.max(Math.min(260, picker.menuRoom),
+                            Math.min(Theme.menuMaxWidth, picker.menuRoom,
+                                     menuContent.implicitWidth + leftPadding + rightPadding))
+            padding: Theme.space2
+            // A popup only hears Escape while it holds the keyboard.
+            focus: true
 
             // Height and position come from the content, not the popup's own
             // geometry. On Qt 6.4 `y: -height - 10` loops in any style: the
@@ -630,15 +745,15 @@ Rectangle {
             }
             contentItem: ColumnLayout {
                 id: menuContent
-                spacing: 2
+                spacing: Theme.spaceHalf
 
                 Text {
                     objectName: "outputLocalHeading"
                     visible: picker.localDevices.length > 0
                     text: qsTr("This computer")
                     color: Theme.textDim
-                    font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
-                    Layout.leftMargin: 8; Layout.topMargin: 4; Layout.bottomMargin: 2
+                    font.pixelSize: Theme.fontMicro; font.bold: true
+                    Layout.leftMargin: Theme.space2; Layout.topMargin: Theme.space1; Layout.bottomMargin: Theme.spaceHalf
                 }
                 Repeater {
                     model: picker.localRows
@@ -661,8 +776,8 @@ Rectangle {
                     visible: !!picker.castSource
                     text: qsTr("Cast to")
                     color: Theme.textDim
-                    font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
-                    Layout.leftMargin: 8; Layout.topMargin: 6; Layout.bottomMargin: 2
+                    font.pixelSize: Theme.fontMicro; font.bold: true
+                    Layout.leftMargin: Theme.space2; Layout.topMargin: Theme.space2; Layout.bottomMargin: Theme.spaceHalf
                 }
                 Repeater {
                     model: picker.castSource ? picker.castSource.devices : []
@@ -679,8 +794,8 @@ Rectangle {
                     objectName: "outputCastSearching"
                     visible: !!picker.castSource && picker.castSource.devices.length === 0
                     text: qsTr("Searching for devices…")
-                    color: Theme.textSec; font.pixelSize: 12
-                    Layout.margins: 8
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                    Layout.margins: Theme.space2
                 }
             }
         }
@@ -691,47 +806,83 @@ Rectangle {
     component OutputRow : Rectangle {
         id: orow
         property string label
-        // What the backend called this, before the picker folded away the part
-        // it shares with its neighbours.
+        // What the backend called this, for the tooltip and a screen reader.
         property string fullLabel: orow.label
+        readonly property bool tipsFullName:
+            orow.label !== orow.fullLabel || orowLabel.truncated
         property string glyph: "speaker"
         property bool   active: false
         signal selected()
         Layout.fillWidth: true
-        implicitWidth: 240
+        // As wide as the whole name: glyph, label, tick and the gaps between.
+        implicitWidth: Math.max(240, orowLabel.implicitWidth + 16 + 14 + 4 * Theme.space2)
         implicitHeight: 36
         radius: Theme.radiusRow
-        color: orowHov.hovered ? Theme.surfaceHov : "transparent"
+        color: orowHov.hovered ? Theme.hoverFill : "transparent"
+        border.width: orow.activeFocus ? 2 : 0
+        border.color: Theme.accent
+
+        // Tab and the arrows walk the rows, Enter picks one.
+        activeFocusOnTab: true
+        Keys.onReturnPressed: orow.selected()
+        Keys.onEnterPressed:  orow.selected()
+        Keys.onSpacePressed:  orow.selected()
+        Keys.onUpPressed:   orow.nextItemInFocusChain(false).forceActiveFocus()
+        Keys.onDownPressed: orow.nextItemInFocusChain(true).forceActiveFocus()
+        Accessible.role: Accessible.RadioButton
+        Accessible.name: orow.fullLabel
+        Accessible.checkable: true
+        Accessible.checked: orow.active
+        Accessible.onPressAction: orow.selected()
+        Accessible.onToggleAction: orow.selected()
+
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 8
+            anchors.leftMargin: Theme.space2; anchors.rightMargin: Theme.space2; spacing: Theme.space2
             VectorIcon {
-                name: orow.glyph; width: 16; height: 16; strokeWidth: 1.6
-                color: orow.active ? Theme.accent : Theme.textSec
+                name: orow.glyph; width: 16; height: 16
+                color: orow.active ? Theme.accentText : Theme.textSec
             }
             Text {
                 id: orowLabel
                 objectName: "outputRowLabel"
                 Layout.fillWidth: true; text: orow.label
-                color: orow.active ? Theme.accent : Theme.textPrimary
+                color: orow.active ? Theme.accentText : Theme.textPrimary
                 // The middle, not the right. What tells two outputs on the
                 // same card apart is the socket at the end of the name, and
                 // elide-right is the one mode that is guaranteed to delete it.
-                font.pixelSize: 13; elide: Text.ElideMiddle
+                font.pixelSize: Theme.fontMeta; elide: Text.ElideMiddle
             }
             VectorIcon {
                 visible: orow.active; name: "check"
-                width: 14; height: 14; strokeWidth: 2; color: Theme.accent
+                width: 14; height: 14; color: Theme.accentText
             }
         }
         HoverHandler { id: orowHov; cursorShape: Qt.PointingHandCursor }
         TapHandler   { onTapped: orow.selected() }
 
         // The whole name, only for a row that is not showing all of it.
-        ToolTip.visible: orowHov.hovered
-                         && (orow.label !== orow.fullLabel || orowLabel.truncated)
+        ToolTip.visible: orowHov.hovered && orow.tipsFullName
         ToolTip.text: orow.fullLabel
-        ToolTip.delay: 600
+        ToolTip.delay: Theme.tooltipDelay
+    }
+
+    // The wheel over a volume control moves the volume a step per notch.
+    // Small touchpad steps add up to a notch. Buttons go through to the
+    // control underneath.
+    component VolumeWheel : MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.NoButton
+        property real pending: 0
+        onWheel: (wheel) => {
+            pending += wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
+            var notches = pending > 0 ? Math.floor(pending / 120) : Math.ceil(pending / 120)
+            if (notches === 0) return
+            pending -= notches * 120
+            var v = Math.round((player.volume + notches * 0.05) * 100) / 100
+            player.setMuted(false)
+            player.setVolume(Math.max(0, Math.min(1, v)))
+        }
     }
 
     // Says player.loadError once, above the play button it is placed in, and
@@ -764,46 +915,4 @@ Rectangle {
         onOnScreenChanged: sync()
     }
 
-    component IconButton : Item {
-        id: iconBtn
-        property string icon
-        property color  iconColor: Theme.textSec
-        property int    size: 18
-        // The speaker's hover drives the volume flyout, which is not a child
-        // of the button and so cannot see the handler below.
-        readonly property alias hovered: hov.hovered
-        signal clicked()
-        width: Math.max(size + 12, 32)
-        height: Math.max(size + 12, 32)
-
-        activeFocusOnTab: true
-        Keys.onReturnPressed: clicked()
-        Keys.onSpacePressed:  clicked()
-
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: "transparent"
-            border.width: iconBtn.activeFocus ? 2 : 0
-            border.color: Theme.accent
-        }
-
-        VectorIcon {
-            anchors.centerIn: parent
-            name: {
-                if (icon === "vol-mute") return "volume-mute"
-                if (icon === "vol-low") return "volume-low"
-                if (icon === "vol-mid") return "volume-mid"
-                if (icon === "vol-high") return "volume-high"
-                return icon
-            }
-            color: hov.hovered ? Theme.textPrimary : iconColor
-            width: size
-            height: size
-            strokeWidth: 1.5
-        }
-
-        HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: parent.clicked() }
-    }
 }

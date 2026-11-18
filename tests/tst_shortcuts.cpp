@@ -262,6 +262,9 @@ private slots:
         const QStringList ids = shortcuts.ids();
         for (const QString &id : ids) {
             const QString seq = shortcuts.sequence(id);
+            // Quit is what the system means by Ctrl+Q, so it may have it.
+            if (id == QLatin1String("quit") && seq == QLatin1String("Ctrl+Q"))
+                continue;
             QVERIFY2(!reserved.contains(seq),
                      qPrintable(QStringLiteral(
                          "%1 is bound to %2, which the system takes before the app sees it")
@@ -270,6 +273,37 @@ private slots:
 
         // The queue toggle in particular.
         QCOMPARE(shortcuts.sequence(QStringLiteral("queue")), QStringLiteral("Ctrl+J"));
+    }
+
+    // The keys a desktop app is expected to answer, and no bare arrow or
+    // paging key: those belong to the focused list, slider or menu.
+    void theBindingsFollowDesktopConvention() {
+        const Shortcuts shortcuts;
+        const QList<QPair<const char *, const char *>> expected = {
+            { "quit",        "Ctrl+Q" },
+            { "find",        "Ctrl+F" },
+            { "findAlt",     "Ctrl+L" },
+            { "newPlaylist", "Ctrl+N" },
+            { "seekForward", "Shift+Right" },
+            { "seekBack",    "Shift+Left" },
+            { "volumeUp",    "Ctrl+Up" },
+            { "volumeDown",  "Ctrl+Down" },
+        };
+        for (const auto &e : expected)
+            QCOMPARE(shortcuts.sequence(QString::fromLatin1(e.first)),
+                     QString::fromLatin1(e.second));
+        QVERIFY(!shortcuts.sequence(QStringLiteral("nowPlaying")).isEmpty());
+
+        const QStringList navigationKeys = {
+            QStringLiteral("Up"), QStringLiteral("Down"), QStringLiteral("Left"),
+            QStringLiteral("Right"), QStringLiteral("Home"), QStringLiteral("End"),
+            QStringLiteral("PgUp"), QStringLiteral("PgDown"), QStringLiteral("Return"),
+            QStringLiteral("Enter"), QStringLiteral("Menu"), QStringLiteral("Tab"),
+        };
+        for (const QString &id : shortcuts.ids())
+            QVERIFY2(!navigationKeys.contains(shortcuts.sequence(id)),
+                     qPrintable(QStringLiteral("%1 takes the bare key %2 from the focused control")
+                                    .arg(id, shortcuts.sequence(id))));
     }
 
     // Main.qml binds every shortcut from the table and binds nothing else.
@@ -333,6 +367,50 @@ private slots:
         // wrong on macOS.
         QVERIFY2(panel.contains(QStringLiteral("Shortcuts.display(")),
                  "the Settings rows no longer derive their key text from Shortcuts.display()");
+    }
+
+    // The README's table names every key in the Shortcuts table and no other,
+    // so it cannot drift from what the app binds. Rows read "| Ctrl + A / B | ... |".
+    void readmeListsEveryEntry() {
+        QFile f(QStringLiteral(TIDALWAVE_QML_DIR) + QStringLiteral("/../README.md"));
+        QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text), "README.md could not be read");
+        const QString readme = QString::fromUtf8(f.readAll());
+        const qsizetype start = readme.indexOf(QStringLiteral("\n## Keyboard shortcuts"));
+        QVERIFY2(start >= 0, "README.md has no \"## Keyboard shortcuts\" section");
+        const qsizetype end = readme.indexOf(QStringLiteral("\n## "), start + 1);
+        const QString section = readme.mid(start, end < 0 ? -1 : end - start);
+
+        QStringList listed;
+        QRegularExpression row(QStringLiteral("^\\|\\s*([^|]+?)\\s*\\|"),
+                               QRegularExpression::MultilineOption);
+        auto it = row.globalMatch(section);
+        while (it.hasNext()) {
+            const QString cell = it.next().captured(1);
+            if (cell == QLatin1String("Shortcut") || cell.startsWith(QLatin1String("---")))
+                continue;
+            for (QString key : cell.split(QStringLiteral(" / "))) {
+                key.replace(QStringLiteral(" + "), QStringLiteral("+"));
+                // Back to QKeySequence's portable spelling, so "Escape" matches "Esc".
+                listed << QKeySequence(key, QKeySequence::PortableText)
+                              .toString(QKeySequence::PortableText);
+            }
+        }
+
+        const Shortcuts shortcuts;
+        QStringList bound;
+        for (const QString &id : shortcuts.ids())
+            bound << QKeySequence(shortcuts.sequence(id), QKeySequence::PortableText)
+                         .toString(QKeySequence::PortableText);
+        const QSet<QString> a(listed.cbegin(), listed.cend());
+        const QSet<QString> b(bound.cbegin(), bound.cend());
+        QVERIFY2(a == b && listed.size() == bound.size(),
+                 qPrintable(QStringLiteral(
+                     "README.md's shortcut table and src/ui/Shortcuts.cpp disagree.\n"
+                     "  in the README only: %1\n"
+                     "  in the table only:  %2\n"
+                     "  rows %3, bindings %4")
+                                .arg(sorted(a - b), sorted(b - a))
+                                .arg(listed.size()).arg(bound.size())));
     }
 
     // No QML file asks for a generic font family such as "monospace". Where the

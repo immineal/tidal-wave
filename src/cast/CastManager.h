@@ -40,6 +40,8 @@ signals:
     void devicesChanged();
     void connectedChanged();
     void error(const QString &msg);
+    // The device ended the cast, not the user; deviceName is the one it was on.
+    void endedOnDevice(const QString &deviceName);
 
 private slots:
     void onDeviceFound(const QString &id, const QString &name, const QString &host, int port);
@@ -59,5 +61,12 @@ private:
 
     QHash<QString, Device> m_devices;
     bool    m_connected = false;
+    // Between beginCast() and endCast(). Outlasts m_connected while a cast
+    // moves from one device to the next.
+    bool    m_playerCasting = false;
+    QString m_deviceId;
     QString m_deviceName;
+    // The local track and position when the cast began, for its first LOAD.
+    qlonglong m_startTrackId = 0;
+    double    m_startSec     = 0;
 };

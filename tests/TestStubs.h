@@ -19,6 +19,7 @@
 #include <QQuickImageProvider>
 #include <QSet>
 #include <QString>
+#include <algorithm>
 #include <functional>
 #include <utility>
 #include <QStringList>
@@ -27,9 +28,12 @@
 #include <QVariantMap>
 
 #include "api/RecordVersions.h"
+#include "api/TrackRows.h"
 #include "api/TidalBridge.h"   // withRecentSearch / kRecentSearchCap
+#include "ui/I18n.h"
 #include "ui/Application.h"
 #include "ui/ThemePalette.h"
+#include "ui/TidalLink.h"
 
 // ─── shared plumbing ────────────────────────────────────────────────────────
 
@@ -155,6 +159,7 @@ class StubBridge : public StubCallbackObject {
 public:
     explicit StubBridge(QObject *parent = nullptr) : StubCallbackObject(parent) {}
 
+    Q_PROPERTY(bool preferExplicit MEMBER m_preferExplicit NOTIFY preferExplicitChanged)
     QString preferredQuality() const { return m_preferredQuality; }
     void setPreferredQuality(const QString &q) {
         if (m_preferredQuality == q) return;
@@ -163,7 +168,75 @@ public:
     }
 
     // Home / mixes
-    Q_INVOKABLE void fetchHomeMixes(QJSValue cb) { resolve(cb, emptyArray()); }
+    // Held for flushHomeMixesForTest() while setDeferHomeMixesForTest(true).
+    Q_INVOKABLE void fetchHomeMixes(QJSValue cb) {
+        ++m_homeMixesFetches;
+        if (m_deferHomeMixes) { m_pendingHomeMixes.append(cb); return; }
+        answerHomeMixes(cb);
+    }
+    Q_INVOKABLE void setDeferHomeMixesForTest(bool on) { m_deferHomeMixes = on; }
+    Q_INVOKABLE void flushHomeMixesForTest() {
+        m_deferHomeMixes = false;
+        const auto held = std::exchange(m_pendingHomeMixes, {});
+        for (QJSValue cb : held) answerHomeMixes(cb);
+    }
+    // What fetchHomeMixes answers: these mixes, or nothing beside `err`.
+    Q_INVOKABLE void setHomeMixesForTest(const QVariantList &mixes, const QString &err = {}) {
+        m_homeMixes = mixes;
+        m_homeMixesError = err;
+    }
+    Q_INVOKABLE int homeMixesFetchesForTest() const { return m_homeMixesFetches; }
+
+    // Tidal's own Home. A feed answers {tabs, modules} as set here, or an
+    // empty one beside `err`; the cached copy is what setHomeFeedCacheForTest
+    // left, empty by default. No feed is held for a test unless set.
+    Q_INVOKABLE QVariantMap cachedHomeFeed(const QString &feed) {
+        return m_homeFeedCache.value(feed, emptyHomeFeed()).toMap();
+    }
+    Q_INVOKABLE void fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb) {
+        m_homeFeedFetches.append(feed + QLatin1Char('/') + language);
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        if (!e) return;
+        const QString err = m_homeFeedErrors.value(feed);
+        const QVariant page = err.isEmpty() ? m_homeFeeds.value(feed, emptyHomeFeed())
+                                            : QVariant(emptyHomeFeed());
+        cb.call({ e->toScriptValue(page), QJSValue(err) });
+    }
+    Q_INVOKABLE void setHomeFeedForTest(const QString &feed, const QVariantMap &page,
+                                        const QString &err = {}) {
+        m_homeFeeds.insert(feed, page);
+        m_homeFeedErrors.insert(feed, err);
+    }
+    Q_INVOKABLE void setHomeFeedCacheForTest(const QString &feed, const QVariantMap &page) {
+        m_homeFeedCache.insert(feed, page);
+    }
+    Q_INVOKABLE QStringList homeFeedFetchesForTest() const { return m_homeFeedFetches; }
+    static QVariantMap emptyHomeFeed() {
+        return {{QStringLiteral("tabs"), QVariantList()}, {QStringLiteral("modules"), QVariantList()}};
+    }
+
+    // ── reaching Tidal ──────────────────────────────────────────────────
+    // Mirrors TidalBridge::offline, unloadedKinds and retryConnection().
+    Q_PROPERTY(bool offline MEMBER m_offline NOTIFY offlineChanged)
+    Q_PROPERTY(QStringList unloadedKinds MEMBER m_unloadedKinds NOTIFY unloadedKindsChanged)
+    Q_PROPERTY(bool libraryFromCache MEMBER m_libraryFromCache NOTIFY unloadedKindsChanged)
+    Q_INVOKABLE void setOfflineForTest(bool on) {
+        if (m_offline == on) return;
+        m_offline = on;
+        emit offlineChanged();
+    }
+    Q_INVOKABLE void setUnloadedKindsForTest(const QStringList &kinds) {
+        if (m_unloadedKinds == kinds) return;
+        m_unloadedKinds = kinds;
+        emit unloadedKindsChanged();
+    }
+    Q_INVOKABLE void setLibraryFromCacheForTest(bool on) {
+        m_libraryFromCache = on;
+        emit unloadedKindsChanged();
+    }
+    Q_INVOKABLE void retryConnection() { ++m_retryCalls; }
+    Q_INVOKABLE int  retryConnectionCallsForTest() const { return m_retryCalls; }
     Q_INVOKABLE void fetchMixTracks(const QString &mixId, QJSValue cb) {
         Q_UNUSED(mixId); resolve(cb, emptyArray());
     }
@@ -183,6 +256,19 @@ public:
     }
 
     // Favourites / playlists (paged in the real bridge; defaults kept identical)
+    // The liked songs, then the other three lists, which the real bridge
+    // loads apart. Each notifies with its own list's signal, as there.
+    Q_PROPERTY(bool favoritesLoading MEMBER m_favoritesLoading NOTIFY favoriteTracksChanged)
+    Q_PROPERTY(bool albumsLoading    MEMBER m_albumsLoading    NOTIFY favoriteAlbumsChanged)
+    Q_PROPERTY(bool artistsLoading   MEMBER m_artistsLoading   NOTIFY favoriteArtistsChanged)
+    Q_PROPERTY(bool playlistsLoading MEMBER m_playlistsLoading NOTIFY favoritePlaylistsChanged)
+    // kind: tracks, albums, artists or playlists.
+    Q_INVOKABLE void setKindLoadingForTest(const QString &kind, bool on) {
+        if (kind == QLatin1String("tracks"))    { m_favoritesLoading = on; emit favoriteTracksChanged(); }
+        if (kind == QLatin1String("albums"))    { m_albumsLoading    = on; emit favoriteAlbumsChanged(); }
+        if (kind == QLatin1String("artists"))   { m_artistsLoading   = on; emit favoriteArtistsChanged(); }
+        if (kind == QLatin1String("playlists")) { m_playlistsLoading = on; emit favoritePlaylistsChanged(); }
+    }
     Q_INVOKABLE void fetchFavoriteTracks(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
@@ -227,18 +313,25 @@ public:
     // switch: PlaylistPage.reloadTracks() asks for tracks alone, and the header
     // queue is asserted to hold exactly one reply per page opened.
     Q_INVOKABLE void fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
+        answerPlaylistTracks(uuid, cb, false);
+    }
+    Q_INVOKABLE void fetchPlaylistTrackRows(const QString &uuid, QJSValue cb) {
+        answerPlaylistTracks(uuid, cb, true);
+    }
+    void answerPlaylistTracks(const QString &uuid, QJSValue cb, bool asRows) {
         m_lastPlaylistTracksFetched = uuid;
         ++m_playlistTracksFetches;
         if (!cb.isCallable()) return;
         QJSEngine *e = jsEngine();
         QJSValueList args;
-        args << (e ? e->toScriptValue(m_playlistTracks) : emptyArray())
+        args << (!e ? emptyArray() : asRows ? e->toScriptValue(Tidal::wrapRows(m_playlistTracks))
+                                            : e->toScriptValue(m_playlistTracks))
              << QJSValue(m_headerError);
         if (m_deferTracks) { m_pendingTracks.append({cb, args}); return; }
         cb.call(args);
     }
     // The playlist itself: {uuid, title, description, numTracks, duration,
-    // coverUrl, type}. `type` decides whether the playlist is editable.
+    // coverUrl, type, editable}. `editable` decides whether the user may edit.
     Q_INVOKABLE void fetchPlaylist(const QString &uuid, QJSValue cb) {
         m_lastPlaylistFetched = uuid;
         m_playlistFetches++;
@@ -302,6 +395,12 @@ public:
         m_lastOtherVersionsFetched = 0;
     }
 private:
+    bool m_favoritesLoading = false;
+    bool m_albumsLoading    = false;
+    bool m_artistsLoading   = false;
+    bool m_playlistsLoading = false;
+    bool m_deferHomeMixes   = false;
+    QList<QJSValue> m_pendingHomeMixes;
     QVariantList m_otherVersions;
     QString      m_otherVersionsError;
     bool         m_deferOtherVersions = false;
@@ -344,6 +443,37 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
+    // `artists/<id>/similar`, on a queue of its own so a test can hold it
+    // while the other three land. Answers setSimilarArtistsForTest().
+    Q_INVOKABLE void fetchSimilarArtists(qlonglong artistId, QJSValue cb) {
+        m_lastSimilarFetched = artistId;
+        m_similarFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        const QString err = m_similarError.isEmpty() ? m_headerError : m_similarError;
+        QJSValueList args;
+        args << (e ? e->toScriptValue(err.isEmpty() ? m_similarArtists : QVariantList())
+                   : emptyArray())
+             << QJSValue(err);
+        // Not deliver(): tests that hold the three header replies count them.
+        if (m_deferSimilar) { m_pendingSimilar.append({cb, args}); return; }
+        cb.call(args);
+    }
+    Q_INVOKABLE void setSimilarArtistsForTest(const QVariantList &artists,
+                                              const QString &error = QString()) {
+        m_similarArtists = artists;
+        m_similarError   = error;
+    }
+    Q_INVOKABLE void setDeferSimilarForTest(bool on) { m_deferSimilar = on; }
+    Q_INVOKABLE int  pendingSimilarForTest() const { return int(m_pendingSimilar.size()); }
+    Q_INVOKABLE void flushSimilarForTest() {
+        QList<std::pair<QJSValue, QJSValueList>> pending;
+        pending.swap(m_pendingSimilar);
+        for (auto &p : pending)
+            if (p.first.isCallable()) p.first.call(p.second);
+    }
+    Q_INVOKABLE int       similarFetchesForTest() const { return m_similarFetches; }
+    Q_INVOKABLE qlonglong lastSimilarFetchedForTest() const { return m_lastSimilarFetched; }
 
     // Search answers the real shape, {tracks, albums, artists, playlists}, from
     // setSearchResultsForTest(). The query is ignored. Offset and limit slice
@@ -444,6 +574,7 @@ public:
     Q_INVOKABLE void addTrackFavorite(qlonglong trackId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addTrack"), trackId);
         answerFavorite(cb, [this, trackId] {
+            noteServerWrite(QStringLiteral("track:%1").arg(trackId), m_favoriteTracks.value(trackId));
             m_favoriteTracks[trackId] = true;
             emit favoriteTracksChanged();
         });
@@ -451,6 +582,7 @@ public:
     Q_INVOKABLE void removeTrackFavorite(qlonglong trackId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeTrack"), trackId);
         answerFavorite(cb, [this, trackId] {
+            noteServerWrite(QStringLiteral("track:%1").arg(trackId), m_favoriteTracks.value(trackId));
             m_favoriteTracks[trackId] = false;
             dropById(m_favoriteTrackList, trackId);
             emit favoriteTracksChanged();
@@ -470,6 +602,7 @@ public:
     Q_INVOKABLE void addAlbumFavorite(qlonglong albumId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addAlbum"), albumId);
         answerFavorite(cb, [this, albumId] {
+            noteServerWrite(QStringLiteral("album:%1").arg(albumId), m_favoriteAlbums.value(albumId));
             m_favoriteAlbums[albumId] = true;
             emit favoriteAlbumsChanged();
         });
@@ -477,6 +610,7 @@ public:
     Q_INVOKABLE void removeAlbumFavorite(qlonglong albumId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeAlbum"), albumId);
         answerFavorite(cb, [this, albumId] {
+            noteServerWrite(QStringLiteral("album:%1").arg(albumId), m_favoriteAlbums.value(albumId));
             m_favoriteAlbums[albumId] = false;
             dropById(m_favoriteAlbumList, albumId);
             emit favoriteAlbumsChanged();
@@ -487,6 +621,7 @@ public:
     Q_INVOKABLE void addArtistFavorite(qlonglong artistId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addArtist"), artistId);
         answerFavorite(cb, [this, artistId] {
+            noteServerWrite(QStringLiteral("artist:%1").arg(artistId), m_favoriteArtists.value(artistId));
             m_favoriteArtists[artistId] = true;
             emit favoriteArtistsChanged();
         });
@@ -494,6 +629,7 @@ public:
     Q_INVOKABLE void removeArtistFavorite(qlonglong artistId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeArtist"), artistId);
         answerFavorite(cb, [this, artistId] {
+            noteServerWrite(QStringLiteral("artist:%1").arg(artistId), m_favoriteArtists.value(artistId));
             m_favoriteArtists[artistId] = false;
             dropById(m_favoriteArtistList, artistId);
             emit favoriteArtistsChanged();
@@ -509,6 +645,7 @@ public:
     Q_INVOKABLE void addMixFavorite(const QString &mixId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addMix"), mixId);
         if (m_favoriteOk) {
+            noteServerWrite(QStringLiteral("mix:") + mixId, m_favoriteMixes.value(mixId));
             m_favoriteMixes[mixId] = true;
             emit favoriteMixesChanged();
         }
@@ -517,6 +654,7 @@ public:
     Q_INVOKABLE void removeMixFavorite(const QString &mixId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeMix"), mixId);
         if (m_favoriteOk) {
+            noteServerWrite(QStringLiteral("mix:") + mixId, m_favoriteMixes.value(mixId));
             m_favoriteMixes[mixId] = false;
             emit favoriteMixesChanged();
         }
@@ -547,17 +685,173 @@ public:
         m_lastAddedPlaylist = uuid;
         m_lastAddedTrackId  = trackId;
         m_addToPlaylistCalls++;
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            // onDupes=SKIP, as the real call asks.
+            if (!rows.contains(QVariant(double(trackId)))) rows.append(double(trackId));
+        }
         resolveOk(cb, m_addToPlaylistOk);
         // After the callback and only on a success, in the real bridge's order.
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+    // Several in one write, as TidalBridge::addTrackListToPlaylist: SKIP
+    // leaves out what the playlist holds, ADD adds it again. Counted as one
+    // add call per write; each write's size goes into addWritesForTest().
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb) {
+        m_lastAddedPlaylist = uuid;
+        m_lastAddedTrackId  = trackIds.isEmpty() ? 0 : trackIds.last().toLongLong();
+        m_addToPlaylistCalls++;
+        m_addWrites << QStringLiteral("%1%2").arg(trackIds.size()).arg(allowDupes ? "+" : "");
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            for (const QVariant &v : trackIds) {
+                const QVariant id(double(v.toLongLong()));
+                if (allowDupes || !rows.contains(id)) rows.append(id);
+            }
+        }
+        resolveOk(cb, m_addToPlaylistOk);
+        if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QStringList addWritesForTest() const { return m_addWrites; }
+    // Records the row a removal's undo puts back; answers as an add does.
+    Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
+                                            QJSValue cb) {
+        m_lastRestored = QStringLiteral("%1 %2 %3").arg(uuid).arg(trackId).arg(index);
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            // No index: the end, as the real call without toIndex.
+            rows.insert(index < 0 ? int(rows.size()) : qBound(0, index, int(rows.size())),
+                        double(trackId));
+        }
+        resolveOk(cb, m_addToPlaylistOk);
+        if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QString lastRestoredForTest() const { return m_lastRestored; }
+
+    // ── read-backs: what Tidal lists after a write ───────────────────────
+    // The server side is the favourite maps above and, per playlist, the ids
+    // setServerPlaylistForTest() seeds (an unseeded one starts empty). After
+    // each write the next `lag` reads still show the state before it; -1
+    // means a write never shows.
+    Q_INVOKABLE void readFavoriteState(const QString &kind, const QString &id, QJSValue cb) {
+        ++m_readBacks;
+        if (!cb.isCallable()) return;
+        if (m_readBackFails) { cb.call({ QJSValue(false), QJSValue(false) }); return; }
+        const QString key = kind + QLatin1Char(':') + id;
+        bool shown = kind == QLatin1String("album")  ? m_favoriteAlbums.value(id.toLongLong())
+                   : kind == QLatin1String("artist") ? m_favoriteArtists.value(id.toLongLong())
+                   : kind == QLatin1String("mix")    ? m_favoriteMixes.value(id)
+                                                     : m_favoriteTracks.value(id.toLongLong());
+        if (m_favBefore.contains(key) && lagging()) shown = m_favBefore.value(key);
+        cb.call({ QJSValue(true), QJSValue(shown) });
+    }
+    Q_INVOKABLE void readPlaylistTrackIds(const QString &uuid, QJSValue cb) {
+        ++m_readBacks;
+        if (!cb.isCallable()) return;
+        if (m_readsLater) {
+            // On a fresh stack, as the network answers: a chain of reads
+            // answered in place nests one call per read.
+            QMetaObject::invokeMethod(this, [this, uuid, cb]() mutable {
+                answerPlaylistRead(uuid, cb);
+            }, Qt::QueuedConnection);
+            return;
+        }
+        answerPlaylistRead(uuid, cb);
+    }
+    // Reads of a playlist answer on the next turn of the event loop.
+    Q_INVOKABLE void answerReadsLaterForTest(bool on) { m_readsLater = on; }
+    void answerPlaylistRead(const QString &uuid, QJSValue cb) {
+        QJSEngine *e = jsEngine();
+        if (m_readBackFails || !e) { cb.call({ QJSValue(false), emptyArray() }); return; }
+        QVariantList rows = m_serverPlaylists.value(uuid);
+        if (m_playlistBefore.contains(uuid) && lagging()) rows = m_playlistBefore.value(uuid);
+        cb.call({ QJSValue(true), e->toScriptValue(rows) });
+    }
+    Q_INVOKABLE void reloadFavoriteKind(const QString &kind) { m_favoriteReloads.append(kind); }
+
+    Q_INVOKABLE void setReadBackLagForTest(int reads) { m_readLag = reads; m_lagLeft = 0; }
+    Q_INVOKABLE void setReadBackFailsForTest(bool on) { m_readBackFails = on; }
+    Q_INVOKABLE int  readBacksForTest() const { return m_readBacks; }
+    Q_INVOKABLE QStringList favoriteReloadsForTest() const { return m_favoriteReloads; }
+    Q_INVOKABLE void setServerPlaylistForTest(const QString &uuid, const QVariantList &ids) {
+        QVariantList rows;
+        for (const QVariant &v : ids) rows.append(v.toDouble());
+        m_serverPlaylists.insert(uuid, rows);
+        m_playlistBefore.remove(uuid);
+    }
+    Q_INVOKABLE QVariantList serverPlaylistForTest(const QString &uuid) const {
+        return m_serverPlaylists.value(uuid);
+    }
+    Q_INVOKABLE void resetReadBacksForTest() {
+        m_readLag = 0; m_lagLeft = 0; m_readBackFails = false; m_readBacks = 0;
+        m_readsLater = false;
+        m_favBefore.clear(); m_playlistBefore.clear(); m_serverPlaylists.clear();
+        m_favoriteReloads.clear();
     }
     // The answer is settable, so a removal the server refuses can be tested.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
         m_lastRemovedPlaylist = uuid;
         m_lastRemovedIndex    = itemIndex;
         m_removeFromPlaylistCalls++;
-        resolveOk(cb, m_removeFromPlaylistOk);
+        if (m_removeFromPlaylistOk && m_serverPlaylists.contains(uuid)) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            if (itemIndex >= 0 && itemIndex < rows.size()) rows.removeAt(itemIndex);
+        }
+        // function(ok, stale, index), as the real bridge answers.
+        if (cb.isCallable())
+            cb.call({ QJSValue(m_removeFromPlaylistOk), QJSValue(false),
+                      QJSValue(m_removeFromPlaylistOk ? itemIndex : -1) });
         if (m_removeFromPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+
+    // ── removeTracksFromPlaylist: several rows in one DELETE ─────────────
+    // Each index counts rows as they were before the write, as Tidal's comma
+    // list does. setRemoveAnswerForTest() picks "ok", "stale" or "fail";
+    // each call is noted as its indices joined by commas.
+    Q_INVOKABLE void removeTracksFromPlaylist(const QString &uuid, const QVariantList &itemIndices,
+                                              QJSValue cb) {
+        QList<int> at;
+        QStringList noted;
+        for (const QVariant &v : itemIndices) { at << v.toInt(); noted << QString::number(v.toInt()); }
+        m_removeWrites << noted.join(QLatin1Char(','));
+        const bool ok = m_removeAnswer == QLatin1String("ok");
+        if (ok) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            std::sort(at.begin(), at.end(), std::greater<int>());
+            at.erase(std::unique(at.begin(), at.end()), at.end());
+            for (int i : at)
+                if (i >= 0 && i < rows.size()) rows.removeAt(i);
+        }
+        if (cb.isCallable())
+            cb.call({ QJSValue(ok), QJSValue(m_removeAnswer == QLatin1String("stale")) });
+        if (ok) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QStringList removeWritesForTest() const { return m_removeWrites; }
+    Q_INVOKABLE void setRemoveAnswerForTest(const QString &a) { m_removeAnswer = a; }
+
+    // ── moveTrackInPlaylist: toIndex is where the row ends ───────────────
+    // Answers (ok, stale) as the real bridge; setMoveAnswerForTest() picks
+    // "ok", "stale" or "fail", and deferMovesForTest() holds the answer
+    // until answerMoveForTest(). Each call is noted as "from>to".
+    Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                         QJSValue cb) {
+        m_moves << QStringLiteral("%1>%2").arg(fromIndex).arg(toIndex);
+        if (m_deferMoves) { m_pendingMoves.append({cb, uuid, fromIndex, toIndex}); return; }
+        deliverMove(cb, uuid, fromIndex, toIndex);
+    }
+    Q_INVOKABLE QStringList movesForTest() const { return m_moves; }
+    Q_INVOKABLE void setMoveAnswerForTest(const QString &a) { m_moveAnswer = a; }
+    Q_INVOKABLE void deferMovesForTest(bool on) { m_deferMoves = on; }
+    Q_INVOKABLE void answerMoveForTest() {
+        if (m_pendingMoves.isEmpty()) return;
+        PendingMove m = m_pendingMoves.takeFirst();
+        deliverMove(m.cb, m.uuid, m.from, m.to);
     }
 
     // ── editPlaylist, as TidalBridge::editPlaylist behaves ───────────────
@@ -572,6 +866,30 @@ public:
         m_lastEditedDescription = description;
         if (m_deferEdits) { m_pendingEdits.append({cb, uuid, title, description}); return; }
         deliverEdit(cb, uuid, title, description);
+    }
+    // ── deletePlaylist, as TidalBridge::deletePlaylist behaves ───────────
+    // On a success the row leaves the cache and playlistDeleted goes out.
+    Q_INVOKABLE void deletePlaylist(const QString &uuid, QJSValue cb) {
+        m_deleteCalls++;
+        m_lastDeletedUuid = uuid;
+        if (m_deferDeletes) { m_pendingDeletes.append({cb, uuid}); return; }
+        deliverDelete(cb, uuid);
+    }
+    Q_INVOKABLE void    setDeletePlaylistOkForTest(bool ok) { m_deleteOk = ok; }
+    Q_INVOKABLE void    setDeferDeletePlaylistForTest(bool on) { m_deferDeletes = on; }
+    Q_INVOKABLE void    flushDeletePlaylistsForTest() {
+        const auto pending = m_pendingDeletes;
+        m_pendingDeletes.clear();
+        for (const auto &d : pending) deliverDelete(d.first, d.second);
+    }
+    Q_INVOKABLE int     deletePlaylistCallsForTest() const { return m_deleteCalls; }
+    Q_INVOKABLE QString lastDeletedPlaylistForTest() const { return m_lastDeletedUuid; }
+    Q_INVOKABLE void    resetDeletePlaylistForTest() {
+        m_deleteCalls = 0;
+        m_lastDeletedUuid.clear();
+        m_deleteOk = true;
+        m_deferDeletes = false;
+        m_pendingDeletes.clear();
     }
     Q_INVOKABLE QVariantList getUserPlaylists() const { return m_userPlaylists; }
     Q_INVOKABLE void markPlaylistPlayed(const QString &uuid) { m_lastPlaylistPlayed = uuid; }
@@ -614,16 +932,89 @@ public:
         m_lastTrackMixFetched  = 0;
     }
 
-    // NowPlayingPage reads .text and .timed off the result.
+    // NowPlayingPage reads .text and .timed off the result. Empty unless a
+    // test stored lyrics with setLyricsForTest().
     Q_INVOKABLE void fetchLyrics(qlonglong trackId, QJSValue cb) {
         Q_UNUSED(trackId);
         QJSValue res = emptyObject();
         if (res.isObject()) {
-            res.setProperty(QStringLiteral("text"), QJSValue(QString()));
-            res.setProperty(QStringLiteral("timed"), QJSValue(false));
+            res.setProperty(QStringLiteral("text"), QJSValue(m_lyricsText));
+            res.setProperty(QStringLiteral("timed"), QJSValue(m_lyricsTimed));
         }
         resolve(cb, res);
     }
+    Q_INVOKABLE void setLyricsForTest(const QString &text, bool timed) {
+        m_lyricsText = text;
+        m_lyricsTimed = timed;
+    }
+    // Mirrors TidalBridge::findLyrics. Answers what setFoundLyricsForTest()
+    // stored, or nothing found; "off" when the stub prefs say so.
+    Q_INVOKABLE void findLyrics(const QVariantMap &track, QJSValue cb) {
+        m_findLyricsCalls++;
+        m_lastFindLyricsTrack = track;
+        QJSValue res = emptyObject();
+        if (res.isObject()) {
+            res.setProperty(QStringLiteral("text"), QJSValue(m_foundText));
+            res.setProperty(QStringLiteral("timed"), QJSValue(m_foundTimed));
+            res.setProperty(QStringLiteral("source"), QJSValue(m_foundSource));
+            res.setProperty(QStringLiteral("url"), QJSValue(m_foundUrl));
+            res.setProperty(QStringLiteral("instrumental"), QJSValue(m_foundInstrumental));
+        }
+        if (!cb.isCallable()) return;
+        QJSValueList args;
+        args << res << QJSValue(QString());
+        cb.call(args);
+    }
+    Q_INVOKABLE void setFoundLyricsForTest(const QString &text, bool timed,
+                                           const QString &source, const QString &url) {
+        m_foundText = text; m_foundTimed = timed; m_foundSource = source; m_foundUrl = url;
+    }
+    Q_INVOKABLE void setFoundInstrumentalForTest(bool on) { m_foundInstrumental = on; }
+    Q_INVOKABLE int         findLyricsCallsForTest() const { return m_findLyricsCalls; }
+    Q_INVOKABLE QVariantMap lastFindLyricsTrackForTest() const { return m_lastFindLyricsTrack; }
+    Q_INVOKABLE void resetLyricsForTest() {
+        m_lyricsText.clear(); m_lyricsTimed = false;
+        m_foundText.clear(); m_foundTimed = false; m_foundSource.clear(); m_foundUrl.clear();
+        m_foundInstrumental = false;
+        m_findLyricsCalls = 0; m_lastFindLyricsTrack.clear();
+        m_autoSyncCalls = 0; m_autoSyncText.clear(); m_autoSyncKept = false; m_autoSyncLrc.clear();
+        m_autoSyncHold = false; m_autoSyncHeld.clear(); m_autoSyncCancels = 0; m_lookAhead = false;
+    }
+    // Mirrors TidalBridge::autoSyncLyrics: answers what setAutoSyncForTest()
+    // stored, at once or, held, on a release. Every held call is kept, so a
+    // stale one can be answered after a newer one was made.
+    Q_INVOKABLE void autoSyncLyrics(qlonglong trackId, const QString &text, QJSValue cb) {
+        Q_UNUSED(trackId);
+        m_autoSyncCalls++;
+        m_autoSyncText = text;
+        m_autoSyncHeld.append(cb);
+        if (!m_autoSyncHold) releaseAutoSyncForTest();
+    }
+    Q_INVOKABLE void cancelAutoSync() { m_autoSyncCancels++; }
+    Q_INVOKABLE int  autoSyncCancelsForTest() const { return m_autoSyncCancels; }
+    Q_INVOKABLE void setAutoSyncForTest(bool kept, const QString &lrc) { m_autoSyncKept = kept; m_autoSyncLrc = lrc; }
+    Q_INVOKABLE void holdAutoSyncForTest(bool hold) { m_autoSyncHold = hold; }
+    // Answers every held call, oldest first.
+    Q_INVOKABLE void releaseAutoSyncForTest() {
+        while (!m_autoSyncHeld.isEmpty()) releaseOldestAutoSyncForTest();
+    }
+    Q_INVOKABLE void releaseOldestAutoSyncForTest() {
+        if (m_autoSyncHeld.isEmpty()) return;
+        QJSValue cb = m_autoSyncHeld.takeFirst();
+        if (!cb.isCallable()) return;
+        QJSValue res = emptyObject();
+        if (res.isObject()) {
+            res.setProperty(QStringLiteral("ok"), QJSValue(true));
+            res.setProperty(QStringLiteral("kept"), QJSValue(m_autoSyncKept));
+            res.setProperty(QStringLiteral("confidence"), QJSValue(m_autoSyncKept ? 0.9 : 0.3));
+            res.setProperty(QStringLiteral("lrc"), QJSValue(m_autoSyncLrc));
+        }
+        cb.call(QJSValueList{res, QJSValue(QString())});
+    }
+    Q_INVOKABLE int     autoSyncCallsForTest() const { return m_autoSyncCalls; }
+    Q_INVOKABLE QString lastAutoSyncTextForTest() const { return m_autoSyncText; }
+    Q_INVOKABLE void setLyricsLookAhead(bool on) { m_lookAhead = on; }
+    Q_INVOKABLE bool lyricsLookAheadForTest() const { return m_lookAhead; }
     // NowPlayingPage reads .groups, .copyright, .isrc, .releaseDate and .upc
     // off the result. Answered empty, so the credits panel shows "unavailable".
     // Counted, because the page caches per track id.
@@ -640,16 +1031,38 @@ public:
         }
         resolve(cb, res);
     }
-    Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb) { resolve(cb, emptyArray()); }
 
     // Local filters over the already-loaded favourites, used by CollectionPage's
     // search field and HomePage's refresh. All four answer from lists a test can
-    // fill. The query is ignored: every caller under test passes "".
-    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return m_favoriteTrackList; }
-    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return m_favoriteAlbumList; }
-    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return m_favoriteArtistList; }
+    // fill, matched on the fields the real bridge matches.
+    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const {
+        return matching(m_favoriteTrackList, query, {"title", "artists", "albumTitle"});
+    }
+    Q_INVOKABLE QVariant favoriteTrackRows() const { return Tidal::wrapRows(m_favoriteTrackList); }
+    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const {
+        return matching(m_favoriteAlbumList, query, {"title", "artists"});
+    }
+    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const {
+        return matching(m_favoriteArtistList, query, {"name"});
+    }
     // The same list getUserPlaylists() answers from, as in the real bridge.
-    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return m_userPlaylists; }
+    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const {
+        return matching(m_userPlaylists, query, {"title"});
+    }
+    static QVariantList matching(const QVariantList &rows, const QString &query,
+                                 const QStringList &fields) {
+        if (query.isEmpty()) return rows;
+        QVariantList out;
+        for (const QVariant &v : rows) {
+            const QVariantMap m = v.toMap();
+            for (const QString &f : fields)
+                if (m.value(f).toString().contains(query, Qt::CaseInsensitive)) {
+                    out.append(v);
+                    break;
+                }
+        }
+        return out;
+    }
 
     // ── what the next createPlaylist() answers ──────────────────────────
     // Nothing set: the server makes it and hands back a uuid. An error string:
@@ -734,6 +1147,14 @@ public:
         m_lastAddedPlaylist.clear();
         m_lastAddedTrackId   = 0;
         m_addToPlaylistCalls = 0;
+        m_addWrites.clear();
+        m_moves.clear();
+        m_moveAnswer = QStringLiteral("ok");
+        m_removeWrites.clear();
+        m_removeAnswer = QStringLiteral("ok");
+        m_deferMoves = false;
+        m_pendingMoves.clear();
+        m_lastRestored.clear();
         m_addToPlaylistOk    = true;
     }
     Q_INVOKABLE void    resetEditPlaylistForTest() {
@@ -796,8 +1217,11 @@ public:
         m_artistAlbums    = albums;
     }
     // The page in `language` through the catalogue the program ships, or in
-    // the source language for "". A test that switches switches back.
+    // the source language for "". A test that switches switches back. The
+    // locale moves first and the retranslate comes last, as in I18n::apply().
     Q_INVOKABLE bool useCatalogueForTest(const QString &language) {
+        const QString lang = language.isEmpty() ? QStringLiteral("en") : language;
+        QLocale::setDefault(I18n::numberLocale(lang, lang, QLocale::system()));
         QCoreApplication::removeTranslator(&m_catalogue);
         bool ok = true;
         if (!language.isEmpty()) {
@@ -869,6 +1293,12 @@ public:
         m_lastArtistFetched = 0;
         m_lastArtistTopTracksFetched = 0;
         m_lastArtistAlbumsFetched = 0;
+        m_similarArtists.clear();
+        m_similarError.clear();
+        m_deferSimilar = false;
+        m_pendingSimilar.clear();
+        m_similarFetches = 0;
+        m_lastSimilarFetched = 0;
         m_trackRadio.clear();
         m_trackRadioFetches = 0;
         m_lastTrackRadioFetched = 0;
@@ -910,6 +1340,8 @@ public:
     // Non-empty makes every later search fail with this reason, the way a lost
     // network does: errorString() reaches the callback and nothing else does.
     Q_INVOKABLE void setSearchErrorForTest(const QString &err) { m_searchError = err; }
+    // {kind, item}, as TidalBridge::search hands `topHit` over. Empty: none.
+    Q_INVOKABLE void setSearchTopHitForTest(const QVariantMap &hit) { m_searchTopHit = hit; }
     Q_INVOKABLE QString lastSearchQueryForTest() const { return m_lastSearchQuery; }
     Q_INVOKABLE int     lastSearchLimitForTest() const { return m_lastSearchLimit; }
     Q_INVOKABLE int     lastSearchOffsetForTest() const { return m_lastSearchOffset; }
@@ -920,6 +1352,7 @@ public:
         m_searchArtists.clear();
         m_searchPlaylists.clear();
         m_searchMixes.clear();
+        m_searchTopHit.clear();
         m_searchError.clear();
         m_lastSearchQuery.clear();
         m_lastSearchLimit = 0;
@@ -939,6 +1372,7 @@ public:
     Q_INVOKABLE int  trackCreditsFetchCountForTest() const { return m_trackCreditsFetches; }
     Q_INVOKABLE void resetTrackCreditsFetchCountForTest() { m_trackCreditsFetches = 0; }
     Q_INVOKABLE void resetForTest() {
+        resetDeletePlaylistForTest();
         m_userPlaylistFetches = 0;
         m_trackCreditsFetches = 0;
         // The favourite maps too, so one test's likes do not reach the next.
@@ -950,6 +1384,7 @@ public:
         m_deferFavorites = false;
         m_pendingFavorites.clear();
         resetFavoriteCallsForTest();
+        resetReadBacksForTest();
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
         resetSearchForTest();
@@ -961,6 +1396,19 @@ public:
         m_lastUserPlaylistOffset = -1;
         m_fetchedPlaylists.clear();
         m_fetchedSet = false;
+        m_favoritesLoading = m_albumsLoading = m_artistsLoading = m_playlistsLoading = false;
+        m_deferHomeMixes = false;
+        m_pendingHomeMixes.clear();
+        m_homeMixes.clear();
+        m_homeMixesError.clear();
+        m_homeFeeds.clear();
+        m_homeFeedErrors.clear();
+        m_homeFeedCache.clear();
+        m_homeFeedFetches.clear();
+        setOfflineForTest(false);
+        setUnloadedKindsForTest({});
+        setLibraryFromCacheForTest(false);
+        m_retryCalls = 0;
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -974,13 +1422,20 @@ public:
         m_favoriteArtistList = artists;
         emit favoriteArtistsChanged();
     }
+    // Every listed track is liked, as on the real bridge, which puts each row
+    // of the listing into its hearts.
     Q_INVOKABLE void setFavoriteTracksListForTest(const QVariantList &tracks) {
         m_favoriteTrackList = tracks;
+        for (const QVariant &v : tracks) {
+            const qlonglong id = v.toMap().value(QStringLiteral("id")).toLongLong();
+            if (id > 0) m_favoriteTracks[id] = true;
+        }
         emit favoriteTracksChanged();
     }
 
 signals:
     void preferredQualityChanged();
+    void preferExplicitChanged();
     void favoriteTracksChanged();
     void favoriteMixesChanged();
     void favoriteAlbumsChanged();
@@ -1001,9 +1456,33 @@ signals:
     // playlist's numbers moved. PlaylistPage listens to this one because
     // favoritePlaylistsChanged also fires on sign-in paging and on every play.
     void playlistStatsRefreshed(const QString &uuid);
+    void playlistDeleted(const QString &uuid);
+    void offlineChanged();
+    void unloadedKindsChanged();
 
 private:
+    void answerHomeMixes(QJSValue &cb) {
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e && m_homeMixesError.isEmpty() ? e->toScriptValue(m_homeMixes) : emptyArray())
+             << QJSValue(m_homeMixesError);
+        cb.call(args);
+    }
+
+    QVariantList m_homeMixes;
+    QString      m_homeMixesError;
+    QVariantMap  m_homeFeeds;
+    QHash<QString, QString> m_homeFeedErrors;
+    QVariantMap  m_homeFeedCache;
+    QStringList  m_homeFeedFetches;
+    int          m_homeMixesFetches = 0;
+    bool         m_offline = false;
+    QStringList  m_unloadedKinds;
+    bool         m_libraryFromCache = false;
+    int          m_retryCalls = 0;
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
+    bool    m_preferExplicit = true;
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
     // how many times it was asked: once per accepted mutation, never otherwise.
@@ -1039,6 +1518,21 @@ private:
         resolveOk(cb, m_favoriteOk);
     }
 
+    // A write landed on the "server": reads lag behind it as set.
+    void noteServerWrite(const QString &key, bool was) {
+        m_favBefore.insert(key, was);
+        m_lagLeft = m_readLag;
+    }
+    void noteServerPlaylistWrite(const QString &uuid) {
+        m_playlistBefore.insert(uuid, m_serverPlaylists.value(uuid));
+        m_lagLeft = m_readLag;
+    }
+    bool lagging() {
+        if (m_readLag < 0) return true;
+        if (m_lagLeft > 0) { --m_lagLeft; return true; }
+        return false;
+    }
+
     void noteFavoriteCall(const QString &verb, qlonglong id) {
         noteFavoriteCall(verb, QString::number(id));
     }
@@ -1054,6 +1548,23 @@ private:
     QHash<qlonglong, bool> m_favoriteArtists;
     QHash<QString, bool>   m_favoriteMixes;
     // What fetchTrackMix() answers, and what it was asked.
+    QString     m_lyricsText;
+    bool        m_lyricsTimed = false;
+    QString     m_foundText;
+    bool        m_foundTimed = false;
+    bool        m_foundInstrumental = false;
+    QString     m_foundSource;
+    QString     m_foundUrl;
+    int         m_findLyricsCalls = 0;
+    QVariantMap m_lastFindLyricsTrack;
+    int         m_autoSyncCalls = 0;
+    QString     m_autoSyncText;
+    bool        m_autoSyncKept = false;
+    QString     m_autoSyncLrc;
+    bool        m_autoSyncHold = false;
+    QList<QJSValue> m_autoSyncHeld;
+    int         m_autoSyncCancels = 0;
+    bool        m_lookAhead = false;
     QString   m_trackMixId;
     QString   m_trackMixError;
     int       m_trackMixFetches     = 0;
@@ -1093,6 +1604,12 @@ private:
     qlonglong    m_lastArtistFetched = 0;
     qlonglong    m_lastArtistTopTracksFetched = 0;
     qlonglong    m_lastArtistAlbumsFetched = 0;
+    QVariantList m_similarArtists;
+    QString      m_similarError;
+    bool         m_deferSimilar = false;
+    QList<std::pair<QJSValue, QJSValueList>> m_pendingSimilar;
+    int          m_similarFetches = 0;
+    qlonglong    m_lastSimilarFetched = 0;
     QVariantList m_trackRadio;
     int          m_trackRadioFetches = 0;
     qlonglong    m_lastTrackRadioFetched = 0;
@@ -1192,6 +1709,29 @@ private:
         emit playlistStatsRefreshed(uuid);
     }
 
+    // A move's answer, inline or when a held one is released.
+    struct PendingMove { QJSValue cb; QString uuid; int from; int to; };
+    void deliverMove(QJSValue cb, const QString &uuid, int from, int to) {
+        const bool ok = m_moveAnswer == QLatin1String("ok");
+        if (ok) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            if (from >= 0 && from < rows.size()) {
+                const QVariant v = rows.takeAt(from);
+                rows.insert(qBound(0, to, int(rows.size())), v);
+            }
+        }
+        if (cb.isCallable())
+            cb.call({ QJSValue(ok), QJSValue(m_moveAnswer == QLatin1String("stale")) });
+        if (ok) refreshPlaylistMeta(uuid);
+    }
+    QStringList        m_moves;
+    QString            m_moveAnswer = QStringLiteral("ok");
+    QStringList        m_removeWrites;
+    QString            m_removeAnswer = QStringLiteral("ok");
+    bool               m_deferMoves = false;
+    QList<PendingMove> m_pendingMoves;
+
     // The body of a createPlaylist reply, inline or when a held one is released.
     void deliverCreate(QJSValue &cb, const QString &title) {
         QVariantMap p;
@@ -1208,6 +1748,7 @@ private:
             p.insert(QStringLiteral("duration"), 0);
             p.insert(QStringLiteral("coverUrl"), QString());
             p.insert(QStringLiteral("type"), QStringLiteral("USER"));
+            p.insert(QStringLiteral("editable"), true);
 
             bool exists = false;
             for (const QVariant &v : std::as_const(m_userPlaylists))
@@ -1256,6 +1797,26 @@ private:
         cb.call(args);
     }
 
+    // The real bridge's order: the answer, then the row leaves and the signal.
+    void deliverDelete(QJSValue cb, const QString &uuid) {
+        const bool ok = m_deleteOk;
+        if (cb.isCallable()) cb.call({ QJSValue(ok) });
+        if (!ok) return;
+        for (int i = 0; i < m_userPlaylists.size(); ++i) {
+            if (m_userPlaylists.at(i).toMap().value(QStringLiteral("uuid")).toString() != uuid)
+                continue;
+            m_userPlaylists.removeAt(i);
+            emit favoritePlaylistsChanged();
+            break;
+        }
+        emit playlistDeleted(uuid);
+    }
+    bool    m_deleteOk     = true;
+    bool    m_deferDeletes = false;
+    int     m_deleteCalls  = 0;
+    QString m_lastDeletedUuid;
+    QList<QPair<QJSValue, QString>> m_pendingDeletes;
+
     struct PendingEdit { QJSValue cb; QString uuid, title, description; };
     bool    m_editOk     = true;
     bool    m_deferEdits = false;
@@ -1275,6 +1836,17 @@ private:
     QString   m_lastAddedPlaylist;
     qlonglong m_lastAddedTrackId   = 0;
     int       m_addToPlaylistCalls = 0;
+    QStringList m_addWrites;
+    QString   m_lastRestored;
+    int       m_readLag = 0;
+    int       m_lagLeft = 0;
+    bool      m_readBackFails = false;
+    bool      m_readsLater = false;
+    int       m_readBacks = 0;
+    QHash<QString, bool>         m_favBefore;
+    QHash<QString, QVariantList> m_serverPlaylists;
+    QHash<QString, QVariantList> m_playlistBefore;
+    QStringList                  m_favoriteReloads;
     bool      m_addToPlaylistOk    = true;
     int     m_userPlaylistFetches = 0;
     int     m_lastUserPlaylistLimit  = -1;
@@ -1288,6 +1860,7 @@ private:
     QVariantList m_searchArtists;
     QVariantList m_searchPlaylists;
     QVariantList m_searchMixes;
+    QVariantMap  m_searchTopHit;
     QString      m_searchError;
     QString      m_lastSearchQuery;
     int          m_lastSearchLimit = 0;
@@ -1322,6 +1895,9 @@ private:
         res.setProperty(QStringLiteral("totalArtists"),   total(m_searchArtists));
         res.setProperty(QStringLiteral("totalPlaylists"), total(m_searchPlaylists));
         res.setProperty(QStringLiteral("totalMixes"),     total(m_searchMixes));
+        // Only on the first page, as the server answers it.
+        if (filled && offset == 0 && !m_searchTopHit.isEmpty())
+            res.setProperty(QStringLiteral("topHit"), e->toScriptValue(m_searchTopHit));
         return res;
     }
 };
@@ -1344,6 +1920,7 @@ class StubPlayer : public QObject {
     Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle NOTIFY shuffleChanged)
     Q_PROPERTY(int repeatMode READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString audioQuality READ audioQuality NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString audioFormat READ audioFormat NOTIFY currentTrackChanged)
     Q_PROPERTY(int queueCount READ queueCount NOTIFY queueChanged)
     Q_PROPERTY(int queueIndex READ queueIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QVariantList queueTracks READ queueTracks NOTIFY queueChanged)
@@ -1385,6 +1962,7 @@ public:
     bool         shuffle() const { return m_shuffle; }
     int          repeatMode() const { return m_repeatMode; }
     QString      audioQuality() const { return m_audioQuality; }
+    QString      audioFormat() const { return m_audioFormat; }
     int          queueCount() const { return int(m_queue.size()); }
     int          queueIndex() const { return m_index; }
     QVariantList queueTracks() const { return m_queue; }
@@ -1439,8 +2017,13 @@ public:
         emit currentIndexChanged(m_index);
     }
     Q_INVOKABLE void removeFromQueue(int index) {
+        note(QStringLiteral("removeFromQueue %1").arg(index));
         if (index < 0 || index >= m_queue.size()) return;
         m_queue.removeAt(index);
+        // The sections stay where they were around the row that went.
+        if (index < m_index) --m_index;
+        else if (index > m_index && index <= m_index + m_manualCount)
+            setManualCount(m_manualCount - 1);
         if (m_index >= m_queue.size()) m_index = int(m_queue.size()) - 1;
         emit queueChanged();
         emit currentIndexChanged(m_index);
@@ -1543,6 +2126,39 @@ public:
         m_queue.move(m_index + 1 + from, m_index + 1 + to);
         emit queueChanged();
     }
+    // The real Player's rule, so the panel's rows follow a drop.
+    Q_INVOKABLE void moveQueueRow(const QString &fromSection, int fromSlot,
+                                  const QString &toSection, int toSlot) {
+        note(QStringLiteral("moveQueueRow %1 %2 %3 %4")
+                 .arg(fromSection).arg(fromSlot).arg(toSection).arg(toSlot));
+        const auto known = [](const QString &s) {
+            return s == QLatin1String("manual") || s == QLatin1String("context");
+        };
+        if (!known(fromSection) || !known(toSection)) return;
+        const bool fromManual = fromSection == QLatin1String("manual");
+        const bool toManual   = toSection   == QLatin1String("manual");
+        const int start   = m_index + 1;
+        const int context = int(m_queue.size()) - start - m_manualCount;
+        if (fromSlot < 0 || fromSlot >= (fromManual ? m_manualCount : context)) return;
+        const int manualLeft = m_manualCount - (fromManual ? 1 : 0);
+        const int slot = qBound(0, toSlot, toManual ? manualLeft : context - (fromManual ? 0 : 1));
+        if (fromManual == toManual && slot == fromSlot) return;
+        const QVariant row = m_queue.takeAt(start + (fromManual ? 0 : m_manualCount) + fromSlot);
+        m_queue.insert(start + (toManual ? 0 : manualLeft) + slot, row);
+        setManualCount(manualLeft + (toManual ? 1 : 0));
+        emit queueChanged();
+    }
+    // The real Player's rule: queued rows at a manual slot, or into the context.
+    Q_INVOKABLE void insertQueueRows(const QVariantList &tracks, const QString &section, int slot) {
+        note(QStringLiteral("insertQueueRows %1 %2 %3").arg(tracks.size()).arg(section).arg(slot));
+        if (tracks.isEmpty()) return;
+        if (section == QLatin1String("manual")) { insertManual(tracks, slot); return; }
+        if (section != QLatin1String("context")) return;
+        const int first = m_index + 1 + m_manualCount;
+        const int at = first + qBound(0, slot, int(m_queue.size()) - first);
+        for (int i = 0; i < tracks.size(); ++i) m_queue.insert(at + i, tracks.at(i).toMap());
+        emit queueChanged();
+    }
     Q_INVOKABLE void clearManual() {
         note(QStringLiteral("clearManual"));
         if (m_manualCount <= 0) return;
@@ -1631,6 +2247,10 @@ public:
         m_audioQuality = q;
         emit currentTrackChanged();
     }
+    Q_INVOKABLE void setAudioFormatForTest(const QString &f) {
+        m_audioFormat = f;
+        emit currentTrackChanged();
+    }
     Q_INVOKABLE void setQueueForTest(const QVariantList &tracks, int index = -1) {
         m_queue = tracks;
         m_index = index;
@@ -1677,6 +2297,7 @@ private:
     bool         m_shuffle = false;
     int          m_repeatMode = 0;
     QString      m_audioQuality;
+    QString      m_audioFormat;
     QVariantList m_queue;
     QVariantList m_recentlyPlayed;
     int          m_index = -1;
@@ -1747,11 +2368,18 @@ public:
     Q_INVOKABLE int scanCountForTest() const { return m_scanCount; }
     Q_INVOKABLE QString lastConnectIdForTest() const { return m_lastConnectId; }
     Q_INVOKABLE void emitErrorForTest(const QString &msg) { emit error(msg); }
+    // What CastManager does when the device ends the cast itself.
+    Q_INVOKABLE void endOnDeviceForTest() {
+        const QString name = m_deviceName;
+        emit endedOnDevice(name);
+        disconnect();
+    }
 
 signals:
     void devicesChanged();
     void connectedChanged();
     void error(const QString &msg);
+    void endedOnDevice(const QString &deviceName);
 
 private:
     QVariantList m_devices;
@@ -1807,6 +2435,19 @@ public:
         if (url.isEmpty()) return;
         m_openedUrls << url;
     }
+    // The page saved by the last run, which the real Application reads once.
+    Q_INVOKABLE QString startPage() const { return m_startPage; }
+    Q_INVOKABLE void setStartPageForTest(const QString &page) { m_startPage = page; }
+    // The real Application parses with the same TidalLink. A track link
+    // needs an album lookup there; here it opens nothing.
+    Q_INVOKABLE bool isTidalLink(const QString &text) const {
+        return TidalLink::parse(text).isValid();
+    }
+    Q_INVOKABLE void openLink(const QString &text) {
+        const TidalLink link = TidalLink::parse(text);
+        if (link.isValid() && link.kind != QLatin1String("track"))
+            emit openRequested(link.kind, link.id);
+    }
 
     // test hooks
     Q_INVOKABLE int quitCountForTest() const { return m_quitCount; }
@@ -1822,6 +2463,7 @@ public:
     Q_INVOKABLE void resetForTest() {
         m_quitCount = 0;
         m_openedUrls.clear();
+        m_startPage.clear();
         setReducedMotionForTest(false);
         if (m_reallyQuit) {
             m_reallyQuit = false;
@@ -1830,6 +2472,8 @@ public:
     }
 
 signals:
+    // As the real Application: a Tidal link handed over from outside.
+    void openRequested(const QString &kind, const QString &id);
     void reallyQuitChanged();
     void reducedMotionChanged();
 
@@ -1838,6 +2482,7 @@ private:
     bool        m_reducedMotion = false;
     int         m_quitCount = 0;
     QStringList m_openedUrls;
+    QString     m_startPage;
 };
 
 // ─── downloader ─────────────────────────────────────────────────────────────
@@ -1847,8 +2492,19 @@ private:
 // track and emits downloadStarted/downloadFinished.
 class StubDownloader : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
 public:
     explicit StubDownloader(QObject *parent = nullptr) : QObject(parent) {}
+
+    QString folder() const { return m_folder; }
+    void setFolder(const QString &dir) {
+        if (dir == m_folder) return;
+        m_folder = dir;
+        emit folderChanged();
+    }
+    Q_INVOKABLE void chooseFolder() { ++m_chooseCalls; }
+    Q_INVOKABLE QString savedPath(qlonglong id) const { return m_saved.value(id); }
+    Q_INVOKABLE void showInFolder(const QString &path) { m_shown.append(path); }
 
     Q_INVOKABLE void downloadTrack(const QVariantMap &track) {
         m_lastTrack = track;
@@ -1859,6 +2515,29 @@ public:
     Q_INVOKABLE bool isDownloading(qlonglong id) const { return m_active.contains(id); }
     Q_INVOKABLE void cancelDownload(qlonglong id) { m_active.remove(id); }
 
+    // Albums and playlists: the state is whatever a test set, and the calls
+    // are recorded as "download kind:id n" and "cancel kind:id".
+    Q_INVOKABLE void downloadCollection(const QString &kind, const QString &id,
+                                        const QString &title, const QVariantList &tracks) {
+        m_collectionCalls << QStringLiteral("download %1:%2 %3").arg(kind, id).arg(tracks.size());
+        m_collectionTitle = title;
+    }
+    Q_INVOKABLE void cancelCollection(const QString &kind, const QString &id) {
+        m_collectionCalls << QStringLiteral("cancel %1:%2").arg(kind, id);
+    }
+    Q_INVOKABLE QVariantMap collectionState(const QString &kind, const QString &id) const {
+        return m_collections.value(kind + QLatin1Char(':') + id,
+                                   {{QStringLiteral("state"), QStringLiteral("idle")}});
+    }
+    Q_INVOKABLE void setCollectionStateForTest(const QString &kind, const QString &id,
+                                               const QVariantMap &state) {
+        const QString key = kind + QLatin1Char(':') + id;
+        m_collections.insert(key, state);
+        emit collectionChanged(key);
+    }
+    Q_INVOKABLE QStringList collectionCallsForTest() const { return m_collectionCalls; }
+    Q_INVOKABLE QString collectionTitleForTest() const { return m_collectionTitle; }
+
     // test hooks: QML cannot emit C++ signals, so tests drive the download
     // lifecycle (TrackRow/NowPlayingPage listen for all three) from here.
     Q_INVOKABLE void emitDownloadStartedForTest(qlonglong id) {
@@ -1867,6 +2546,7 @@ public:
     }
     Q_INVOKABLE void emitDownloadFinishedForTest(qlonglong id, const QString &path) {
         m_active.remove(id);
+        m_saved.insert(id, path);
         emit downloadFinished(id, path);
     }
     Q_INVOKABLE void emitDownloadErrorForTest(qlonglong id, const QString &msg) {
@@ -1874,15 +2554,32 @@ public:
         emit downloadError(id, msg);
     }
     Q_INVOKABLE QVariantMap lastTrackForTest() const { return m_lastTrack; }
+    Q_INVOKABLE QStringList shownInFolderForTest() const { return m_shown; }
+    Q_INVOKABLE int chooseFolderCallsForTest() const { return m_chooseCalls; }
+    Q_INVOKABLE void resetForTest() {
+        m_active.clear(); m_saved.clear(); m_shown.clear(); m_chooseCalls = 0;
+        m_lastTrack.clear();
+        m_collections.clear(); m_collectionCalls.clear(); m_collectionTitle.clear();
+    }
 
 signals:
+    void folderChanged();
     void downloadStarted(qlonglong id);
     void downloadFinished(qlonglong id, const QString &path);
     void downloadError(qlonglong id, const QString &msg);
+    void downloadCancelled(qlonglong id);
+    void collectionChanged(const QString &key);
 
 private:
+    QHash<QString, QVariantMap> m_collections;
+    QStringList     m_collectionCalls;
+    QString         m_collectionTitle;
     QSet<qlonglong> m_active;
     QVariantMap     m_lastTrack;
+    QString         m_folder = QStringLiteral("/home/someone/Music");
+    QHash<qlonglong, QString> m_saved;
+    QStringList     m_shown;
+    int             m_chooseCalls = 0;
 };
 
 // ─── image provider ─────────────────────────────────────────────────────────
@@ -1922,6 +2619,7 @@ class StubPrefs : public QObject {
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
+    Q_PROPERTY(bool trackNotifications READ trackNotifications WRITE setTrackNotifications NOTIFY trackNotificationsChanged)
     // The fullscreen Now Playing background pulled out of the cover art. On by
     // default, as in the real Prefs.
     Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
@@ -1929,6 +2627,19 @@ class StubPrefs : public QObject {
     // real Prefs. SpectrumAnalyzer reads the property by name, so this stub is a
     // complete substitute for Prefs there.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
+    // Defaults as in the real Prefs: LRCLIB and auto-sync on, the other sites off.
+    Q_PROPERTY(bool lyricsLrclib READ lyricsLrclib WRITE setLyricsLrclib NOTIFY lyricsLrclibChanged)
+    Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
+    Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
+    Q_PROPERTY(QString reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
+    // The playback switches, with the real Prefs' defaults.
+    Q_PROPERTY(bool normalizeLoudness MEMBER m_normalizeLoudness NOTIFY normalizeLoudnessChanged)
+    Q_PROPERTY(bool autoplay MEMBER m_autoplay NOTIFY autoplayChanged)
+    Q_PROPERTY(bool crossfade MEMBER m_crossfade NOTIFY crossfadeChanged)
+    Q_PROPERTY(int crossfadeSeconds MEMBER m_crossfadeSeconds NOTIFY crossfadeSecondsChanged)
+    Q_PROPERTY(bool crossfadeAvailable MEMBER m_crossfadeAvailable CONSTANT)
+    // The page the window last showed, as the real Prefs keeps it.
+    Q_PROPERTY(QString lastPage MEMBER m_lastPage NOTIFY lastPageChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -1953,8 +2664,13 @@ public:
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
     bool    quitOnClose() const       { return m_quitOnClose; }
+    bool    trackNotifications() const { return m_trackNotifications; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
+    bool    lyricsLrclib() const      { return m_lyricsLrclib; }
+    bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
+    bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
+    QString reducedMotion() const     { return m_reducedMotion; }
 
     void setTheme(const QString &v) {
         if (v.isEmpty() || v == m_theme) return;
@@ -1997,6 +2713,11 @@ public:
         m_quitOnClose = v;
         emit quitOnCloseChanged();
     }
+    void setTrackNotifications(bool v) {
+        if (v == m_trackNotifications) return;
+        m_trackNotifications = v;
+        emit trackNotificationsChanged();
+    }
     void setCoverGradient(bool v) {
         if (v == m_coverGradient) return;
         m_coverGradient = v;
@@ -2006,6 +2727,26 @@ public:
         if (v == m_spectrumBars) return;
         m_spectrumBars = v;
         emit spectrumBarsChanged();
+    }
+    void setLyricsLrclib(bool v) {
+        if (v == m_lyricsLrclib) return;
+        m_lyricsLrclib = v;
+        emit lyricsLrclibChanged();
+    }
+    void setLyricsOtherSites(bool v) {
+        if (v == m_lyricsOtherSites) return;
+        m_lyricsOtherSites = v;
+        emit lyricsOtherSitesChanged();
+    }
+    void setLyricsAutoSync(bool v) {
+        if (v == m_lyricsAutoSync) return;
+        m_lyricsAutoSync = v;
+        emit lyricsAutoSyncChanged();
+    }
+    void setReducedMotion(const QString &v) {
+        if (v == m_reducedMotion) return;
+        m_reducedMotion = v;
+        emit reducedMotionChanged();
     }
 
     Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
@@ -2020,6 +2761,7 @@ public:
     Q_INVOKABLE void setAppVersionForTest(const QString &v) { m_version = v; }
 
 signals:
+    void lastPageChanged();
     void themeChanged();
     void oledBlackChanged();
     void tintedGreysChanged();
@@ -2029,10 +2771,21 @@ signals:
     void audioDeviceChanged();
     void softwareRenderingChanged();
     void quitOnCloseChanged();
+    void trackNotificationsChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
+    void lyricsLrclibChanged();
+    void lyricsOtherSitesChanged();
+    void lyricsAutoSyncChanged();
+    void reducedMotionChanged();
+    void normalizeLoudnessChanged();
+    void autoplayChanged();
+    void crossfadeChanged();
+    void crossfadeSecondsChanged();
 
 private:
+    QString m_lastPage;
+    QString m_reducedMotion = QStringLiteral("system");
     QString m_theme    = QStringLiteral("sea");
     // Off, unlike the real Prefs, so a QML test that says nothing about it
     // measures the palette as written in the table.
@@ -2046,8 +2799,18 @@ private:
     QString m_audioDevice;
     bool    m_softwareRendering = false;
     bool    m_quitOnClose = false;
+    bool    m_trackNotifications = false;
     bool    m_coverGradient = true;
     bool    m_spectrumBars = false;
+    // As a fresh install has them.
+    bool    m_lyricsLrclib = true;
+    bool    m_lyricsOtherSites = false;
+    bool    m_lyricsAutoSync = true;
+    bool    m_normalizeLoudness = true;
+    bool    m_autoplay = false;
+    bool    m_crossfade = false;
+    int     m_crossfadeSeconds = 5;
+    bool    m_crossfadeAvailable = true;
     QString m_version = QStringLiteral("0.4.0");
 };
 
@@ -2127,8 +2890,15 @@ class StubLibrary : public QObject {
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(bool indexing READ indexing NOTIFY indexingChanged)
+    Q_PROPERTY(bool loadFailed MEMBER m_loadFailed NOTIFY loadFailedChanged)
 public:
     explicit StubLibrary(QObject *parent = nullptr) : QObject(parent) {}
+
+    Q_INVOKABLE void setLoadFailedForTest(bool on) {
+        if (m_loadFailed == on) return;
+        m_loadFailed = on;
+        emit loadFailedChanged();
+    }
 
     QVariantList entries() const { return m_entries; }
     bool loading() const  { return m_loading; }
@@ -2287,11 +3057,13 @@ public:
     }
 
 signals:
+    void loadFailedChanged();
     void entriesChanged();
     void loadingChanged();
     void indexingChanged();
 
 private:
+    bool m_loadFailed = false;
     QVariantList m_entries;
     QVariantList m_tracks;
     bool         m_loading  = false;

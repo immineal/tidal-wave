@@ -4,7 +4,11 @@
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
+#include <QTimeZone>
 #include <QPointer>
+#include <QRegularExpression>
+#include <QTimer>
 #include <chrono>
 
 TidalApi::TidalApi(QObject *parent) : QObject(parent) {
@@ -69,17 +73,127 @@ bool mayBeAboutTheToken(const QByteArray &body) {
 
 } // namespace
 
-void TidalApi::send(Sender sender, Finisher done, bool resend) {
+// Qt names the URL in its error sentence. A signed media URL carries its
+// signature in the query, and these sentences end up in the log.
+QString TidalApi::redactedError(const QString &errorString) {
+    static const QRegularExpression query(QStringLiteral("(\\w+://[^\\s?#]+)[?#]\\S*"));
+    QString s = errorString;
+    s.replace(query, QStringLiteral("\\1"));
+    return s;
+}
+
+TidalApi::Answer TidalApi::answerOf(QNetworkReply *reply, const QByteArray &body) {
+    Answer a;
+    a.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    a.failed = reply->error() != QNetworkReply::NoError;
+    if (a.failed) a.error = redactedError(reply->errorString());
+    a.body = body;
+    a.etag = QString::fromLatin1(reply->rawHeader("ETag"));
+    return a;
+}
+
+// ── 429 ─────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Path segments that name one item, so every track shares one key.
+bool namesAnItem(const QString &segment) {
+    if (segment.isEmpty()) return false;
+    bool digit = false;
+    for (const QChar c : segment) {
+        if (c.isDigit()) { digit = true; continue; }
+        const bool hex = (c >= QLatin1Char('a') && c <= QLatin1Char('f'))
+                      || (c >= QLatin1Char('A') && c <= QLatin1Char('F'));
+        if (!hex && c != QLatin1Char('-')) return false;
+    }
+    return digit && (segment.size() >= 8 || segment.toLongLong() > 0);
+}
+
+} // namespace
+
+QString TidalApi::rateLimitKey(const QUrl &url) {
+    QStringList parts = url.path().split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for (QString &p : parts)
+        if (namesAnItem(p)) p = QStringLiteral("*");
+    return url.host().toLower() + QLatin1Char('/') + parts.join(QLatin1Char('/'));
+}
+
+int TidalApi::retryAfterSecs(const QByteArray &header, const QDateTime &now) {
+    const QByteArray v = header.trimmed();
+    if (v.isEmpty()) return -1;
+    bool ok = false;
+    const int secs = v.toInt(&ok);
+    if (ok) return secs < 0 ? -1 : secs;
+    // The HTTP-date form, always in GMT.
+    QDateTime when = QLocale::c().toDateTime(QString::fromLatin1(v),
+                                             QStringLiteral("ddd, dd MMM yyyy hh:mm:ss 'GMT'"));
+    if (!when.isValid()) return -1;
+    when.setTimeZone(QTimeZone::utc());
+    return int(qMax<qint64>(0, now.secsTo(when)));
+}
+
+int TidalApi::rateLimitedFor(const QUrl &url) const {
+    const auto it = m_rateLimits.constFind(rateLimitKey(url));
+    if (it == m_rateLimits.cend() || it->until.hasExpired()) return 0;
+    return int(qMax<qint64>(1, (it->until.remainingTime() + 999) / 1000));
+}
+
+int TidalApi::rateLimitedFor(const char *base, const QString &endpoint) const {
+    return rateLimitedFor(QUrl(baseUrl(QString::fromLatin1(base)) + endpoint));
+}
+
+void TidalApi::noteReachable(bool reachable) {
+    if (m_reachable == reachable) return;
+    m_reachable = reachable;
+    emit reachableChanged(reachable);
+}
+
+void TidalApi::noteAnswer(const QUrl &url, const Answer &a, const QByteArray &retryAfter) {
+    // No status at all: DNS, refused, reset or the idle timeout. Any status,
+    // an error one included, means Tidal is there.
+    noteReachable(a.status > 0 || !a.failed);
+    const QString key = rateLimitKey(url);
+    if (a.status != 429) {
+        if (a.status > 0) m_rateLimits.remove(key);
+        return;
+    }
+    RateLimit &r = m_rateLimits[key];
+    ++r.strikes;
+    int secs = retryAfterSecs(retryAfter, QDateTime::currentDateTimeUtc());
+    // No usable header: wait, longer each time the endpoint says it again.
+    if (secs < 0) secs = qMin(kRateLimitDefaultSecs << qMin(r.strikes - 1, 10), kRateLimitMaxSecs);
+    secs = qBound(1, secs, kRateLimitMaxSecs);
+    r.until = QDeadlineTimer(qint64(secs) * 1000);
+    qWarning("TidalApi: %s answered 429, holding its requests for %d s",
+             qPrintable(key), secs);
+}
+
+// A request to an endpoint that asked for a pause is not sent. It fails on
+// the next turn of the event loop, as an answer would.
+bool TidalApi::refuseIfRateLimited(const QUrl &url, const Finisher &done) {
+    const int secs = rateLimitedFor(url);
+    if (secs <= 0) return false;
+    Answer a;
+    a.status = 429;
+    a.failed = true;
+    a.error  = tr("Tidal asked for a pause; try again in %1 s").arg(secs);
+    QTimer::singleShot(0, this, [done, a] { done(a); });
+    return true;
+}
+
+void TidalApi::send(const QUrl &url, Sender sender, Finisher done, bool resend) {
+    if (refuseIfRateLimited(url, done)) return;
     QNetworkReply *reply = sender();
-    connect(reply, &QNetworkReply::finished, this, [this, reply, sender, done, resend]() {
+    connect(reply, &QNetworkReply::finished, this, [this, url, reply, sender, done, resend]() {
         const QByteArray body = reply->readAll();
-        const auto finish = [reply, body, done] {
+        const Answer answer = answerOf(reply, body);
+        noteAnswer(url, answer, reply->rawHeader("Retry-After"));
+        const auto finish = [reply, answer, done] {
             reply->deleteLater();
-            done(reply, body);
+            done(answer);
         };
         const QByteArray sent = reply->request().rawHeader("Authorization");
-        const bool refused = !sent.isEmpty()
-            && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401;
+        const bool refused = !sent.isEmpty() && answer.status == 401;
         // One resend and no more. No request ends a session, whatever the
         // refusal says: the login host's answer to a refresh does that.
         if (!refused || resend || !mayBeAboutTheToken(body)) { finish(); return; }
@@ -88,33 +202,34 @@ void TidalApi::send(Sender sender, Finisher done, bool resend) {
         // The token was renewed while this request was on its way.
         if (!m_accessToken.isEmpty() && token != m_accessToken) {
             reply->deleteLater();
-            send(sender, done, true);
+            send(url, sender, done, true);
             return;
         }
         if (!m_renewer) { finish(); return; }
-        m_renewer(token, [self = QPointer<TidalApi>(this), reply, sender, done,
+        m_renewer(token, [self = QPointer<TidalApi>(this), url, reply, sender, done,
                           finish](bool renewed) {
             // The reply went with its manager.
             if (!self) return;
             if (!renewed) { finish(); return; }
             reply->deleteLater();
-            self->send(sender, done, true);
+            self->send(url, sender, done, true);
         });
     });
 }
 
 TidalApi::Finisher TidalApi::writeAnswer(StatusCallback cb, bool errorKey) {
-    return [cb = std::move(cb), errorKey](QNetworkReply *reply, const QByteArray &data) {
+    return [cb = std::move(cb), errorKey](const Answer &a) {
+        const QByteArray &data = a.body;
         QJsonParseError err;
         const auto obj = QJsonDocument::fromJson(data, &err).object();
-        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        if (httpStatus >= 400 || reply->error() != QNetworkReply::NoError) {
+        const int httpStatus = a.status;
+        if (httpStatus >= 400 || a.failed) {
             // Tidal's v1 words a refusal in userMessage and has no "error" key.
             // A body that is no JSON reads as an empty object.
             QString said = obj["userMessage"].toString();
             if (said.isEmpty() && errorKey)
                 said = obj["error_description"].toString(obj["error"].toString());
-            cb(obj, said.isEmpty() ? reply->errorString() : said, httpStatus);
+            cb(obj, said.isEmpty() ? a.error : said, httpStatus);
             return;
         }
         if (data.isEmpty()) {
@@ -158,6 +273,25 @@ void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
     getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, withoutStatus(std::move(cb)));
 }
 
+void TidalApi::getV2Web(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    QUrl url(baseUrl(QString::fromLatin1(kApiBaseV2)) + endpoint);
+    QUrlQuery q = params;
+    if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
+    url.setQuery(q);
+
+    send(url, [this, url] {
+        QNetworkRequest req = makeRequest(url);
+        req.setRawHeader("x-tidal-client-version", kWebClientVersion);
+        return m_nam->get(req);
+    }, [cb](const Answer &a) {
+        if (a.failed) { cb({}, a.error); return; }
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(a.body, &err);
+        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
+        cb(doc.object(), {});
+    });
+}
+
 void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
     QUrl url(baseUrl(QString::fromLatin1(kApiBaseV2)) + endpoint);
     QUrlQuery q = params;
@@ -165,16 +299,29 @@ void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
     url.setQuery(q);
 
     // An empty body makes Qt send Content-Length: 0.
-    send([this, url] { return m_nam->put(makeRequest(url), QByteArray()); },
+    send(url, [this, url] { return m_nam->put(makeRequest(url), QByteArray()); },
          writeAnswer(writeWithoutStatus(std::move(cb)), true));
 }
 
 void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb) {
     getDoc(QString::fromLatin1(kApiBase), endpoint, params,
-        [cb](QJsonDocument doc, QString err, int) {
+        [cb](QJsonDocument doc, QString err, int, QString) {
             if (!err.isEmpty()) { cb({}, err); return; }
             cb(doc.array(), {});
         });
+}
+
+void TidalApi::getBody(const QString &endpoint, const QUrlQuery &params, RawCallback cb) {
+    QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
+    QUrlQuery q = params;
+    if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
+    url.setQuery(q);
+
+    send(url, [this, url] { return m_nam->get(makeRequest(url)); },
+         [cb](const Answer &a) {
+        if (a.failed) { cb(a.body, a.error); return; }
+        cb(a.body, {});
+    });
 }
 
 void TidalApi::getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
@@ -188,43 +335,65 @@ void TidalApi::getOpenApiWithStatus(const QString &endpoint, const QUrlQuery &pa
 
 void TidalApi::getFrom(const QString &base, const QString &endpoint,
                        const QUrlQuery &params, StatusCallback cb) {
-    getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err, int httpStatus) {
+    getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err, int httpStatus, QString) {
         cb(doc.object(), err, httpStatus);
     });
 }
 
+void TidalApi::getTagged(const QString &endpoint, const QUrlQuery &params, TaggedCallback cb) {
+    getDoc(QString::fromLatin1(kApiBase), endpoint, params,
+        [cb](QJsonDocument doc, QString err, int, QString etag) {
+            cb(err.isEmpty() ? doc.object() : QJsonObject(), err, etag);
+        });
+}
+
 void TidalApi::getDoc(const QString &base, const QString &endpoint,
                       const QUrlQuery &params,
-                      std::function<void(QJsonDocument, QString, int)> cb) {
+                      std::function<void(QJsonDocument, QString, int, QString)> cb) {
     QUrl url(baseUrl(base) + endpoint);
     QUrlQuery q = params;
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
     url.setQuery(q);
 
-    send([this, url] { return m_nam->get(makeRequest(url)); },
-         [cb](QNetworkReply *reply, const QByteArray &body) {
-        // Invalid, and so 0, when the request ended without an answer.
-        const int httpStatus =
-            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        if (reply->error() != QNetworkReply::NoError) {
+    send(url, [this, url] { return m_nam->get(makeRequest(url)); },
+         [cb](const Answer &a) {
+        // 0 when the request ended without an answer.
+        const int httpStatus = a.status;
+        const QString &etag = a.etag;
+        if (a.failed) {
             // The body of a refusal holds Tidal's own code for it. One that
             // is no JSON reads as an empty document.
-            cb(QJsonDocument::fromJson(body), reply->errorString(), httpStatus);
+            cb(QJsonDocument::fromJson(a.body), a.error, httpStatus, etag);
             return;
         }
         QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(body, &err);
+        auto doc = QJsonDocument::fromJson(a.body, &err);
         if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString(), httpStatus);
+            cb({}, err.errorString(), httpStatus, etag);
             return;
         }
-        cb(doc, {}, httpStatus);
+        cb(doc, {}, httpStatus, etag);
     });
 }
 
-void TidalApi::post(const QString &endpoint, const QByteArray &body,
-                    const QMap<QString,QString> &extraHeaders, JsonCallback cb) {
+void TidalApi::postAuth(const QString &endpoint, const QByteArray &body,
+                        const QMap<QString,QString> &extraHeaders, StatusCallback cb) {
     QUrl url(baseUrl(QString::fromLatin1(kAuthBase)) + endpoint);
+    // The login host's answers, with the status beside them. A body that is
+    // no JSON is the network's or a proxy's and reads as an empty object.
+    const Finisher done = [cb](const Answer &a) {
+        QJsonParseError err;
+        const QJsonObject obj = QJsonDocument::fromJson(a.body, &err).object();
+        if (obj.contains("error")) {
+            cb(obj, obj["error_description"].toString(obj["error"].toString()), a.status);
+            return;
+        }
+        if (a.failed) { cb(obj, a.error, a.status); return; }
+        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString(), a.status); return; }
+        cb(obj, {}, a.status);
+    };
+    if (refuseIfRateLimited(url, done)) return;
+
     // Auth endpoints must not receive X-Tidal-Token or Authorization headers.
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::UserAgentHeader,
@@ -234,25 +403,27 @@ void TidalApi::post(const QString &endpoint, const QByteArray &body,
         req.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
 
     auto *reply = m_nam->post(req, body);
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
+    connect(reply, &QNetworkReply::finished, this, [this, url, reply, done]() {
         reply->deleteLater();
-        QByteArray data = reply->readAll();
-        QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString());
-            return;
-        }
-        auto obj = doc.object();
-        if (obj.contains("error"))
-            cb(obj, obj["error_description"].toString(obj["error"].toString()));
-        else
-            cb(obj, {});
+        const Answer a = answerOf(reply, reply->readAll());
+        noteAnswer(url, a, reply->rawHeader("Retry-After"));
+        done(a);
     });
+}
+
+void TidalApi::post(const QString &endpoint, const QByteArray &body,
+                    const QMap<QString,QString> &extraHeaders, JsonCallback cb) {
+    postAuth(endpoint, body, extraHeaders,
+             [cb](QJsonObject obj, QString err, int) { cb(obj, err); });
 }
 
 void TidalApi::postForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb) {
     post(endpoint, form.toString(QUrl::FullyEncoded).toUtf8(), {}, cb);
+}
+
+void TidalApi::postFormWithStatus(const QString &endpoint, const QUrlQuery &form,
+                                  StatusCallback cb) {
+    postAuth(endpoint, form.toString(QUrl::FullyEncoded).toUtf8(), {}, std::move(cb));
 }
 
 void TidalApi::postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb) {
@@ -271,14 +442,10 @@ void TidalApi::getEtag(const QString &endpoint, std::function<void(QString, QStr
         q.addQueryItem("countryCode", m_countryCode);
         url.setQuery(q);
     }
-    send([this, url] { return m_nam->get(makeRequest(url)); },
-         [cb](QNetworkReply *reply, const QByteArray &) {
-        if (reply->error() != QNetworkReply::NoError) {
-            cb({}, reply->errorString());
-            return;
-        }
-        QString etag = QString::fromLatin1(reply->rawHeader("ETag"));
-        cb(etag, {});
+    send(url, [this, url] { return m_nam->get(makeRequest(url)); },
+         [cb](const Answer &a) {
+        if (a.failed) { cb({}, a.error); return; }
+        cb(a.etag, {});
     });
 }
 
@@ -286,11 +453,16 @@ void TidalApi::deleteApiEtag(const QString &endpoint, const QUrlQuery &params, c
     sendDelete(endpoint, params, etag, writeWithoutStatus(std::move(cb)));
 }
 
+void TidalApi::deleteApiEtagWithStatus(const QString &endpoint, const QUrlQuery &params,
+                                       const QString &etag, StatusCallback cb) {
+    sendDelete(endpoint, params, etag, std::move(cb));
+}
+
 void TidalApi::sendDelete(const QString &endpoint, const QUrlQuery &params, const QString &etag,
                           StatusCallback cb) {
     QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     if (!params.isEmpty()) url.setQuery(params);
-    send([this, url, etag] {
+    send(url, [this, url, etag] {
         QNetworkRequest req = makeRequest(url);
         if (!etag.isEmpty())
             req.setRawHeader("If-None-Match", etag.toLatin1());
@@ -299,18 +471,27 @@ void TidalApi::sendDelete(const QString &endpoint, const QUrlQuery &params, cons
 }
 
 void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb) {
+    postApiFormEtagWithStatus(endpoint, form, etag, writeWithoutStatus(std::move(cb)));
+}
+
+void TidalApi::postApiFormEtagWithStatus(const QString &endpoint, const QUrlQuery &form,
+                                         const QString &etag, StatusCallback cb) {
     const QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     const QByteArray body = form.toString(QUrl::FullyEncoded).toUtf8();
-    send([this, url, body, etag] {
+    send(url, [this, url, body, etag] {
         QNetworkRequest req = makeRequest(url);
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
         if (!etag.isEmpty())
             req.setRawHeader("If-None-Match", etag.toLatin1());
         return m_nam->post(req, body);
-    }, writeAnswer(writeWithoutStatus(std::move(cb)), true));
+    }, writeAnswer(std::move(cb), true));
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
+    return getRawWithStatus(url, [cb](const RawAnswer &a) { cb(a.body, a.error); });
+}
+
+QNetworkReply* TidalApi::getRawWithStatus(const QUrl &url, RawStatusCallback cb) {
     QNetworkRequest req = makeRequest(url);
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     // Older Qt's HTTP/2 header compression falls out of step with the audio
@@ -321,11 +502,21 @@ QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
     auto *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
         reply->deleteLater();
+        RawAnswer a;
+        a.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
-            cb({}, reply->errorString());
-            return;
+            a.error = redactedError(reply->errorString());
+            if (a.httpStatus == 429)
+                a.retryAfterSecs = retryAfterSecs(reply->rawHeader("Retry-After"),
+                                                  QDateTime::currentDateTimeUtc());
+            // The transfer timeout: TimeoutError, or a cancel on older Qt.
+            a.timedOut = a.httpStatus == 0
+                      && (reply->error() == QNetworkReply::TimeoutError
+                          || reply->error() == QNetworkReply::OperationCanceledError);
+        } else {
+            a.body = reply->readAll();
         }
-        cb(reply->readAll(), {});
+        cb(a);
     });
     return reply;
 }

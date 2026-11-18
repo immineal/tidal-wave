@@ -334,18 +334,82 @@ TestCase {
         compare(host.playCalls, 1, "it falls through and plays the row, like the gaps do")
     }
 
-    function test_track_row_each_artist_is_its_own_tab_stop() {
+    // In a list the row is the tab stop and the row menu goes to an artist;
+    // a stop per name made Tab crawl through a long list.
+    function test_track_row_artists_are_targets_but_not_tab_stops() {
         var host = makeRow(trackWith(testCase.twoArtists))
         var names = visibleNamed(host.row, "trackRowArtistName")
         compare(names.length, 2, "each artist needs its own target in a track row")
         for (var i = 0; i < names.length; i++)
-            verify(names[i].activeFocusOnTab,
-                   "\"" + names[i].text + "\" is not reachable by tab")
+            verify(!names[i].activeFocusOnTab,
+                   "\"" + names[i].text + "\" is a tab stop inside a track row")
 
         names[1].forceActiveFocus()
         keyClick(Qt.Key_Return)
         compare(host.navCalls.length, 1, "Return on a focused name should navigate")
         compare(host.navCalls[0].params.artistId, 22)
+    }
+
+    // ── a track row's album, a link as its artists are ───────────────────
+
+    function makeRowWithAlbum(track) {
+        var host = makeRow(track)
+        host.row.albumTitle = track.albumTitle
+        settle(host)
+        var album = findChild(host.row, "trackAlbumColumn")
+        verify(album && album.visible, "the row shows no album column")
+        return { host: host, album: album, hit: findChild(host.row, "trackAlbumLink") }
+    }
+
+    function test_track_row_album_opens_the_album() {
+        var r = makeRowWithAlbum(trackWith(testCase.twoArtists))
+        verify(r.hit, "the album name has no hit target")
+        // Near the left edge, because the hit target follows the words.
+        mouseClick(r.album, 6, Math.round(r.album.height / 2))
+        compare(r.host.navCalls.length, 1, "clicking the album name should navigate once")
+        compare(r.host.navCalls[0].page, "album")
+        compare(r.host.navCalls[0].params.albumId, 7788)
+        compare(r.host.playCalls, 0, "an album click is not a request to play the row")
+    }
+
+    function test_track_row_album_looks_like_a_link_on_hover() {
+        var r = makeRowWithAlbum(trackWith(testCase.twoArtists))
+        verify(!r.album.font.underline, "the album is underlined before the pointer arrives")
+        mouseMove(r.album, 6, Math.round(r.album.height / 2))
+        wait(0)
+        verify(r.album.font.underline, "the hovered album name should be underlined")
+        compare(r.hit.cursorShape, Qt.PointingHandCursor, "the album name shows no hand")
+        verify(r.host.row.hovered, "pointing at the album name reads as leaving the row")
+    }
+
+    // Past the words the column is the row's, as after the artist names.
+    function test_track_row_album_column_past_the_name_plays_the_row() {
+        var r = makeRowWithAlbum(trackWith(testCase.twoArtists))
+        verify(r.album.width - r.album.contentWidth > 30, "fixture needs slack after the album")
+        mouseClick(r.album, Math.round(r.album.contentWidth + 15), Math.round(r.album.height / 2))
+        compare(r.host.navCalls.length, 0, "empty space is not an album link")
+        compare(r.host.playCalls, 1)
+    }
+
+    function test_track_row_album_without_an_id_is_not_a_link() {
+        var t = trackWith(testCase.twoArtists)
+        t.albumId = 0
+        var r = makeRowWithAlbum(t)
+        mouseMove(r.album, 6, Math.round(r.album.height / 2))
+        wait(0)
+        verify(!r.album.font.underline, "an album with no id must not look clickable")
+        mouseClick(r.album, 6, Math.round(r.album.height / 2))
+        compare(r.host.navCalls.length, 0, "an album with no id must not navigate")
+        compare(r.host.playCalls, 1, "it falls through and plays the row, like the gaps do")
+    }
+
+    function test_track_row_right_click_on_the_album_opens_the_menu() {
+        var r = makeRowWithAlbum(trackWith(testCase.twoArtists))
+        mouseClick(r.album, 6, Math.round(r.album.height / 2), Qt.RightButton)
+        tryVerify(function () { return r.host.row.rowMenu && r.host.row.rowMenu.visible }, 2000,
+                  "a right-click on the album name did not open the row menu")
+        compare(r.host.navCalls.length, 0, "a right-click is not a visit to the album")
+        r.host.row.rowMenu.close()
     }
 
     // ── the album hero, and the header it collapses into ─────────────────

@@ -522,7 +522,7 @@ TestCase {
                "the hero's facts line reads \"" + facts
                + "\", which names the day of the week")
         // The rest of the facts line is still there.
-        verify(facts.indexOf("•") >= 0,
+        verify(facts.indexOf("·") >= 0,
                "the hero's facts line reads \"" + facts
                + "\", which has lost the rest of the facts")
     }

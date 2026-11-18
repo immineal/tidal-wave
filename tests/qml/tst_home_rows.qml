@@ -325,6 +325,46 @@ TestCase {
                    "a refreshed row left the gaps wrong: " + gapReport(page))
     }
 
+    // ── the playlist row's order ────────────────────────────────────────────
+
+    function idsOf(items) {
+        var out = []
+        for (var i = 0; i < items.length; ++i) out.push(items[i].id)
+        return out.join(",")
+    }
+
+    // The row used to show the server's first page, then the bridge's cache
+    // in its recency order once the paging was done: the same tiles shuffled
+    // under the pointer. Every order the row shows must be the final one.
+    function test_the_playlist_row_shows_its_final_order_first() {
+        var all = makePlaylists(5)
+        var cacheOrder  = [all[3], all[0], all[4], all[1], all[2]]
+        var serverOrder = [all[0], all[1], all[2], all[3], all[4]]
+        bridge.setKindLoadingForTest("playlists", true)
+        bridge.setFetchedUserPlaylistsForTest(serverOrder)
+        // The bridge's first page, sorted before the rest is in.
+        bridge.setUserPlaylistsForTest([all[0], all[1]])
+
+        var page = makeHome({ mixes: makeMixes(5) })
+        var shown = []
+        if (page.playlists.length > 0) shown.push(idsOf(page.playlists))
+        page.playlistsChanged.connect(function () {
+            if (page.playlists.length > 0) shown.push(idsOf(page.playlists))
+        })
+        wait(300)   // past the page's refresh debounce
+
+        bridge.setUserPlaylistsForTest(cacheOrder)
+        bridge.setKindLoadingForTest("playlists", false)
+        var finalOrder = cacheOrder.map(function (p) { return p.uuid }).join(",")
+        tryVerify(function () { return idsOf(page.playlists) === finalOrder }, 2000,
+                  "the row never settled on the bridge's order")
+        for (var i = 0; i < shown.length; ++i)
+            compare(shown[i], finalOrder,
+                    "the row showed another order before its final one: "
+                    + shown.join("  then  "))
+        bridge.resetForTest()
+    }
+
     // ── a window shorter than the rows ──────────────────────────────────────
 
     // A window height the four rows do not fit.

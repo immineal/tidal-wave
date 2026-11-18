@@ -148,10 +148,12 @@ TestCase {
     }
 
     // A hero that is taller (a title that wraps) moves the place with it.
+    // The hero alone: the column headings under it stay under the bar.
     function test_the_header_waits_for_the_whole_hero() {
         var page = openAlbum(30, 700, false)
         var p = parts(page)
-        var hero = p.list.headerItem.height
+        var hero = p.list.headerItem.heroHeight
+        verify(hero > 0, "the album's header names no hero height")
         scrollTo(page, p.list, hero - p.bar.height - 100)
         compare(p.bar.reveal, 0, "the header shows while a good part of the hero is on the page")
         scrollTo(page, p.list, hero - p.bar.height)

@@ -171,7 +171,6 @@ TestCase {
 
     Component { id: backButtonC;     BackButton     { } }
     Component { id: loginC;          LoginPage      { anchors.fill: parent } }
-    Component { id: loadingOverlayC; LoadingOverlay { } }
 
     // ── the mechanism itself ─────────────────────────────────────────────
 
@@ -381,40 +380,56 @@ TestCase {
 
         var btn = createTemporaryObject(backButtonC, testCase, { x: 40, y: 40 })
         verify(btn, "the back button was not created")
+        // The fill is drawn by the shared IconButton's disc.
+        var disc = findChild(btn, "iconButtonDisc")
+        verify(disc, "the back button has no disc")
 
         mouseMove(testCase, 600, 600)
-        tryVerify(function () { return sameColor(btn.color, btn.restFill) },
+        tryVerify(function () { return sameColor(disc.color, btn.restFill) },
                   settleMs, "the button never settled on its resting fill")
 
         mouseMove(testCase, 58, 58)
         oneFrame()
 
         if (row.reduced) {
-            verify(sameColor(btn.color, btn.hoveredFill),
+            verify(sameColor(disc.color, btn.hoveredFill),
                    "reduced motion: the hover fill must be there on the next frame, got "
-                   + btn.color)
+                   + disc.color)
         } else {
-            verify(!sameColor(btn.color, btn.hoveredFill),
+            verify(!sameColor(disc.color, btn.hoveredFill),
                    "without reduced motion the hover fill jumped instead of fading")
-            tryVerify(function () { return sameColor(btn.color, btn.hoveredFill) },
+            tryVerify(function () { return sameColor(disc.color, btn.hoveredFill) },
                       settleMs, "the hover fade never finished")
         }
 
         mouseMove(testCase, 600, 600)
-        tryVerify(function () { return sameColor(btn.color, btn.restFill) },
+        tryVerify(function () { return sameColor(disc.color, btn.restFill) },
                   settleMs, "the fill never returned to rest")
     }
 
     // ── a page transition ────────────────────────────────────────────────
 
     // Navigating between pages is a Loader swap with no animation of its
-    // own. The one transition a page animates is the login card resizing as
-    // the auth state moves on, 220px to 400px at its tallest jump.
+    // own. The one transition a page animates is the login card resizing to
+    // what the auth state shows, signed out to the device code at its tallest.
     function test_page_transition_data() { return test_rail_expansion_data() }
+
+    // The card's height at each frame for a while: long past the 200ms
+    // animation, so the last sample is where it settled.
+    function heightsOverFrames(card, holder) {
+        var out = [card.height]
+        var t0 = Date.now()
+        while (Date.now() - t0 < 700) {
+            frame(holder)
+            wait(15)
+            out.push(card.height)
+        }
+        return out
+    }
 
     function test_page_transition(row) {
         app.setReducedMotionForTest(row.reduced)
-        // Settle the card at its signed-out height before measuring.
+        auth.setHasSavedCredentialsForTest(false)
         auth.setStateForTest(0)
 
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -424,34 +439,33 @@ TestCase {
 
         var card = findByName(page, "loginAuthCard")
         verify(card, "LoginPage has no auth card to measure")
-        tryVerify(function () { return card.height === 220 },
-                  settleMs, "the card never settled at its signed-out height")
+        var settled = heightsOverFrames(card, holder)
+        var before = settled[settled.length - 1]
 
-        auth.setStateForTest(1)          // PendingDevice: the card grows to 400
-        oneFrame()
+        auth.setStateForTest(1)          // PendingDevice: the card grows
+        var hs = heightsOverFrames(card, holder)
+        var after = hs[hs.length - 1]
+        verify(after > before, "the device-code card is not taller than the signed-out one")
+        var between = hs.filter(function (h) { return h > before && h < after })
 
-        if (row.reduced) {
-            compare(card.height, 400,
-                    "reduced motion: the card must be at its new height on the next frame")
-        } else {
-            verify(card.height < 400,
-                   "without reduced motion the card jumped instead of growing")
-            tryVerify(function () { return card.height === 400 },
-                      settleMs, "the card never reached its new height")
-        }
+        if (row.reduced)
+            compare(between.length, 0,
+                    "reduced motion: the card passed through " + between + " on its way")
+        else
+            verify(between.length > 0, "without reduced motion the card jumped: " + hs)
     }
 
     // ── an indefinite "still working" indicator ──────────────────────────
 
-    // A spinner or a pulse must stand still under reduced motion and stay on
-    // screen. The login dots are measured: a RotationAnimator is driven by the
-    // render thread, which the offscreen platform never advances.
+    // The login's busy line and the pages' skeletons must stand still under
+    // reduced motion and stay on screen. Both move on the GUI thread, so the
+    // motion is measured, not read off a flag.
 
-    function visibleDots(page) {
-        var out = []
+    function visibleBusyLine(page) {
+        var out = null
         function walk(item) {
-            if (item.visible === false) return
-            if (item.objectName === "loginPulseDot") out.push(item)
+            if (out || item.visible === false) return
+            if (item.objectName === "busyLine") { out = item; return }
             var kids = item.children
             for (var i = 0; i < kids.length; ++i) walk(kids[i])
         }
@@ -463,7 +477,7 @@ TestCase {
 
     function test_indefinite_indicator(row) {
         app.setReducedMotionForTest(row.reduced)
-        // PendingDevice: the waiting state, with the pulsing dots.
+        // PendingDevice: the waiting state, with the busy line.
         auth.setStateForTest(1)
 
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -471,84 +485,65 @@ TestCase {
         verify(page, "LoginPage was not created")
         settle(holder)
 
-        var dots = visibleDots(page)
-        compare(dots.length, 3, "the waiting indicator is not three dots any more")
+        var line = visibleBusyLine(page)
+        verify(line, "the waiting state shows no busy line")
+        var seg = line.segment
+        verify(seg.visible && seg.width > 0 && seg.opacity > 0,
+               "reduced motion removed the busy indicator")
 
-        var dot = dots[0]
-        verify(dot.visible, "reduced motion removed the busy indicator")
-        verify(dot.opacity > 0,
-               "the indicator is invisible, which is the same as not being there")
-
+        var at = seg.x
         if (row.reduced) {
-            // Run once at zero length, which parks the dot fully lit.
-            compare(dot.opacity, 1,
-                    "reduced motion left the indicator at a half-faded resting value")
+            compare(at, Math.round((line.width - seg.width) / 2),
+                    "reduced motion left the segment somewhere other than the middle")
             wait(300)
-            compare(dot.opacity, 1, "the indicator is still pulsing under reduced motion")
+            compare(seg.x, at, "the busy line still moves under reduced motion")
             wait(300)
-            compare(dot.opacity, 1, "the indicator is still pulsing under reduced motion")
+            compare(seg.x, at, "the busy line still moves under reduced motion")
         } else {
-            // One full cycle is 800ms, so a change is due well inside that.
-            var at = dot.opacity
-            tryVerify(function () { return dot.opacity !== at },
-                      settleMs, "the indicator never pulsed with motion allowed")
+            tryVerify(function () { return seg.x !== at },
+                      settleMs, "the busy line never moved with motion allowed")
         }
     }
 
-    // The spinners' rotation cannot be measured here (see above), but
-    // reduced motion must leave the busy mark on screen.
-    function test_the_busy_spinner_is_still_on_screen() {
+    Component { id: skeletonC; Skeleton { } }
+
+    // Reduced motion leaves the skeleton on screen at full strength.
+    function test_the_skeleton_is_still_on_screen() {
         app.setReducedMotionForTest(true)
 
-        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 300 })
-        var overlay = createTemporaryObject(loadingOverlayC, holder, { loading: true })
-        verify(overlay, "the loading overlay was not created")
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var skel = createTemporaryObject(skeletonC, holder, { loading: true, kind: "detail" })
+        verify(skel, "the skeleton was not created")
         settle(holder)
 
-        var spinner = findByName(overlay, "loadingSpinner")
-        verify(spinner, "the overlay has no spinner")
-        verify(overlay.visible && spinner.visible,
-               "reduced motion removed the busy indicator instead of stilling it")
-        verify(spinner.width > 0 && spinner.height > 0,
-               "the spinner was collapsed to nothing")
-
-        // Read off the animation, since a clock cannot tell a zero-length turn
-        // from a finished one. Reduced motion sets the duration to zero and the
-        // loops to one: zero duration with Animation.Infinite is a spin loop.
-        var rot = findInData(overlay, "loadingSpinnerRotation")
-        verify(rot, "the spinner has no named rotation to check")
-        compare(rot.duration, 0,
-                "reduced motion left the spinner a turn to make")
-        compare(rot.loops, 1,
-                "a zero-length turn repeated forever is a spin loop, not stillness")
+        verify(skel.visible, "reduced motion removed the loading shapes")
+        verify(!skel.pulse.running, "the skeleton pulses under reduced motion")
+        compare(skel.shapes.opacity, 1, "the shapes rest half-faded")
+        wait(300)
+        compare(skel.shapes.opacity, 1, "the shapes still change under reduced motion")
     }
 
-    // Whether the spinner turns cannot be seen on this platform, so running
-    // is the proxy: on exactly while the overlay is on screen. An indefinite
-    // animation behind a hidden overlay would run for the life of the app.
-    function test_the_busy_spinner_runs_only_while_it_is_on_screen() {
+    // An indefinite animation behind a hidden skeleton would run for the
+    // life of the app, so the pulse runs exactly while it is on screen.
+    function test_the_skeleton_pulses_only_while_it_is_on_screen() {
         app.setReducedMotionForTest(false)
 
-        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 300 })
-        var overlay = createTemporaryObject(loadingOverlayC, holder, { loading: false })
-        verify(overlay, "the loading overlay was not created")
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var skel = createTemporaryObject(skeletonC, holder, { loading: false, kind: "cards" })
+        verify(skel, "the skeleton was not created")
         settle(holder)
+        verify(!skel.pulse.running, "the skeleton pulses while hidden")
 
-        var rot = findInData(overlay, "loadingSpinnerRotation")
-        verify(rot, "the spinner has no named rotation to check")
-
-        verify(!rot.running,
-               "the spinner is rotating while the overlay is hidden")
-
-        overlay.loading = true
+        skel.loading = true
         settle(holder)
-        verify(rot.running,
-               "the overlay is on screen and its spinner is not rotating")
+        verify(skel.pulse.running, "the skeleton is on screen and does not pulse")
+        var at = skel.shapes.opacity
+        tryVerify(function () { return skel.shapes.opacity !== at }, settleMs,
+                  "the pulse never changed anything")
 
-        overlay.loading = false
+        skel.loading = false
         settle(holder)
-        verify(!rot.running,
-               "the spinner kept rotating after the overlay was hidden")
+        verify(!skel.pulse.running, "the pulse kept running after the skeleton was hidden")
     }
 
     // The now-playing bars are the other indefinite indicator. Parked, they
@@ -1019,15 +1014,26 @@ TestCase {
 
     function searchChipOf(tabs, i) { return tabs.children[i] }
 
-    // The pill itself, read off the item that is drawn: a lag between the
-    // host's markX/markW and the thing on screen would not show in the host's
-    // numbers.
-    function searchPillItem(tabs) { return findByName(tabs.parent, "searchTabPill") }
+    // The pill itself, read off what is drawn: a lag between the strip's
+    // markX/markW and the thing on screen would not show in its numbers.
+    // Every chip holds the whole pill as a slice, in a window that starts
+    // 2px outside the chip, so chip 0's slice reports all of it.
+    function searchPillItem(tabs) {
+        var chip0 = searchChipOf(tabs, 0)
+        var slice = chip0 ? findByName(chip0, "searchTabPillSlice") : null
+        if (!slice) return null
+        return {
+            get x()       { return chip0.x + slice.x - 2 },
+            get y()       { return chip0.y + slice.y - 2 },
+            get width()   { return slice.width },
+            get height()  { return slice.height },
+            get visible() { return slice.width > 0 && slice.height > 0 }
+        }
+    }
 
-    // A chip's box in the pill's own coordinates, so the two are comparable.
+    // A chip's box in the row's coordinates, as the pill's is.
     function searchChipBox(pill, chip) {
-        var p = chip.mapToItem(pill.parent, 0, 0)
-        return { x: p.x, y: p.y, w: chip.width, h: chip.height }
+        return { x: chip.x, y: chip.y, w: chip.width, h: chip.height }
     }
 
     // Whether the pill is exactly on this chip.
@@ -1071,7 +1077,7 @@ TestCase {
             // The chip's origin is mapped and the ink's offset added to it:
             // Qt 6.5 to 6.7 drop the fraction of a point given to
             // mapToItem(item, x, y), and the ink starts between pixels.
-            var o = chip.mapToItem(pill.parent, 0, 0)
+            var o = { x: chip.x, y: chip.y }
             var x0 = o.x + ink.x, x1 = x0 + ink.width
             var y0 = o.y + ink.y, y1 = y0 + ink.height
             if (x0 < pill.x - 0.5 || x1 > pill.x + pill.width + 0.5
@@ -1103,19 +1109,17 @@ TestCase {
         verify(all && tracks, "there are no chips to measure")
         compare(sPage.activeTab, 0, "the page did not open on the first tab")
 
-        // One pill for the six chips. One per chip could only cross-fade.
-        var pills = collectByName(sPage, "searchTabPill", [])
-        compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
-        var pill = pills[0]
+        var pill = searchPillItem(tabs)
+        verify(pill, "there is no pill")
 
         tryVerify(function () { return searchPillOn(pill, all) }, settleMs,
                   "the pill never settled on the first chip: " + searchPillSays(pill))
-        // The chips carry no fill of their own. If one did, everything below
-        // could pass with two highlights on screen.
-        compare(all.color.a, 0,
-                "the current chip is filled as well as marked, got " + all.color)
-        compare(tracks.color.a, 0,
-                "a chip that is not current is painting something, got " + tracks.color)
+        // Every chip rests on the same surface, the current one too. If one
+        // were filled, everything below could pass with two highlights.
+        verify(sameColor(all.color, Theme.surfaceHigh),
+               "the current chip is filled as well as marked, got " + all.color)
+        verify(sameColor(tracks.color, Theme.surfaceHigh),
+               "a chip that is not current is painting something, got " + tracks.color)
         compare(searchInkIsOnTheAccent(tabs, pill), "",
                 "the ink is not where the accent is at rest")
 

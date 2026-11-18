@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-project(tidal-wave VERSION 0.4.2 LANGUAGES CXX)
+project(tidal-wave VERSION 0.5.0 LANGUAGES CXX)
+
+# The macOS media controls are Objective-C++.
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,23 +56,41 @@ set(SOURCES
     src/api/TidalClient.cpp
     src/api/RecordVersions.cpp
     src/api/TidalBridge.cpp
+    src/api/LyricsProviders.cpp
+    src/api/LyricsFinder.cpp
     src/player/Player.cpp
     src/player/SpectrumAnalyzer.cpp
     src/player/Downloader.cpp
     src/player/GrowingFileServer.cpp
     src/mpris/MprisPlayer.cpp
+    src/mediasession/MediaSession.cpp
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
     src/ui/CoverColor.cpp
     src/ui/Prefs.cpp
+    src/ui/ReducedMotion.cpp
     src/ui/UpdateCheck.cpp
     src/ui/Feedback.cpp
     src/ui/ThemePalette.cpp
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
     src/ui/Shortcuts.cpp
+    src/ui/SvgGlyph.cpp
     src/ui/SignalWatcher.cpp
+    src/ui/TrayMenu.cpp
+    src/ui/RemoteControl.cpp
+    src/ui/TidalLink.cpp
+    src/ui/TrackNotifier.cpp
+    src/ui/RowFilter.cpp
+    src/ui/CountModel.cpp
+    src/ui/TrackModel.cpp
     src/api/LibraryIndex.cpp
+    src/api/FavoritesCache.cpp
+    src/scrobble/PlayTracker.cpp
+    src/scrobble/ListenBrainz.cpp
+    src/scrobble/LastFm.cpp
+    src/scrobble/ScrobbleSink.cpp
+    src/scrobble/Scrobbler.cpp
 )
 
 set(HEADERS
@@ -77,23 +100,46 @@ set(HEADERS
     src/api/TidalClient.h
     src/api/RecordVersions.h
     src/api/TidalBridge.h
+    src/api/LyricsProviders.h
+    src/api/LyricsFinder.h
     src/player/Player.h
     src/player/SpectrumAnalyzer.h
     src/player/Downloader.h
     src/player/GrowingFileServer.h
     src/mpris/MprisPlayer.h
+    src/mediasession/MediaSession.h
     src/ui/Application.h
     src/ui/ImageProvider.h
     src/ui/CoverColor.h
     src/ui/Prefs.h
+    src/ui/ReducedMotion.h
     src/ui/UpdateCheck.h
     src/ui/Feedback.h
     src/ui/ThemePalette.h
     src/ui/I18n.h
     src/ui/PinStore.h
     src/ui/Shortcuts.h
+    src/ui/SvgGlyph.h
     src/ui/SignalWatcher.h
+    src/ui/TrayMenu.h
+    src/ui/RemoteControl.h
+    src/ui/TidalLink.h
+    src/ui/TrackNotifier.h
+    src/ui/RowFilter.h
+    src/ui/CountModel.h
+    src/ui/TrackModel.h
+    src/api/Fold.h
+    src/api/TrackRows.h
     src/api/LibraryIndex.h
+    src/api/FavoritesCache.h
+    src/api/PageEverything.h
+    src/scrobble/Listen.h
+    src/scrobble/PlayTracker.h
+    src/scrobble/ScrobbleService.h
+    src/scrobble/ListenBrainz.h
+    src/scrobble/LastFm.h
+    src/scrobble/ScrobbleSink.h
+    src/scrobble/Scrobbler.h
 )
 
 if(UNIX AND NOT APPLE)
@@ -115,6 +161,50 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+# The media controls of Windows and macOS. Linux has MPRIS above. The SMTC
+# code is C++/WinRT, whose headers ship with the Windows SDK, so MSVC only.
+if(WIN32 AND MSVC)
+    list(APPEND SOURCES src/mediasession/MediaSessionWindows.cpp)
+elseif(APPLE)
+    list(APPEND SOURCES src/mediasession/MediaSessionMac.mm)
+    set_source_files_properties(src/mediasession/MediaSessionMac.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+endif()
+
+# ── Lyrics aligner ───────────────────────────────────────────────────────────
+# Plain C++ over QtCore (Multimedia only to decode), its nets and table as resources. Its own library so
+# the CLI under tools/ links it without the app.
+qt_add_library(tidalwave_lyricsync STATIC
+    src/lyricsync/Aligner.cpp
+    src/lyricsync/Aligner.h
+    src/lyricsync/AudioFeed.cpp
+    src/lyricsync/AudioFeed.h
+    src/lyricsync/AutoSync.cpp
+    src/lyricsync/AutoSync.h
+    src/lyricsync/Decode.cpp
+    src/lyricsync/Decode.h
+    src/lyricsync/Dsp.cpp
+    src/lyricsync/Dsp.h
+    src/lyricsync/Nets.cpp
+    src/lyricsync/Nets.h
+    src/lyricsync/Text.cpp
+    src/lyricsync/Text.h
+)
+target_include_directories(tidalwave_lyricsync PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(tidalwave_lyricsync PUBLIC Qt6::Core Qt6::Multimedia)
+# The nets' loops want the vectoriser, which -O2 in older GCCs leaves off.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(tidalwave_lyricsync PRIVATE $<$<NOT:$<CONFIG:Debug>>:-O3>)
+endif()
+qt_add_resources(tidalwave_lyricsync lyricsync_assets
+    PREFIX "/lyricsync"
+    BASE assets/lyricsync
+    FILES
+        assets/lyricsync/ctc.f16.bin
+        assets/lyricsync/detector.f16.bin
+        assets/lyricsync/translit.bin
+)
+
 # ── QML module + app logic as a static library ───────────────────────────────
 # A static library, so that the app and tests/ link the same module,
 # resources included. A test binary cannot link an executable.
@@ -123,7 +213,8 @@ qt_add_library(tidalwave_qml STATIC
     ${HEADERS}
 )
 
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Toasts.qml qml/Edits.qml qml/TrackDrag.qml
+    PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(tidalwave_qml
     URI TidalWave
@@ -137,29 +228,55 @@ qt_add_qml_module(tidalwave_qml
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave
     QML_FILES
         qml/Theme.qml
+        qml/Toasts.qml
+        qml/Edits.qml
+        qml/TrackDrag.qml
         qml/Main.qml
         qml/components/PlayerBar.qml
         qml/components/SideBar.qml
         qml/components/NewPlaylistDialog.qml
+        qml/components/ConfirmDialog.qml
+        qml/components/DuplicateAddDialog.qml
+        qml/components/PlaylistPicker.qml
+        qml/components/PlaylistPickerHost.qml
+        qml/components/DeletePlaylistDialog.qml
         qml/components/SettingsPanel.qml
         qml/components/LibraryFinder.qml
         qml/components/TrackRow.qml
+        qml/components/TrackListHeader.qml
+        qml/components/WheelStep.qml
+        qml/components/ExplicitBadge.qml
         qml/components/MediaCard.qml
         qml/components/BackButton.qml
         qml/components/PillButton.qml
         qml/components/NavIcon.qml
         qml/components/HorizontalSection.qml
-        qml/components/PageHeader.qml
-        qml/components/LoadingOverlay.qml
+        qml/components/Skeleton.qml
+        qml/components/BusyLine.qml
+        qml/components/MenuBase.qml
+        qml/components/BusyRing.qml
         qml/components/ContextMenu.qml
         qml/components/SearchBar.qml
         qml/components/VolumeSlider.qml
         qml/components/SeekBar.qml
         qml/components/QueuePanel.qml
+        qml/components/QualityBadge.qml
         qml/components/UpdatePrompt.qml
+        qml/components/CastErrorTip.qml
+        qml/components/OfflineNotice.qml
         qml/components/VectorIcon.qml
         qml/components/AppMark.qml
         qml/components/ArtistLinks.qml
+        qml/components/IconButton.qml
+        qml/components/Toggle.qml
+        qml/components/TabStrip.qml
+        qml/components/DetailHero.qml
+        qml/components/DownloadAction.qml
+        qml/components/ErrorState.qml
+        qml/components/DetailBar.qml
+        qml/components/CoverArt.qml
+        qml/components/ToastHost.qml
+        qml/components/TrackDragPreview.qml
         qml/pages/LoginPage.qml
         qml/pages/HomePage.qml
         qml/pages/SearchPage.qml
@@ -173,13 +290,43 @@ qt_add_qml_module(tidalwave_qml
     RESOURCES
         assets/icon.png
         assets/icon.svg
+        assets/toggle-rainbow.png
+        assets/toggle-rainbow@2x.png
+        assets/toggle-rainbow@3x.png
 )
+
+# ── The Controls style: the stock one with the app's own ToolTip ─────────────
+# Attached ToolTip.* tips are made from the style's ToolTip type, so the look
+# is set here once. The stock style the app pinned before is the fallback.
+if(Qt6_VERSION VERSION_LESS 6.5)
+    set(TIDALWAVE_FALLBACK_STYLE Basic)
+else()
+    set(TIDALWAVE_FALLBACK_STYLE Fusion)
+endif()
+qt_add_library(tidalwave_style STATIC)
+qt_add_qml_module(tidalwave_style
+    URI TidalWave.Style
+    # Controls imports the style, and the style its fallback, at Controls'
+    # own major version: 1.0 would ask for a Fusion 1.0 that does not exist.
+    VERSION 6.0
+    RESOURCE_PREFIX "/qt/qml"
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave/Style
+    IMPORTS QtQuick.Controls.${TIDALWAVE_FALLBACK_STYLE}/auto
+    QML_FILES
+        qml/style/ScrollBar.qml
+        qml/style/ToolTip.qml
+)
+target_link_libraries(tidalwave_style PRIVATE Qt6::Quick Qt6::QuickControls2)
+# The plugin, not the backing library: its init object registers the module.
+target_link_libraries(tidalwave_qml PUBLIC tidalwave_styleplugin)
+target_compile_definitions(tidalwave_qml PUBLIC
+    TIDALWAVE_FALLBACK_STYLE="${TIDALWAVE_FALLBACK_STYLE}")
 
 # Qt 6.4's qmlcachegen emits AOT code that reads a property off a null
 # QQuickItem in QueuePanel's delegate and crashes. --only-bytecode skips the
 # AOT step and keeps the bytecode cache.
 if(Qt6_VERSION VERSION_LESS 6.5)
-    set_target_properties(tidalwave_qml PROPERTIES
+    set_target_properties(tidalwave_qml tidalwave_style PROPERTIES
         QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
 endif()
 
@@ -210,10 +357,24 @@ target_link_libraries(tidalwave_qml PUBLIC
     Qt6::Multimedia
     Qt6::Svg
     Qt6::QuickControls2
+    tidalwave_lyricsync
 )
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(tidalwave_qml PUBLIC PkgConfig::AVAHI)
+endif()
+
+# ReducedMotion asks NSWorkspace through the Objective-C runtime.
+if(APPLE)
+    target_link_libraries(tidalwave_qml PUBLIC objc "-framework AppKit")
+endif()
+
+if(WIN32 AND MSVC)
+    target_compile_definitions(tidalwave_qml PRIVATE TIDALWAVE_PLATFORM_MEDIA_SESSION)
+    target_link_libraries(tidalwave_qml PUBLIC windowsapp)
+elseif(APPLE)
+    target_compile_definitions(tidalwave_qml PRIVATE TIDALWAVE_PLATFORM_MEDIA_SESSION)
+    target_link_libraries(tidalwave_qml PUBLIC "-framework MediaPlayer" "-framework Foundation")
 endif()
 
 # ── Application ──────────────────────────────────────────────────────────────
@@ -277,6 +438,14 @@ set_target_properties(tidal-wave PROPERTIES
 if(TIDALWAVE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Runs the aligner on an audio file and a lyrics file: tools/lyricsync_cli.cpp.
+option(TIDALWAVE_BUILD_LYRICSYNC_CLI "Build the lyrics aligner's command-line tool" OFF)
+if(TIDALWAVE_BUILD_LYRICSYNC_CLI OR TIDALWAVE_BUILD_TESTS)
+    qt_add_executable(lyricsync-cli tools/lyricsync_cli.cpp)
+    target_link_libraries(lyricsync-cli PRIVATE tidalwave_lyricsync)
+    set_target_properties(lyricsync-cli PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 endif()
 
 # ── Translations ───────────────────────────────────────────────────────

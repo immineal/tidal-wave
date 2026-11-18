@@ -3,12 +3,19 @@
 #pragma once
 #include <QObject>
 #include <QJSValue>
+#include <memory>
 #include <QQmlEngine>
 #include <QList>
 #include <QSet>
 #include <QVariantMap>
 #include <QStringList>
+#include <QTimer>
 #include "TidalClient.h"
+
+class LyricsFinder;
+namespace FavoritesCache { struct Lists; }
+using FavoritesCacheLists = FavoritesCache::Lists;
+namespace lyricsync { class AutoSync; }
 
 // Sorts by max(local last-played time, Playlist::addedAt), descending.
 // `playtimes` maps playlist uuid to ms since epoch. Stable, so playlists with
@@ -32,6 +39,25 @@ class TidalBridge : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Use the bridge context property")
     Q_PROPERTY(QString preferredQuality READ preferredQuality WRITE setPreferredQuality NOTIFY preferredQualityChanged)
+    // Which version lists show of a release Tidal has explicit and clean.
+    // Explicit unless set, as in Tidal's own apps. Persisted.
+    Q_PROPERTY(bool preferExplicit READ preferExplicit WRITE setPreferExplicit NOTIFY preferExplicitChanged)
+    // True until the newest liked songs have arrived after a sign-in.
+    Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoriteTracksChanged)
+    // The other three sign-in lists, each true until its own reply is in, the
+    // playlists until their last page. An empty list before then is not empty.
+    Q_PROPERTY(bool albumsLoading    READ albumsLoading    NOTIFY favoriteAlbumsChanged)
+    Q_PROPERTY(bool artistsLoading   READ artistsLoading   NOTIFY favoriteArtistsChanged)
+    Q_PROPERTY(bool playlistsLoading READ playlistsLoading NOTIFY favoritePlaylistsChanged)
+    // A request got no answer at all, and none has since. Cleared by the
+    // next answer, which a probe on a growing interval asks for meanwhile.
+    Q_PROPERTY(bool offline READ offline NOTIFY offlineChanged)
+    // Of "tracks", "albums", "artists" and "playlists", those whose sign-in
+    // load failed with nothing on hand, not even the copy on disk. Such a list
+    // is unknown, not empty.
+    Q_PROPERTY(QStringList unloadedKinds READ unloadedKinds NOTIFY unloadedKindsChanged)
+    // Some list on hand is the copy on disk, not what Tidal says now.
+    Q_PROPERTY(bool libraryFromCache READ libraryFromCache NOTIFY unloadedKindsChanged)
 public:
     explicit TidalBridge(TidalClient *client, QObject *parent = nullptr);
 
@@ -41,11 +67,47 @@ public:
     QString preferredQuality() const;
     void    setPreferredQuality(const QString &q);
 
+    bool preferExplicit() const;
+    void setPreferExplicit(bool on);
+
     Q_INVOKABLE void fetchHomeMixes     (QJSValue cb);
     Q_INVOKABLE void fetchMixTracks     (const QString &mixId, QJSValue cb);
     // function(mix, tracks, error): the mix's header beside its tracks, for a
     // page opened with nothing but an id.
     Q_INVOKABLE void fetchMixPage      (const QString &mixId, QJSValue cb);
+
+    // ── Tidal's own Home ────────────────────────────────────────────────
+    // A feed ("static" or "editorial") as {tabs, modules}, each module's
+    // items maps of their kind with `kind` beside them. The cached one is the
+    // last answer on disk; a fetch that lands is written there.
+    Q_INVOKABLE QVariantMap cachedHomeFeed(const QString &feed);
+    // function(feed, error), the feed worded in `language` ("en", "de").
+    Q_INVOKABLE void fetchHomeFeed(const QString &feed, const QString &language, QJSValue cb);
+    static QString homeFeedLocale(const QString &language);
+    QString homeFeedCachePath(const QString &feed) const;
+
+    bool favoritesLoading() const { return m_favoritesLoading; }
+    bool albumsLoading()    const { return m_albumsLoading; }
+    bool artistsLoading()   const { return m_artistsLoading; }
+    bool playlistsLoading() const { return m_playlistsLoading; }
+    bool offline() const { return m_offline; }
+    QStringList unloadedKinds() const { return m_unloadedKinds; }
+    bool libraryFromCache() const { return !m_cachedKinds.isEmpty(); }
+
+    // Asks Tidal now, and restarts the probe interval from its shortest.
+    Q_INVOKABLE void retryConnection();
+
+    // The probe's intervals: the first, and the ceiling it doubles up to.
+    static constexpr int kProbeFirstMs = 5000;
+    static constexpr int kProbeMaxMs   = 60000;
+    int nextProbeMsForTest() const { return m_probeTimer.isActive() ? m_probeMs : -1; }
+
+    // Where the lists are kept on disk; see FavoritesCache.
+    QString cachePath() const;
+
+    // Tidal tells a client nothing about changes made on another device. This
+    // asks one small request per list and reloads the lists that moved.
+    void syncFavorites();
 
     Q_INVOKABLE void fetchFavoriteTracks  (QJSValue cb, int limit = 50, int offset = 0);
     Q_INVOKABLE void fetchFavoriteAlbums  (QJSValue cb, int limit = 50, int offset = 0);
@@ -54,6 +116,9 @@ public:
 
     Q_INVOKABLE void fetchAlbumTracks     (qlonglong albumId,      QJSValue cb);
     Q_INVOKABLE void fetchPlaylistTracks  (const QString &uuid,    QJSValue cb);
+    // The same tracks as TrackRows (see TrackRows.h), for a TrackModel: a
+    // long playlist made into JS objects cost more than the rest of its page.
+    Q_INVOKABLE void fetchPlaylistTrackRows(const QString &uuid,   QJSValue cb);
     // The playlist itself: {uuid, title, description, numTracks, duration,
     // coverUrl, type}.
     Q_INVOKABLE void fetchPlaylist       (const QString &uuid,    QJSValue cb);
@@ -61,6 +126,8 @@ public:
     Q_INVOKABLE void fetchArtistDetail    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistAlbums    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistTopTracks (qlonglong artistId,     QJSValue cb);
+    // function(artists, error): artist maps; an empty list on an error.
+    Q_INVOKABLE void fetchSimilarArtists  (qlonglong artistId,     QJSValue cb);
     // function(albums, error): the other versions of the album's record, as
     // album maps. An empty list where Tidal names none.
     Q_INVOKABLE void fetchAlbumOtherVersions(qlonglong albumId,    QJSValue cb);
@@ -110,7 +177,36 @@ public:
     // function(ok). On success both re-read the playlist's header and merge it
     // into both caches: see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist   (const QString &uuid, qlonglong trackId, QJSValue cb);
+    // Several in one write, in order; allowDupes adds those it holds again.
+    Q_INVOKABLE void addTrackListToPlaylist(const QString &uuid, const QVariantList &trackIds,
+                                            bool allowDupes, QJSValue cb);
+    // function(ok). Undoes a removal: the track goes back in at `index`.
+    Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
+                                            QJSValue cb);
+    // ── read-backs that confirm a write (read-only) ──────────────────────
+    // function(ok, present): whether Tidal lists the id among the user's
+    // favourites of `kind` ("track", "album", "artist", "mix") right now.
+    Q_INVOKABLE void readFavoriteState(const QString &kind, const QString &id, QJSValue cb);
+    // function(ok, ids): the playlist's track ids in order, as Tidal has them.
+    Q_INVOKABLE void readPlaylistTrackIds(const QString &uuid, QJSValue cb);
+    // Reloads one kind of favourites from Tidal, for a write it did not confirm.
+    Q_INVOKABLE void reloadFavoriteKind(const QString &kind);
+    // function(ok, stale, index). Removals of one playlist go out one at a
+    // time, and `itemIndex` is the row as the page showed it when asked:
+    // `index` is the row to take out once earlier removals have landed, -1
+    // when there is none. `stale` means the playlist changed elsewhere.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
+    // function(ok, stale). Takes out several rows, each counted as the
+    // playlist is now, in DELETEs of removeRun rows, queued as removals are.
+    Q_INVOKABLE void removeTracksFromPlaylist(const QString &uuid, const QVariantList &itemIndices,
+                                              QJSValue cb);
+    static constexpr int removeRun = 50;
+    // cb(ok, stale): stale when the playlist changed since it was read.
+    Q_INVOKABLE void moveTrackInPlaylist(const QString &uuid, int fromIndex, int toIndex,
+                                         QJSValue cb);
+    // function(ok). On success the playlist leaves the caches, and
+    // playlistDeleted tells the pages and the sidebar.
+    Q_INVOKABLE void deletePlaylist         (const QString &uuid, QJSValue cb);
     Q_INVOKABLE QVariantList getUserPlaylists() const;
     Q_INVOKABLE void markPlaylistPlayed     (const QString &uuid);
 
@@ -121,20 +217,33 @@ public:
     // `tracks/<id>` is the one endpoint known to carry it.
     Q_INVOKABLE void fetchTrackMix (qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void fetchLyrics    (qlonglong trackId, QJSValue cb);
+    // Lyrics from other sites for a track map, when the switch for it is on:
+    // function({text, timed, source, url}, error), error "off" when it is off.
+    Q_INVOKABLE void findLyrics     (const QVariantMap &track, QJSValue cb);
+    void setLyricsFinder(LyricsFinder *f) { m_lyricsFinder = f; }
+    // Times plain lyrics against the track's audio, here on this machine:
+    // function({ok, kept, confidence, lrc}, error), error "off" when the
+    // switch is off. A newer call drops the older one's answer.
+    Q_INVOKABLE void autoSyncLyrics (qlonglong trackId, const QString &text, QJSValue cb);
+    // Whether the next track's audio is analysed ahead, while lyrics are on screen.
+    // Drops the auto-sync asked for, and stops its analysis unless the next track needs it.
+    Q_INVOKABLE void cancelAutoSync();
+    Q_INVOKABLE void setLyricsLookAhead(bool on);
+    void setAutoSync(lyricsync::AutoSync *a) { m_autoSync = a; }
     // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,
     //           releaseDate, upc } and an error string.
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
 
-    // Recently played
-    Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb);
-
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const;
+    // Every liked track as TrackRows, for a TrackModel; see TrackRows.h.
+    Q_INVOKABLE QVariant favoriteTrackRows() const;
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const;
 
 signals:
     void preferredQualityChanged();
+    void preferExplicitChanged();
     void favoriteTracksChanged();
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
@@ -165,26 +274,58 @@ signals:
     void playlistStatsRefreshed(const QString &uuid);
     // A mix the user just saved, carrying the row for LibraryIndex.
     void favoriteMixAdded(const Mix &mix);
-    // `kind` is "album", "artist", "track" or "mix", spelled the way
-    // LibraryIndex spells it.
+    // `kind` is "album", "artist", "track", "mix" or "playlist", spelled the
+    // way LibraryIndex spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
+    // A playlist the user deleted. A page showing it leaves.
+    void playlistDeleted(const QString &uuid);
+
+    // syncFavorites() found a change made on another device. The bridge's own
+    // caches and signals are already up to date.
+    void favoritesChangedElsewhere();
+
+    void offlineChanged();
+    void unloadedKindsChanged();
+    // Tidal answered again after being out of reach. The lists that failed
+    // are already loading again.
+    void connectionRestored();
 
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     // Re-reads one playlist's header and merges what a contents change moves
-    // into both caches.
-    void refreshPlaylistMeta(const QString &uuid);
+    // into both caches. `then` runs once the answer is in, whatever it was.
+    void refreshPlaylistMeta(const QString &uuid, std::function<void()> then = {});
+    // Sends the first removal queued for `uuid`.
+    void nextRemoval(const QString &uuid);
     void sortPlaylists(QList<Playlist> &playlists) const;
     QString recentSearchesKey() const;
     void    saveRecentSearches(const QStringList &queries);
     void loadFavoriteTrackIds();
+    void resetFavoriteSync();
+    void favoriteChangedHere(TidalClient::FavoriteKind kind);
+    void reloadFavorites(TidalClient::FavoriteKind kind, const FavoritesHead &head);
+    // `paged` lists the same rows page by page, for when one page is refused.
+    template <typename T, typename Fetch, typename Paged, typename KeyOf, typename Apply>
+    void reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead &head, int limit,
+                    const QList<T> &cache, Fetch fetch, Paged paged, KeyOf keyOf,
+                    Apply apply);
     // Loaded eagerly at sign-in, so MixPage knows the save state without a
     // round trip per page.
     void loadFavoriteMixIds();
-    void loadNextFavoriteTracksPage(int offset);
-    void loadNextFavoriteAlbumsPage(int offset);
-    void loadNextFavoriteArtistsPage(int offset);
+    void loadFavoriteTracks();
+    void loadFavoriteAlbums();
+    void loadFavoriteArtists();
+    void refreshLikedTrackIds();
+    void applyLikedTrackIds();
+    void reportPagedLikes();
     void loadNextUserPlaylistsPage(int offset);
+    // One list of the sign-in load is in. `whole` false with nothing listed is
+    // a failure, filled from the disk copy where it has one.
+    void favoriteKindLanded(const QString &kind, bool whole, bool failed, bool haveRows);
+    void saveFavoritesCache() const;
+    const FavoritesCacheLists &diskCopy();
+    void setReachable(bool reachable);
+    void probe();
 
 public:
     // Public and static: the player makes a queue row out of a track, and a
@@ -193,7 +334,7 @@ public:
     static QVariantMap  albumToMap (const Album &a);
 private:
     static QVariantMap  artistToMap (const Artist &a);
-    static QVariantMap  playlistToMap(const Playlist &p);
+    QVariantMap         playlistToMap(const Playlist &p) const;
     static QVariantMap  mixToMap    (const Mix &m);
 
     QVariantList tracksToList  (const QList<Track>    &v) const;
@@ -201,23 +342,67 @@ private:
     QVariantList artistsToList (const QList<Artist>   &v) const;
     QVariantList playlistsList (const QList<Playlist> &v) const;
     QVariantList mixesList     (const QList<Mix>      &v) const;
+    QVariantMap  homeFeedToMap (const HomeFeed &feed, qint64 fetchedAt = 0) const;
 
     TidalClient  *m_client;
+    LyricsFinder *m_lyricsFinder = nullptr;
+    lyricsync::AutoSync *m_autoSync = nullptr;
     QQmlEngine   *m_engine = nullptr;
+    // The hearts: every listed song and every id favorites/ids answered.
     QSet<qlonglong> m_favoriteTrackIds;
+    // The last favorites/ids answer for songs, kept in step with likes here.
+    QSet<qlonglong> m_likedTrackIds;
+
+    // A list with each release it holds explicit and clean cut to the
+    // preferred version; see preferredVersions(). Saved ones always stay.
+    QList<Album> shownVersions(const QList<Album> &albums) const;
+    QList<Track> shownVersions(const QList<Track> &tracks) const;
+    int             m_likedIdsGen = 0;
+    bool            m_likedIdsInFlight = false;
+    // The liked-songs listing on hand was paged because one page was refused.
+    bool            m_tracksFellBack = false;
     // Bumped each time loadFavoriteTrackIds() restarts paging. Callbacks from
     // a superseded load compare against it and bail, so two overlapping
     // chains cannot both append page 0.
     int             m_favTracksLoadGen = 0;
-    // Whether m_favoriteTracks is in its final, newest-first order. It is
-    // built oldest first and reversed when the last page lands, so the end a
-    // newly liked song belongs at depends on this.
-    bool            m_favTracksSettled = false;
+    bool            m_favoritesLoading = false;
+    bool            m_albumsLoading    = false;
+    bool            m_artistsLoading   = false;
+    bool            m_playlistsLoading = false;
+    // The four sign-in paging chains still running.
+    int             m_favLoadsPending = 0;
+
+    // One per FavoriteKind. A reload lands whole or not at all, and a change
+    // made here during one bumps `gen`, because its pages may predate that.
+    struct FavoriteSync {
+        int           gen = 0;
+        bool          reloading = false;
+        FavoritesHead head;     // what the list on hand was reloaded against
+    };
+    FavoriteSync    m_favSync[4];
+    int             m_favMixesSyncGen = 0;
+
+    // Removals not yet answered, per playlist, first one in flight. `rows`
+    // follow what earlier ones take out; `gone` is a lone row already taken.
+    // A batch holds several rows, ascending, and goes out highest first.
+    struct Removal { QList<int> rows; bool gone = false; QJSValue cb; bool batch = false; };
+    QHash<QString, QList<Removal>> m_removals;
+    QSet<QString>   m_removing;   // a removal of it is out, or its header read
 
     QList<Track>    m_favoriteTracks;
     QList<Album>    m_favoriteAlbums;
     QList<Artist>   m_favoriteArtists;
     QList<Playlist> m_favoritePlaylists;
+    // ── reaching Tidal, and the copy on disk ────────────────────────────
+    bool        m_offline = false;
+    QTimer      m_probeTimer;
+    int         m_probeMs = kProbeFirstMs;
+    QStringList m_unloadedKinds;
+    QStringList m_cachedKinds;      // the lists that came from the disk copy
+    bool        m_favLoadWhole = true;
+    // Read once per sign-in load, on the first list that needs it.
+    std::shared_ptr<FavoritesCacheLists> m_diskCopy;
+
     // Ids only: all it answers is whether a mix is saved.
     QSet<QString>   m_favoriteMixIds;
     // Bumped each time loadFavoriteMixIds() starts, so a reply from a previous

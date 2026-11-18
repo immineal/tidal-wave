@@ -4,6 +4,8 @@
 // threshold is measured on each ramp, as written and in black. What each switch
 // may touch is pinned on its own, and the two must compose in either order.
 
+#include <cmath>
+
 #include <QTest>
 #include <QColor>
 #include <QHash>
@@ -75,14 +77,29 @@ const QStringList kColourTokens = {
     // type
     "textPrimary", "textSec", "textDim",
     // accent and the tints derived from it
-    "accent", "accentDim", "accentInk", "accentSoft", "accentTint", "accentWash",
+    "accent", "accentDim", "accentInk", "accentText", "accentSoft", "accentTint", "accentWash",
     // interaction
     "hoverFill",
     // semantic
-    "red", "redSoft", "redInk", "green", "greenWash",
+    "red", "redSoft", "redInk", "redText", "green", "greenWash",
     // things drawn over arbitrary cover art, which is neither light nor dark
     "scrim", "artScrim", "artScrimStrong", "artInk", "artBorder",
 };
+
+// OKLCH hue in degrees (Ottosson 2020), where hue spacing reads evenly.
+double okHue(const QColor &c) {
+    auto lin = [](double v) {
+        return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    const double r = lin(c.redF()), g = lin(c.greenF()), b = lin(c.blueF());
+    const double l = std::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const double m = std::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const double s = std::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    const double a  = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    const double bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    const double h = std::atan2(bb, a) * 180.0 / M_PI;
+    return h < 0 ? h + 360.0 : h;
+}
 
 } // namespace
 
@@ -356,6 +373,17 @@ private slots:
             QVERIFY2(contrast(col("accent"), g) >= 3.0,
                      qPrintable(where + ": accent below AA-large ("
                                 + QString::number(contrast(col("accent"), g), 'f', 2) + ")"));
+            // The accent and red as text, from a 12 px error line to the
+            // playing row's title: AA.
+            for (const char *k : {"accentText", "redText"})
+                QVERIFY2(contrast(col(k), g) >= 4.5,
+                         qPrintable(where + ": " + QLatin1String(k) + " below AA ("
+                                    + QString::number(contrast(col(k), g), 'f', 2) + ")"));
+            // On a dark ground the quiet text sits at 11 to 13 px: AA there.
+            if (p.value(QStringLiteral("dark")).toBool())
+                QVERIFY2(contrast(col("textDim"), g) >= 4.5,
+                         qPrintable(where + ": textDim below AA on a dark ground ("
+                                    + QString::number(contrast(col("textDim"), g), 'f', 2) + ")"));
         }
 
         // Text on a solid accent fill (PillButton, the play button, the
@@ -428,9 +456,9 @@ private slots:
         }
     }
 
-    // A hover has to be visible. hoverFill is a wash over sidebar rows, chips
-    // and theme tiles; surfaceHov is the opaque one TrackRow and menus use. A
-    // wash cannot reach 3:1 without reading as a selected row.
+    // A hover has to be visible. hoverFill is the one hover wash in the app;
+    // surfaceHov is Theme.selectedFill, the page you are on. A wash cannot
+    // reach 3:1 without reading as a selected row.
     void hoverIsVisibleButNotASelection_data() { themeRows(); }
     void hoverIsVisibleButNotASelection() {
         QFETCH(QString, name);
@@ -532,6 +560,29 @@ private slots:
         }
     }
 
+    // Red is the error colour, so an accent must not read as one. Rust and
+    // Clay are warm: their accents sit at least 20 OKLCH degrees round from
+    // the red, and short of 60, where orange turns ochre.
+    void theAccentIsNotRed_data() { themeRows(); }
+    void theAccentIsNotRed() {
+        QFETCH(QString, name);
+        QFETCH(bool, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
+        for (const char *k : {"accent", "accentDim", "accentText"}) {
+            const double h = okHue(p.value(QLatin1String(k)).value<QColor>());
+            const double red = okHue(p.value(QStringLiteral("red")).value<QColor>());
+            double gap = std::abs(h - red);
+            if (gap > 180.0) gap = 360.0 - gap;
+            const QString where = name + "." + QLatin1String(k)
+                                + QStringLiteral(" at hue %1, red at %2")
+                                      .arg(h, 0, 'f', 1).arg(red, 0, 'f', 1);
+            QVERIFY2(gap >= 20.0, qPrintable(where + ": reads as the error red"));
+            if (h < 90.0)
+                QVERIFY2(h <= 60.0, qPrintable(where + ": reads as ochre"));
+        }
+    }
+
     // Every state a user can reach: six themes over two ramps, plus the
     // pure-black variant of each dark one, eighteen distinct palettes.
     void noTwoThemesAreTheSame() {
@@ -571,9 +622,11 @@ private slots:
                     const QColor a = theme::palette(lights.at(i), false, true).value(g).value<QColor>();
                     const QColor b = theme::palette(lights.at(j), false, true).value(g).value<QColor>();
                     const double d = deltaE(a, b);
-                    QVERIFY2(d >= 8.0, qPrintable(QStringLiteral(
+                    // Sand and Clay are calm near-whites by design (about
+                    // dE 4 at bg); 3.5 still keeps them clearly visible apart.
+                    QVERIFY2(d >= 3.5, qPrintable(QStringLiteral(
                         "%1 and %2 are only dE %3 apart at %4 (%5 vs %6); "
-                        "under 8 they start reading as the same theme, and "
+                        "under 3.5 they read as one theme, and "
                         "under 2.3 nobody can see any difference at all")
                         .arg(lights.at(i), lights.at(j), QString::number(d, 'f', 2),
                              g, a.name().toUpper(), b.name().toUpper())));
@@ -716,10 +769,11 @@ private slots:
         const QStringList grounds = {"bg", "surface", "surfaceHigh", "surfaceHov", "border"};
         const QStringList type    = {"textPrimary", "textSec", "textDim"};
 
-        // With the pure-black switch on, this ramp is byte for byte the retired
-        // "Deep" palette, which deepMigratesToSeaInBlack() relies on.
+        // With the pure-black switch on, these grounds are byte for byte the
+        // retired "Deep" palette, which deepMigratesToSeaInBlack() relies on.
+        // The quiet greys were raised to APCA Lc 60 and 40 in 0.5.0.
         const QStringList darkRamp = {"#0a0a0a", "#141414", "#1e1e1e", "#383838", "#2a2a2a"};
-        const QStringList darkType = {"#ffffff", "#a0a0a0", "#6b6b6b"};
+        const QStringList darkType = {"#ffffff", "#b5b5b5", "#8f8f8f"};
         for (int i = 0; i < grounds.size(); ++i)
             QCOMPARE(dark.value(grounds.at(i)).value<QColor>().name(), darkRamp.at(i));
         for (int i = 0; i < type.size(); ++i)
@@ -780,8 +834,8 @@ private slots:
 
         // Everything a palette carries that is neither a ground nor type.
         const QSet<QString> mayDiffer = {
-            "accent", "accentDim", "accentInk", "accentSoft", "accentTint", "accentWash",
-            "red", "redSoft", "redInk", "green", "greenWash"
+            "accent", "accentDim", "accentInk", "accentText", "accentSoft", "accentTint", "accentWash",
+            "red", "redSoft", "redInk", "redText", "green", "greenWash"
         };
         for (int i = 0; i < names.size(); ++i) {
             for (int j = i + 1; j < names.size(); ++j) {

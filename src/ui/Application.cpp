@@ -5,8 +5,18 @@
 #include "ui/I18n.h"
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
+#include "ui/ReducedMotion.h"
 #include "ui/ThemePalette.h"
+#include "ui/RemoteControl.h"
+#include "mediasession/MediaSession.h"
+#include "ui/TidalLink.h"
+#include "ui/TrackNotifier.h"
+#include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
+#include "scrobble/LastFm.h"
+#include "scrobble/ListenBrainz.h"
+#include "scrobble/ScrobbleSink.h"
+#include "scrobble/Scrobbler.h"
 #include "api/LibraryIndex.h"
 #ifdef Q_OS_LINUX
 #include "cast/CastManager.h"
@@ -17,6 +27,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QDateTime>
+#include <QThreadPool>
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -39,7 +50,13 @@
 #include <utility>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QRegularExpression>
+#include <QTimer>
 #include <QWindow>
+#include <chrono>
+#include <cstdio>
+
+using namespace std::chrono_literals;
 #include <QMenu>
 #include <QAction>
 #include <QProcess>
@@ -47,6 +64,10 @@
 #include <QEvent>
 #include <QUrl>
 #include <QQuickStyle>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QPixmap>
 
 #if defined(Q_OS_UNIX)
 #include <unistd.h>   // getuid(), for the per-user socket name
@@ -196,34 +217,6 @@ static QIcon loadAppIcon() {
                             QIcon(appIconResourcePath(QStringLiteral("icon.png"))));
 }
 
-// Whether the desktop asks for less animation. Qt has no hint for this up to
-// 6.12, so the KDE and GTK settings are read from their INI files. Windows and
-// macOS are not read; the environment override works everywhere.
-static bool detectReducedMotion() {
-    const QByteArray forced = qgetenv("TIDALWAVE_REDUCED_MOTION");
-    if (!forced.isEmpty())
-        return forced != "0" && forced.compare("false", Qt::CaseInsensitive) != 0;
-
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    const QString cfg =
-        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    if (!cfg.isEmpty()) {
-        // KDE: the animation speed slider at its slowest writes a factor of 0.
-        QSettings kde(cfg + QStringLiteral("/kdeglobals"), QSettings::IniFormat);
-        const QVariant factor = kde.value(QStringLiteral("KDE/AnimationDurationFactor"));
-        if (factor.isValid() && factor.toDouble() <= 0.0)
-            return true;
-
-        // GNOME and anything else GTK: "Reduce animation".
-        QSettings gtk(cfg + QStringLiteral("/gtk-3.0/settings.ini"), QSettings::IniFormat);
-        const QVariant anim = gtk.value(QStringLiteral("Settings/gtk-enable-animations"));
-        if (anim.isValid() && !anim.toBool())
-            return true;
-    }
-#endif
-    return false;
-}
-
 #if defined(Q_OS_UNIX)
 // The longest socket path QLocalServer will bind. Taken from the header since
 // sun_path differs per platform (108 bytes on Linux, 104 on macOS). Minus two:
@@ -300,6 +293,53 @@ bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString 
     if (!QLocalServer::removeServer(socketName))
         return false;
     return server->listen(socketName);
+}
+
+void Application::endAccountSession(TidalClient *client, Player *player, PinStore *pins,
+                                    LibraryIndex *library, bool forget,
+                                    const QList<ScrobbleSink *> &scrobbling) {
+    if (library) library->cancelIndexing();
+    if (player) {
+        player->clearQueue();
+        // Written now, while the account is still set: once it is 0 nothing
+        // is saved, and a pending save must not land under the next one.
+        if (forget) player->savePlaybackState();
+    }
+    if (client) client->setUserId(0);
+    if (pins) pins->setUserId(0);
+    if (library) library->setUserId(0);
+    // Like Disconnect in Settings: unsent listens wait for the same account.
+    if (forget)
+        for (ScrobbleSink *s : scrobbling) if (s) s->disconnectAccount();
+}
+
+QString Application::tempLockPath(const QString &dir) {
+#if defined(Q_OS_UNIX)
+    return dir + QStringLiteral("/tidal-wave-%1.lock").arg(static_cast<uint>(::getuid()));
+#else
+    return dir + QStringLiteral("/tidal-wave.lock");
+#endif
+}
+
+int Application::sweepStaleTempFiles(const QString &dir) {
+    // The QTemporaryFile templates in Player, DashFetcher, Downloader and
+    // CastMediaPrep, and nothing else.
+    static const QRegularExpression ours(QStringLiteral(
+        "^tidal-wave-(?:cast-|cover-)?[A-Za-z0-9]{6}\\.(?:mp4|m4a|flac|jpg)$"));
+    const QDir d(dir);
+    int removed = 0;
+    const QStringList names = d.entryList({QStringLiteral("tidal-wave-*")},
+                                          QDir::Files | QDir::Hidden | QDir::NoSymLinks);
+    for (const QString &name : names) {
+        if (!ours.match(name).hasMatch()) continue;
+        const QFileInfo fi(d.filePath(name));
+#if defined(Q_OS_UNIX)
+        // A shared /tmp holds other users' files too.
+        if (fi.ownerId() != static_cast<uint>(::getuid())) continue;
+#endif
+        if (QFile::remove(fi.filePath())) ++removed;
+    }
+    return removed;
 }
 
 bool Application::shouldQuitOnWindowClose(bool trayAvailable, bool quitOnClose) {
@@ -423,6 +463,16 @@ bool Application::scaleWasChosenAutomatically() const {
 }
 double Application::activeScaleFactor() const { return g_scaleFactor; }
 
+void Application::useWholeHeapQmlCollector() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // Qt's incremental collector can sweep objects of a component still being
+    // built, which crashes the window now and then; 0 turns it off. Not filed
+    // yet, nearest: https://bugreports.qt.io/browse/QTBUG-143167
+    if (qEnvironmentVariableIsEmpty("QV4_GC_TIMELIMIT"))
+        qputenv("QV4_GC_TIMELIMIT", QByteArrayLiteral("0"));
+#endif
+}
+
 void Application::applyScaleFactor() {
     if (scaleFactorSetInEnvironment()) {
         g_scaleSource = ScaleSource::Environment;
@@ -508,14 +558,11 @@ QStringList Application::uiFontFamilies() {
 }
 
 void Application::applyQuickControlsStyle() {
-    // Fusion is what Qt picks on Linux and what the visual baselines are drawn
-    // against. Basic on Qt 6.4, where Fusion's Popup can hang in a polish loop.
+    // The app's ToolTip over Fusion, or Basic on Qt 6.4 (Fusion's Popup can
+    // hang there). Named as the fallback, or Qt leaves its palette unset.
     // Has to run before the first Controls type is created.
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
-#else
-    QQuickStyle::setStyle(QStringLiteral("Fusion"));
-#endif
+    QQuickStyle::setStyle(QStringLiteral("TidalWave.Style"));
+    QQuickStyle::setFallbackStyle(QStringLiteral(TIDALWAVE_FALLBACK_STYLE));
 }
 
 void Application::addEmbeddedQmlImportPath(QQmlEngine *engine) {
@@ -546,6 +593,8 @@ Application::~Application() {
     // and would re-evaluate against null as each of them is destroyed.
     // The member is cleared first, so nothing reaches a half-destroyed engine.
     delete std::exchange(m_engine, nullptr);
+    // Before the player: its worker may still read the player's temp files.
+    delete std::exchange(m_autoSync, nullptr);
 }
 
 int Application::run(int argc, char **argv) {
@@ -581,6 +630,7 @@ int Application::run(int argc, char **argv) {
     // Prefs first: QSettings needs the names above, and the scene graph backend
     // below is chosen once, before any window exists.
     m_prefs = new Prefs(this);
+    m_startPage = m_prefs->lastPage();
     // Before the engine, so the tray menu and any startup error are translated.
     m_i18n = new I18n(m_prefs, this);
     m_update = new UpdateCheck(this);
@@ -598,8 +648,15 @@ int Application::run(int argc, char **argv) {
         QSurfaceFormat::setDefaultFormat(format);
     }
 
-    // Read once at startup.
-    m_reducedMotion = detectReducedMotion();
+    // The desktop is read once at startup; the Settings choice applies live.
+    const bool systemReduced = ReducedMotion::systemPrefers();
+    m_reducedMotion = ReducedMotion::resolve(m_prefs->reducedMotion(), systemReduced);
+    connect(m_prefs, &Prefs::reducedMotionChanged, this, [this, systemReduced] {
+        const bool on = ReducedMotion::resolve(m_prefs->reducedMotion(), systemReduced);
+        if (on == m_reducedMotion) return;
+        m_reducedMotion = on;
+        emit reducedMotionChanged();
+    });
 
     // Always off: whether a close quits depends on a tray that may not exist
     // yet, so reallyQuit() and lastWindowClosed answer it per close.
@@ -607,27 +664,36 @@ int Application::run(int argc, char **argv) {
     const QIcon appIcon = loadAppIcon();
     QApplication::setWindowIcon(appIcon);
 
-    const QString socketName = singleInstanceSocketName();
-    QLocalSocket socket;
-    socket.connectToServer(socketName);
-    if (socket.waitForConnected(500)) {
-        socket.write("show");
-        socket.waitForBytesWritten(500);
-        return 0; // an instance is already running
+    // main() passes the argv QApplication has taken its own options out of
+    // (-platform and the like). Test children pass only the program name.
+    QStringList arguments;
+    for (int i = 0; i < argc; ++i)
+        arguments << QString::fromLocal8Bit(argv[i]);
+    const RemoteControl::Parsed launch = RemoteControl::parseArguments(arguments);
+    if (launch.exit) {
+        std::fputs(launch.output.toLocal8Bit().constData(), stdout);
+        std::fputs(launch.error.toLocal8Bit().constData(), stderr);
+        return launch.exitCode;
     }
 
+    const QString socketName = singleInstanceSocketName();
+    if (RemoteControl::sendToRunning(socketName, launch.request))
+        return 0; // an instance is already running and has the request
+
+    // Earlier runs leave their audio in the temp directory. Swept only while
+    // no other instance holds this lock, whatever socket it listens on.
+    m_tempLock = std::make_unique<QLockFile>(tempLockPath(QDir::tempPath()));
+    m_tempLock->setStaleLockTime(0);
+    if (m_tempLock->tryLock(0)) {
+        if (const int n = sweepStaleTempFiles(QDir::tempPath()))
+            qInfo("tidal-wave: removed %d temp file(s) left by an earlier run", n);
+    }
+
+    m_remote = new RemoteControl(this);
+    connect(m_remote, &RemoteControl::showRequested, this, &Application::showWindow);
     QLocalServer *server = new QLocalServer(QCoreApplication::instance());
     if (claimSingleInstanceSocket(server, socketName)) {
-        connect(server, &QLocalServer::newConnection, this, [this, server]() {
-            QLocalSocket *clientSocket = server->nextPendingConnection();
-            connect(clientSocket, &QLocalSocket::readyRead, this, [this, clientSocket]() {
-                QByteArray data = clientSocket->readAll();
-                if (data == "show") {
-                    this->showWindow();
-                }
-                clientSocket->disconnectFromServer();
-            });
-        });
+        m_remote->listen(server);
     } else {
         // Carry on without the lock: the app still works, a second launch
         // just opens a second window. Say so on stderr.
@@ -655,7 +721,38 @@ int Application::run(int argc, char **argv) {
     m_auth   = new Auth(m_api, this);
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
+    m_lyricsFinder = new LyricsFinder(this);
+    m_lyricsFinder->setProviderEnabled([prefs = m_prefs](const QString &provider) {
+        return provider == LrclibProvider().name() ? prefs->lyricsLrclib() : prefs->lyricsOtherSites();
+    });
+    for (auto sig : {&Prefs::lyricsLrclibChanged, &Prefs::lyricsOtherSitesChanged})
+        connect(m_prefs, sig, m_lyricsFinder, &LyricsFinder::switchesChanged);
+    m_bridge->setLyricsFinder(m_lyricsFinder);
     m_player = new Player(m_client, this);
+    // A burst of Next presses fetches only the track it ends on.
+    m_player->setLoadDelay(300);
+    // Plain lyrics timed against the audio the player already has on disk.
+    m_autoSync = new lyricsync::AutoSync(this);
+    m_autoSync->setEnabled([prefs = m_prefs] { return prefs->lyricsAutoSync(); });
+    m_autoSync->setCacheDir(LyricsCache::defaultDir());
+    // Expired misses and, past 64 MB, the oldest lyrics; off the GUI thread.
+    QThreadPool::globalInstance()->start([] {
+        LyricsCache(LyricsCache::defaultDir()).prune(QDateTime::currentMSecsSinceEpoch(), 64LL << 20);
+    });
+    // A track a lyrics site had synced lyrics for, or knows as instrumental.
+    m_autoSync->setHasTimings([](qint64 id) {
+        LyricsResult r;
+        const LyricsCache::Hit hit = LyricsCache(LyricsCache::defaultDir()).lookup(id, QDateTime::currentMSecsSinceEpoch(), &r);
+        return hit == LyricsCache::Hit::Instrumental || (hit == LyricsCache::Hit::Found && r.timed);
+    });
+    m_autoSync->setAudioSource([player = m_player](qint64 id) { return player->audioFileFor(id); });
+    m_autoSync->setFileHold([player = m_player](const QString &p) { player->holdAudioFile(p); },
+                            [player = m_player](const QString &p) { player->releaseAudioFile(p); });
+    connect(m_player, &Player::audioFileReady, m_autoSync, &lyricsync::AutoSync::audioReady);
+    connect(m_prefs, &Prefs::lyricsAutoSyncChanged, m_autoSync, [this] {
+        if (!m_prefs->lyricsAutoSync()) m_autoSync->cancel();
+    });
+    m_bridge->setAutoSync(m_autoSync);
     m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
     // LibraryIndex asks PinStore where each row belongs, so the store is
@@ -674,6 +771,11 @@ int Application::run(int argc, char **argv) {
     connect(m_bridge, &TidalBridge::favoriteMixAdded,    m_library, &LibraryIndex::addMix);
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
     connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
+    connect(m_bridge, &TidalBridge::favoritesChangedElsewhere, m_library, &LibraryIndex::refresh);
+    // Back online: a sidebar that failed, or shows the disk copy, loads again.
+    connect(m_bridge, &TidalBridge::connectionRestored, m_library, [this]() {
+        if (m_library->needsRefresh()) m_library->refresh();
+    });
     // Not through addPlaylist: that stamps addedAt and would lift a renamed
     // playlist to the top of the sidebar.
     connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);
@@ -681,6 +783,10 @@ int Application::run(int argc, char **argv) {
     // match, which they do after a track add, and the count would be lost.
     connect(m_bridge, &TidalBridge::playlistStatsChanged, m_library,
             &LibraryIndex::refreshPlaylistMeta);
+    // A deleted playlist's pin would open a page that answers 404.
+    connect(m_bridge, &TidalBridge::playlistDeleted, m_pins, [this](const QString &uuid) {
+        m_pins->unpin(QStringLiteral("playlist"), uuid);
+    });
 #ifdef Q_OS_LINUX
     // Chromecast discovery relies on Avahi, so Linux only.
     m_cast = new CastManager(m_client, m_player, this);
@@ -690,7 +796,39 @@ int Application::run(int argc, char **argv) {
     m_mpris  = new MprisManager(m_player, this);
     // Raise takes the way back that the tray's Show item takes.
     connect(m_mpris, &MprisManager::raiseRequested, this, &Application::showWindow);
+    // A link from a desktop widget goes the way a link on the command line goes.
+    connect(m_mpris, &MprisManager::openUriRequested, this, [this](const QString &uri) {
+        LaunchRequest request;
+        request.urls = { uri };
+        m_remote->submit(request);
+    });
 #endif
+    // The same calls as the tray and the player bar.
+    connect(m_remote, &RemoteControl::playPauseRequested, m_player, [this] { m_player->playPause(); });
+    connect(m_remote, &RemoteControl::nextRequested, m_player, [this] { m_player->next(); });
+    connect(m_remote, &RemoteControl::previousRequested, m_player, [this] { m_player->previous(); });
+    connect(m_remote, &RemoteControl::openRequested, this, &Application::openRequested);
+    m_remote->setAlbumOfTrack([client = m_client](qint64 trackId, std::function<void(qint64)> done) {
+        client->fetchTrack(trackId, [done](Track t, QString err) {
+            done(err.isEmpty() ? t.album.id : 0);
+        });
+    });
+    setUpTrackNotifier();
+    // Local play and casting alike; each service keeps its own queue.
+    auto *listenBrainz = new ListenBrainz;
+    m_listenBrainz = new ScrobbleSink(listenBrainz, ScrobbleSink::defaultPaths(listenBrainz->key()), this);
+    auto *lastFm = new LastFm;
+    m_lastFm = new ScrobbleSink(lastFm, ScrobbleSink::defaultPaths(lastFm->key()), this);
+    connect(m_lastFm, &ScrobbleSink::openPage, this, [this](const QUrl &url) { openUrl(url.toString()); });
+    m_scrobbler = new Scrobbler(this);
+    m_scrobbler->addSink(m_listenBrainz);
+    m_scrobbler->addSink(m_lastFm);
+    m_scrobbler->attach(m_player);
+    // This launch's own options wait like a second launch's; the window
+    // shows itself.
+    LaunchRequest own = launch.request;
+    own.show = false;
+    m_remote->submit(own);
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {
         m_client->setUserId(m_auth->userId());
@@ -699,8 +837,28 @@ int Application::run(int argc, char **argv) {
         m_pins->setUserId(m_auth->userId());
         m_library->setUserId(m_auth->userId());
         m_library->refresh();
+        m_sinceFavoritesCheck.start();
     });
 
+    // Likes made on another device show up when the window is used again, or
+    // within a few minutes while it stays up. A window in the tray asks nothing.
+    auto *favoritesCheck = new QTimer(this);
+    favoritesCheck->setInterval(5min);
+    connect(favoritesCheck, &QTimer::timeout, this, [this]() { checkFavorites(0); });
+    favoritesCheck->start();
+    connect(qApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+                if (state == Qt::ApplicationActive) checkFavorites(60'000);
+            });
+
+    // A session that ended takes playback, the queue and the account's
+    // lists with it, so the next account to sign in inherits nothing.
+    connect(m_auth, &Auth::loggedOut, this, [this]() {
+        endAccountSession(m_client, m_player, m_pins, m_library, true, {m_listenBrainz, m_lastFm});
+    });
+    connect(m_auth, &Auth::sessionExpired, this, [this]() {
+        endAccountSession(m_client, m_player, m_pins, m_library, false);
+    });
     connect(m_auth, &Auth::stateChanged, this, [this](Auth::State s) {
         // Do not keep indexing against an account that just signed out.
         if (s == Auth::State::LoggedOut)
@@ -767,6 +925,24 @@ int Application::run(int argc, char **argv) {
     // Not "update": QQuickItem and QQuickWindow have an update() slot, which
     // an unqualified name in QML finds before the context property.
     ctx->setContextProperty(QStringLiteral("updateCheck"), m_update);
+    ctx->setContextProperty(QStringLiteral("listenBrainz"), m_listenBrainz);
+    ctx->setContextProperty(QStringLiteral("lastFm"), m_lastFm);
+
+    // The window comes up where it was left, before it is first shown.
+    QList<QRect> screens;
+    for (const QScreen *screen : QGuiApplication::screens())
+        screens.append(screen->availableGeometry());
+    const QRect restored = placeWindow(m_prefs->windowGeometry(), screens, QSize(1280, 800));
+    QVariantMap initial;
+    if (restored.isValid()) {
+        initial.insert(QStringLiteral("x"), restored.x());
+        initial.insert(QStringLiteral("y"), restored.y());
+        initial.insert(QStringLiteral("width"), restored.width());
+        initial.insert(QStringLiteral("height"), restored.height());
+    }
+    if (m_prefs->windowMaximized())
+        initial.insert(QStringLiteral("visibility"), int(QWindow::Maximized));
+    m_engine->setInitialProperties(initial);
 
     // loadFromModule() arrived in Qt 6.5. The URL is the same component; its
     // prefix has to match RESOURCE_PREFIX in CMakeLists.txt, and a wrong one
@@ -777,6 +953,32 @@ int Application::run(int argc, char **argv) {
     m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/TidalWave/qml/Main.qml")));
 #endif
     if (m_engine->rootObjects().isEmpty()) return -1;
+
+    // The tray's window entry follows the window.
+    if (auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
+        connect(window, &QWindow::visibleChanged, this, &Application::refreshTray);
+        connect(window, &QWindow::windowStateChanged, this, &Application::refreshTray);
+        trackWindowState(window, restored);
+#ifndef Q_OS_LINUX
+        // The media keys and the system's now-playing panel. Windows needs
+        // the window's handle, so after the window exists.
+        m_mediaSession = new MediaSession(this);
+        m_mediaSession->setBackend(MediaSession::createPlatformBackend(m_mediaSession, window));
+        m_mediaSession->attach(m_player);
+#endif
+    }
+    refreshTray();
+
+    // Requests from the command line act once there is a session and a page.
+    // Queued, so the player's audio set-up and the sign-in page change are
+    // done first.
+    const auto updateReady = [this] {
+        m_remote->setReady(m_auth->state() == Auth::State::LoggedIn);
+    };
+    connect(m_auth, &Auth::stateChanged, this, [this, updateReady] {
+        QTimer::singleShot(0, this, updateReady);
+    });
+    QTimer::singleShot(0, this, updateReady);
 
     // After the engine, so the request is never ahead of the first frame.
     m_update->startupCheck();
@@ -792,6 +994,72 @@ bool Application::installSignalHandlers() {
     connect(m_signals, &SignalWatcher::quitRequested,
             this, &Application::quit, Qt::UniqueConnection);
     return m_signals->install();
+}
+
+QRect Application::placeWindow(const QRect &saved, const QList<QRect> &screens,
+                               const QSize &fallback) {
+    if (!saved.isValid() || screens.isEmpty()) return QRect();
+    // A size too small to be one a person chose is a damaged file.
+    QSize size = saved.size();
+    if (size.width() < 200 || size.height() < 200) size = fallback;
+
+    QRect screen = screens.first();
+    qint64 most = 0;
+    for (const QRect &s : screens) {
+        const QRect overlap = s.intersected(QRect(saved.topLeft(), size));
+        const qint64 area = overlap.isValid() ? qint64(overlap.width()) * overlap.height() : 0;
+        if (area > most) { most = area; screen = s; }
+    }
+    size = size.boundedTo(screen.size());
+    const QRect wanted(saved.topLeft(), size);
+    if (screen.contains(wanted)) return wanted;
+    const int x = std::clamp(wanted.x(), screen.left(), screen.right() - size.width() + 1);
+    const int y = std::clamp(wanted.y(), screen.top(), screen.bottom() - size.height() + 1);
+    return QRect(QPoint(x, y), size);
+}
+
+void Application::trackWindowState(QWindow *window, const QRect &restored) {
+    // The unmaximised geometry is what a restart needs; a maximised or
+    // fullscreen window's own is the screen's.
+    auto normal = std::make_shared<QRect>(restored.isValid() ? restored : window->geometry());
+    auto maximized = std::make_shared<bool>(m_prefs->windowMaximized());
+    auto *save = new QTimer(this);
+    save->setSingleShot(true);
+    save->setInterval(500);
+    connect(save, &QTimer::timeout, this, [this, normal, maximized] {
+        m_prefs->setWindowGeometry(*normal);
+        m_prefs->setWindowMaximized(*maximized);
+    });
+    const auto moved = [window, normal, save] {
+        if (window->windowStates() != Qt::WindowNoState || !window->isVisible()) return;
+        *normal = window->geometry();
+        save->start();
+    };
+    connect(window, &QWindow::xChanged, this, moved);
+    connect(window, &QWindow::yChanged, this, moved);
+    connect(window, &QWindow::widthChanged, this, moved);
+    connect(window, &QWindow::heightChanged, this, moved);
+    connect(window, &QWindow::windowStateChanged, this, [maximized, save](Qt::WindowState state) {
+        // Fullscreen is left on the way out, so it says nothing about the next start.
+        if (state == Qt::WindowFullScreen || state == Qt::WindowMinimized) return;
+        *maximized = state == Qt::WindowMaximized;
+        save->start();
+    });
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this, normal, maximized] {
+        m_prefs->setWindowGeometry(*normal);
+        m_prefs->setWindowMaximized(*maximized);
+    });
+}
+
+bool Application::isTidalLink(const QString &text) const {
+    return TidalLink::parse(text.trimmed()).isValid();
+}
+
+void Application::openLink(const QString &text) {
+    LaunchRequest request;
+    request.show = false;
+    request.urls = { text.trimmed() };
+    m_remote->submit(request);
 }
 
 void Application::quit() {
@@ -826,19 +1094,21 @@ void Application::createTrayIcon(const QIcon &icon) {
     m_trayIcon = new QSystemTrayIcon(trayArt, this);
     m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
 
-    QMenu *trayMenu = new QMenu();
-    QAction *showAction = trayMenu->addAction(tr("Show"));
-    connect(showAction, &QAction::triggered, this, &Application::showWindow);
-
-    QAction *hideAction = trayMenu->addAction(tr("Hide"));
-    connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
-
-    trayMenu->addSeparator();
-
-    QAction *quitAction = trayMenu->addAction(tr("Quit"));
-    connect(quitAction, &QAction::triggered, this, &Application::quit);
-
-    m_trayIcon->setContextMenu(trayMenu);
+    m_trayMenu = new TrayMenu(this);
+    connect(m_trayMenu, &TrayMenu::toggleWindowRequested, this, &Application::toggleWindow);
+    connect(m_trayMenu, &TrayMenu::quitRequested, this, &Application::quit);
+    // The same calls as the player bar's buttons.
+    connect(m_trayMenu, &TrayMenu::playPauseRequested, m_player, [this] { m_player->playPause(); });
+    connect(m_trayMenu, &TrayMenu::nextRequested, m_player, [this] { m_player->next(); });
+    connect(m_trayMenu, &TrayMenu::previousRequested, m_player, [this] { m_player->previous(); });
+    connect(m_player, &Player::playingChanged, this, &Application::refreshTray);
+    connect(m_player, &Player::currentTrackChanged, this, &Application::refreshTray);
+    connect(m_trayMenu, &TrayMenu::toolTipChanged, m_trayIcon, &QSystemTrayIcon::setToolTip);
+    // Also at opening, since a window manager can hide or minimise the window
+    // without a signal the app watches.
+    connect(m_trayMenu, &TrayMenu::aboutToShow, this, &Application::refreshTray);
+    m_trayIcon->setContextMenu(m_trayMenu->menu());
+    refreshTray();
 
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
@@ -847,6 +1117,76 @@ void Application::createTrayIcon(const QIcon &icon) {
     });
 
     m_trayIcon->show();
+}
+
+void Application::setUpTrackNotifier() {
+    m_notifier = new TrackNotifier(this);
+    m_notifier->setEnabled([prefs = m_prefs] { return prefs->trackNotifications(); });
+    m_notifier->setWindowActive([this] {
+        const auto roots = m_engine ? m_engine->rootObjects() : QList<QObject *>();
+        const auto *window = roots.isEmpty() ? nullptr : qobject_cast<QWindow *>(roots.first());
+        return window && window->isVisible() && window->isActive();
+    });
+#ifdef Q_OS_LINUX
+    // Built on first use, so nothing talks to the notification server while
+    // the setting is off.
+    m_notifier->setSender([this, send = std::shared_ptr<TrackNotifier::Sender>()]
+                          (const TrackNotifier::Notification &n) mutable {
+        if (!send)
+            send = std::make_shared<TrackNotifier::Sender>(
+                TrackNotifier::freedesktopSender(QDBusConnection::sessionBus(), this));
+        (*send)(n);
+    });
+#else
+    m_notifier->setSender([this](const TrackNotifier::Notification &n) {
+        if (!m_trayIcon) return;
+        const QIcon icon = n.cover.isNull() ? QIcon() : QIcon(QPixmap::fromImage(n.cover));
+        m_trayIcon->showMessage(n.title, n.body, icon, 5000);
+    });
+#endif
+    // The image provider's cache belongs to the QML loader thread, so this is
+    // a fetch of its own: one small JPEG per track, only while the setting is on.
+    auto *nam = new QNetworkAccessManager(this);
+    m_notifier->setCoverFetcher([nam](const QUrl &url, std::function<void(const QImage &)> done) {
+        QNetworkRequest request(url);
+        request.setTransferTimeout(3000);
+        QNetworkReply *reply = nam->get(request);
+        connect(reply, &QNetworkReply::finished, reply, [reply, done] {
+            QImage image;
+            if (reply->error() == QNetworkReply::NoError) image.loadFromData(reply->readAll());
+            reply->deleteLater();
+            done(image);
+        });
+    });
+    const auto feed = [this] { m_notifier->update(m_player->currentTrackMap(), m_player->playing()); };
+    connect(m_player, &Player::currentTrackChanged, this, feed);
+    connect(m_player, &Player::playingChanged, this, feed);
+}
+
+void Application::refreshTray() {
+    if (!m_trayMenu)
+        return;
+    TrayMenu::State state;
+    if (m_engine && !m_engine->rootObjects().isEmpty()) {
+        if (const auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
+            // As toggleWindow() sees it: a minimised window is brought back.
+            state.windowShown = window->isVisible()
+                             && window->windowState() != Qt::WindowMinimized;
+        }
+    }
+    if (m_player) {
+        const QVariantMap track = m_player->currentTrackMap();
+        state.hasTrack = !track.isEmpty();
+        state.playing  = m_player->playing();
+        state.title    = track.value(QStringLiteral("title")).toString();
+        QStringList names;
+        for (const QVariant &a : track.value(QStringLiteral("artistList")).toList())
+            names << a.toMap().value(QStringLiteral("name")).toString();
+        names.removeAll(QString());
+        state.artist = names.isEmpty() ? track.value(QStringLiteral("artists")).toString()
+                                       : names.join(QStringLiteral(", "));
+    }
+    m_trayMenu->setState(state);
 }
 
 #ifdef Q_OS_MACOS
@@ -880,6 +1220,16 @@ bool Application::eventFilter(QObject *watched, QEvent *event) {
     return QObject::eventFilter(watched, event);
 }
 #endif // Q_OS_MACOS
+
+void Application::checkFavorites(qint64 minGapMs) {
+    if (!m_engine || !m_sinceFavoritesCheck.isValid()) return;
+    if (m_sinceFavoritesCheck.elapsed() < minGapMs) return;
+    const auto rootObjs = m_engine->rootObjects();
+    const auto *window = rootObjs.isEmpty() ? nullptr : qobject_cast<QWindow *>(rootObjs.first());
+    if (!window || !window->isVisible()) return;
+    m_sinceFavoritesCheck.restart();
+    m_bridge->syncFavorites();
+}
 
 void Application::showWindow() {
     if (m_engine) {

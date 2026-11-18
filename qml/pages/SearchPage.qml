@@ -15,6 +15,9 @@ Rectangle {
     property var    artists:   []
     property var    playlists: []
     property var    mixes:     []
+    // The server's own best match, {kind, item}, or null. Set from the first
+    // page only and cleared with the rest.
+    property var    topHit:    null
     property bool   loading:   false
     property int    activeTab: 0
     property int    _searchGen: 0
@@ -33,8 +36,20 @@ Rectangle {
     // query until a reply for that query has landed: see `replied`.
     property string repliedFor: ""
     property string errorText:  ""
+    // Whether that failure came with Tidal out of reach. Taken when the reply
+    // lands: the bridge marks itself offline before it answers.
+    property bool   errorOffline: false
+    // A later page that failed: which kind, and whether Tidal was out of
+    // reach. Said at the foot of that kind's list, where the listener is.
+    property int    moreFailedKind: -1
+    property bool   moreFailedOffline: false
 
     readonly property bool replied: query.length >= 2 && repliedFor === query
+
+    // A new query typed over an answered one keeps that answer up until it
+    // runs. Only an emptied field goes back to the recent searches.
+    readonly property bool showsResults:
+        query.length >= 2 || (query.length > 0 && repliedFor.length > 0)
 
     // Hits of the kind the active tab shows, so the no-results strip speaks
     // about that tab and not about all five arrays.
@@ -111,11 +126,13 @@ Rectangle {
         target: root
         property: "resultsIn"
         from: 0; to: 1
-        duration: Theme.dur(170)
+        duration: Theme.dur(Theme.motionMedium)
         easing.type: Easing.OutCubic
     }
+    // Each chip starts at its top: the column below is a different list.
     onActiveTabChanged: {
         resultsEntry.restart()
+        if (resultsScroll.contentItem) resultsScroll.contentItem.contentY = 0
         root._checkBottomAfterLayout()
     }
 
@@ -166,20 +183,30 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Item { height: 16 }
+        Item { height: Theme.space4 }
 
         SearchBar {
             id: searchBar
             objectName: "searchPageBar"
             focus: true
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
-            height: 46
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
             placeholder: qsTr("Search tracks, albums, artists, playlists…")
             onTextEdited: (text) => {
+                // A link pasted in whole opens its page. Typed a letter at a
+                // time, it is a search like any other.
+                var before = root.query
+                if (text.length > before.length + 1 && app.isTidalLink(text)) {
+                    searchBar.text = ""
+                    root.query = ""
+                    clearResults()
+                    app.openLink(text)
+                    return
+                }
                 root.query = text
-                if (text.length < 2) { clearResults(); return }
+                if (text.length === 0) { clearResults(); return }
+                if (text.length < 2) { root.holdResults(); return }
                 searchDebounce.restart()
             }
             // Enter means this is the query, so it is remembered whatever the
@@ -192,203 +219,39 @@ Rectangle {
             }
         }
 
-        Item { height: 12 }
+        Item { height: Theme.space3 }
 
-        // ── the tab bar, and its highlight as one pill that travels ──────
-        // One pill that moves between the chips. A Row lays out every visible
-        // child, so the pill is the row's sibling inside this host Item.
-        Item {
-            id: tabsHost
-            objectName: "searchTabsHost"
-            visible: root.query.length >= 2
-            Layout.leftMargin: 24
-            // The row is the whole of this item's size. A plain Item has no
-            // implicit size of its own, and a ColumnLayout asks for one.
-            implicitWidth:  searchTabsRow.implicitWidth
-            implicitHeight: searchTabsRow.implicitHeight
-
-            // Which chip the pill is leaving, which it is arriving at, and how
-            // far along it is. Only `markT` is animated: the geometry is a lerp
-            // between the two chips' live boxes, so a layout change is instant.
-            property Item markFrom: null
-            property Item markTo:   null
-            property real markT:    1
-            // The reset to 0 that starts a travel is the one write to markT
-            // that must not animate, or the pill would run backwards to the
-            // chip it is already on before setting off.
-            property bool markResetting: false
-            // The first placement is an initialisation, not a move. Without the
-            // gate the pill would grow out of the row's left edge every time a
-            // query brings the row back.
-            property bool markSettled: false
-
-            Behavior on markT {
-                enabled: !tabsHost.markResetting
-                NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
-            }
-
-            // The end it set off from, or the destination itself when there is
-            // none, which makes the lerp degenerate. That covers the first
-            // placement and a model rebuild.
-            readonly property Item markA: markFrom ? markFrom : markTo
-            readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
-            readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
-            readonly property real markW: markTo ? markA.width  + (markTo.width  - markA.width)  * markT : 0
-            readonly property real markH: markTo ? markA.height + (markTo.height - markA.height) * markT : 0
-
-            function retarget(animate) {
-                var next = searchTabsRepeater.itemAt(root.activeTab)
-                if (next === null || next === tabsHost.markTo) return
-                tabsHost.markFrom = (animate && tabsHost.markTo !== null) ? tabsHost.markTo : next
-                tabsHost.markTo   = next
-                tabsHost.markResetting = true
-                tabsHost.markT = 0
-                tabsHost.markResetting = false
-                tabsHost.markT = 1
-            }
-
-            // `visible` in the condition as well as the gate: a tab changed
-            // while the row is off screen must not start a travel that plays
-            // when the row comes back.
-            Connections {
-                target: root
-                function onActiveTabChanged() {
-                    tabsHost.retarget(tabsHost.markSettled && tabsHost.visible)
-                }
-            }
-
-            Component.onCompleted: {
-                retarget(false)
-                Qt.callLater(function () { tabsHost.markSettled = true })
-            }
-
-            // Behind the chips, which rest on nothing, so the pill reads as the
-            // fill. Behind because a chip's hover tint is opaque; see the
-            // chip's colour below.
-            Rectangle {
-                objectName: "searchTabPill"
-                x: tabsHost.markX
-                y: tabsHost.markY
-                width:  tabsHost.markW
-                height: tabsHost.markH
-                radius: Theme.radiusChip
-                color: Theme.accent
-                visible: width > 0 && height > 0
-            }
-
-            Row {
-                id: searchTabsRow
-                objectName: "searchTabsRow"
-                spacing: 4
-                Repeater {
-                    id: searchTabsRepeater
-                    model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
-                            qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
-                    // itemAt() is a function call and not a dependency, so the
-                    // pill is aimed again as the chips arrive. A language
-                    // change rebuilds all six.
-                    onItemAdded: function (index, item) { tabsHost.retarget(false) }
-                    Rectangle {
-                        id: searchTab
-                        required property string modelData
-                        required property int    index
-                        height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusChip
-                        // The pill behind the row marks the current chip. The
-                        // hover tint drops out on any chip the pill is over:
-                        // surfaceHov is opaque and would paint over it.
-                        color: tabMA.containsMouse && !searchTab.pillOverlaps
-                               ? Theme.surfaceHov : "transparent"
-                        // The chip must not snap while the results fade.
-                        Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
-
-                        // Whether any part of the pill is over this chip.
-                        // Horizontal only: the row does not wrap.
-                        readonly property bool pillOverlaps:
-                               tabsHost.markW > 0
-                            && tabsHost.markX < searchTab.x + searchTab.width
-                            && tabsHost.markX + tabsHost.markW > searchTab.x
-
-                        // Whether the accent's copy of the label covers every pixel
-                        // the chip's own copy occupies.
-                        readonly property bool labelFullyInked:
-                               inkWindow.visible
-                            && inkWindow.x <= tabLabel.x
-                            && inkWindow.x + inkWindow.width  >= tabLabel.x + tabLabel.width
-                            && inkWindow.y <= tabLabel.y
-                            && inkWindow.y + inkWindow.height >= tabLabel.y + tabLabel.height
-
-                        border.width: searchTab.activeFocus ? 2 : 0
-                        border.color: Theme.accent
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: root.activeTab = index
-                        Keys.onSpacePressed:  root.activeTab = index
-                        Text {
-                            id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
-                            text: modelData
-                            // Always the ink of the bare row. The accent's ink
-                            // is the copy below.
-                            color: Theme.textSec
-                            // Hidden where the copy covers every pixel of it:
-                            // two Texts in one place blend at the glyphs'
-                            // antialiased edge.
-                            visible: !searchTab.labelFullyInked
-                            font.pixelSize: 13
-                        }
-
-                        // The label again in the accent's ink, clipped to the
-                        // pill, so every glyph pixel is on the fill its ink was
-                        // chosen for. The two inks cannot cross-fade legibly.
-                        Item {
-                            id: inkWindow
-                            objectName: "searchTabInk"
-                            // The pill in this chip's coordinates, clamped so
-                            // it is empty when the pill is elsewhere. Not
-                            // `top`/`bottom`: Item has those as final members.
-                            readonly property real coveredLeft:   Math.max(0, tabsHost.markX - searchTab.x)
-                            readonly property real coveredRight:  Math.min(searchTab.width, tabsHost.markX + tabsHost.markW - searchTab.x)
-                            readonly property real coveredTop:    Math.max(0, tabsHost.markY - searchTab.y)
-                            readonly property real coveredBottom: Math.min(searchTab.height, tabsHost.markY + tabsHost.markH - searchTab.y)
-                            x: coveredLeft
-                            y: coveredTop
-                            width:  Math.max(0, coveredRight - coveredLeft)
-                            height: Math.max(0, coveredBottom - coveredTop)
-                            clip: true
-                            visible: width > 0 && height > 0
-                            Text {
-                                objectName: "searchTabInkLabel"
-                                x: tabLabel.x - inkWindow.x
-                                y: tabLabel.y - inkWindow.y
-                                text: tabLabel.text
-                                font: tabLabel.font
-                                color: Theme.accentInk
-                            }
-                        }
-
-                        MouseArea {
-                            id: tabMA
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.activeTab = index
-                        }
-                    }
-                }
-            }
+        // ── the tab bar ──────────────────────────────────────────────────
+        TabStrip {
+            id: searchTabs
+            namePrefix: "search"
+            visible: root.showsResults
+            // A tab changed while the row is off screen must not start a
+            // travel that plays when the row comes back.
+            animate: visible
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
+            model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
+                    qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
+            currentIndex: root.activeTab
+            onActivated: (index) => { root.activeTab = index }
         }
 
-        Item { height: 8 }
+        Item { height: Theme.space2 }
 
-        // Empty state, outside the ScrollView so it centres in the page: the
-        // last few queries when there are any, the illustration otherwise.
+        // Empty state, outside the ScrollView: the last few queries, hung
+        // under the field and lined up with it, when there are any; a centred
+        // first-run note otherwise.
         Item {
             objectName: "searchEmptyState"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.query.length < 2
+            visible: !root.showsResults
 
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 16
+                spacing: Theme.space4
                 visible: root.recents.length === 0
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
@@ -396,26 +259,36 @@ Rectangle {
                     color: Theme.textDim
                     width: 48
                     height: 48
-                    strokeWidth: 2.0
                 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Search Tidal"); color: Theme.textPrimary; font.pixelSize: 22; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Find tracks, albums, artists and more"); color: Theme.textSec; font.pixelSize: 14 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Search Tidal"); color: Theme.textPrimary; font.pixelSize: Theme.fontDisplay; font.bold: true }
+                Text {
+                    objectName: "searchFirstRunHint"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.maximumWidth: Math.max(0, root.width - 2 * Theme.space12)
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Results appear as you type. Searches that found something are kept here.")
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                }
             }
 
             ColumnLayout {
                 objectName: "searchRecents"
-                anchors.centerIn: parent
-                width: Math.min(420, parent.width - 48)
-                spacing: 4
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.space6
+                width: Math.min(560, parent.width - 2 * Theme.space6)
+                spacing: Theme.space1
                 visible: root.recents.length > 0
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.bottomMargin: 4
+                    Layout.bottomMargin: Theme.space1
                     Text {
                         text: qsTr("Recent searches")
                         color: Theme.textPrimary
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.fontSection
                         font.bold: true
                     }
                     Item { Layout.fillWidth: true }
@@ -427,19 +300,22 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: bridge.clearRecentSearches()
                         Keys.onSpacePressed:  bridge.clearRecentSearches()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: clearAllText.text
+                        Accessible.onPressAction: bridge.clearRecentSearches()
                         Text {
                             id: clearAllText
                             anchors.fill: parent
                             text: qsTr("Clear all")
                             color: clearAll.activeFocus || clearAllMA.containsMouse
-                                   ? Theme.accent : Theme.textSec
-                            font.pixelSize: 13
+                                   ? Theme.accentText : Theme.textSec
+                            font.pixelSize: Theme.fontMeta
                             font.underline: clearAll.activeFocus
                         }
                         MouseArea {
                             id: clearAllMA
                             anchors.fill: parent
-                            anchors.margins: -6
+                            anchors.margins: -Theme.space2
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: bridge.clearRecentSearches()
@@ -456,8 +332,8 @@ Rectangle {
                         Layout.fillWidth: true
                         height: 34
                         radius: Theme.radiusChip
-                        color: rowMA.containsMouse ? Theme.surfaceHov : "transparent"
-                        Behavior on color { ColorAnimation { duration: Theme.dur(120) } }
+                        color: rowMA.containsMouse ? Theme.hoverFill : "transparent"
+                        Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
 
                         MouseArea {
                             id: rowMA
@@ -469,20 +345,19 @@ Rectangle {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 8
-                            spacing: 10
+                            anchors.leftMargin: Theme.space3
+                            anchors.rightMargin: Theme.space2
+                            spacing: Theme.space3
                             VectorIcon {
                                 name: "clock"
                                 color: Theme.textDim
                                 width: 14; height: 14
-                                strokeWidth: 1.8
                             }
                             Text {
                                 Layout.fillWidth: true
                                 text: recentRow.modelData
                                 color: Theme.textPrimary
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontBody
                                 elide: Text.ElideRight
                             }
                             Item {
@@ -494,8 +369,11 @@ Rectangle {
                                 activeFocusOnTab: true
                                 Keys.onReturnPressed: bridge.removeRecentSearch(recentRow.modelData)
                                 Keys.onSpacePressed:  bridge.removeRecentSearch(recentRow.modelData)
+                                Accessible.role: Accessible.Button
+                                Accessible.name: qsTr("Remove “%1” from recent searches").arg(recentRow.modelData)
+                                Accessible.onPressAction: bridge.removeRecentSearch(recentRow.modelData)
                                 Rectangle {
-                                    anchors.fill: parent; anchors.margins: -4
+                                    anchors.fill: parent; anchors.margins: -Theme.space1
                                     radius: Theme.radiusButton; color: "transparent"
                                     border.width: dropRecent.activeFocus ? 2 : 0
                                     border.color: Theme.accent
@@ -504,13 +382,12 @@ Rectangle {
                                     anchors.fill: parent
                                     name: "x"
                                     color: dropRecent.activeFocus || dropMA.containsMouse
-                                           ? Theme.accent : Theme.textDim
-                                    strokeWidth: 1.8
+                                           ? Theme.accentText : Theme.textDim
                                 }
                                 MouseArea {
                                     id: dropMA
                                     anchors.fill: parent
-                                    anchors.margins: -5
+                                    anchors.margins: -Theme.space1
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     // The row under this is clickable too, and
@@ -532,12 +409,12 @@ Rectangle {
             objectName: "searchScroll"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            rightPadding: 14
+            rightPadding: Theme.space4
             contentWidth: availableWidth
             // Stated, because a ScrollView on Qt 6.5 works its content height
             // out once and does not follow the column as rows arrive.
             contentHeight: resultsColumn.implicitHeight
-            visible: root.query.length >= 2
+            visible: root.showsResults
             opacity: root.resultsIn
 
             ColumnLayout {
@@ -546,22 +423,40 @@ Rectangle {
                 width: parent.width
                 spacing: 0
 
-                // A failed search says so in one line of Theme.red text, as
-                // LoginPage does for a failed sign-in.
+                // A failed search says what it means, as Home's mixes row does;
+                // Qt's own sentence (host, socket, HTTP reason) goes to the log.
                 Item {
                     objectName: "searchErrorStrip"
                     Layout.fillWidth: true
-                    height: 80
+                    // A Layout reads the preferred height; the offline copy wraps.
+                    Layout.preferredHeight: Math.max(80, errorColumn.implicitHeight + 32)
                     visible: root.replied && root.errorText.length > 0
-                    Text {
-                        objectName: "searchErrorLabel"
+                    Column {
+                        id: errorColumn
                         anchors.centerIn: parent
                         width: parent.width - 48
-                        text: qsTr("Search failed: %1").arg(root.errorText)
-                        color: Theme.red
-                        font.pixelSize: 15
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
+                        spacing: Theme.space3
+                        Text {
+                            id: errorLabel
+                            objectName: "searchErrorLabel"
+                            width: parent.width
+                            text: root.errorOffline
+                                  ? qsTr("Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.")
+                                  : qsTr("Tidal could not answer this search.")
+                            color: Theme.textSec
+                            font.pixelSize: Theme.fontBody
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        PillButton {
+                            objectName: "searchRetry"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: !root.errorOffline
+                            text: qsTr("Try again")
+                            accent: false
+                            height: 32
+                            onClicked: root.doSearch(root.repliedFor)
+                        }
                     }
                 }
 
@@ -589,8 +484,95 @@ Rectangle {
                              : qsTr("No results for \"%1\"").arg(root.query))
                             : qsTr("No results for \"%1\"").arg(root.query)
                         color: Theme.textSec
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.fontBody
                     }
+                }
+
+                // The server's own best match, over the five sections on the
+                // All tab. A track plays on a click, as a track row does;
+                // everything else opens its page.
+                Column {
+                    id: topHitBlock
+                    Layout.fillWidth: true
+                    visible: root.activeTab === 0 && root.replied && !!root.topHit
+                             && root.errorText.length === 0
+                    readonly property var  hit:  root.topHit ? root.topHit.item : null
+                    readonly property string kind: root.topHit ? root.topHit.kind : ""
+
+                    Item { width: 1; height: Theme.space4 }
+                    Text {
+                        x: Theme.space6
+                        text: qsTr("Top result", "heading over the one best match of a search")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                    }
+                    Item { width: 1; height: Theme.space3 }
+
+                    Rectangle {
+                        id: topHitCard
+                        objectName: "searchTopHit"
+                        x: Theme.space6
+                        width: Math.min(520, parent.width - 2 * Theme.space6)
+                        height: topHitRow.implicitHeight + 2 * Theme.space4
+                        radius: Theme.radiusCard
+                        color: topHitHov.hovered || activeFocus ? Theme.hoverFill : Theme.surface
+                        border.width: activeFocus ? 2 : 0
+                        border.color: Theme.accent
+                        Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+
+                        activeFocusOnTab: visible
+                        Keys.onReturnPressed: root.openTopHit()
+                        Keys.onSpacePressed:  root.openTopHit()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: root.topHitTitle() + ", " + root.topHitKindLabel()
+                        Accessible.onPressAction: root.openTopHit()
+
+                        HoverHandler { id: topHitHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.openTopHit() }
+
+                        RowLayout {
+                            id: topHitRow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: Theme.space4
+                            anchors.rightMargin: Theme.space4
+                            spacing: Theme.space4
+
+                            CoverArt {
+                                objectName: "searchTopHitCover"
+                                Layout.preferredWidth: 96
+                                Layout.preferredHeight: 96
+                                // An artist is a face, round as on its card.
+                                radius: topHitBlock.kind === "artist" ? width / 2 : Theme.radiusArt
+                                source: topHitBlock.hit ? (topHitBlock.hit.coverUrl || "") : ""
+                                glyph: topHitBlock.kind === "artist" ? "artist"
+                                     : topHitBlock.kind === "playlist" ? "playlist"
+                                     : topHitBlock.kind === "album" ? "album" : "track"
+                                decodeSize: Qt.size(192, 192)
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.space1
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.topHitTitle()
+                                    color: Theme.textPrimary
+                                    font.pixelSize: Theme.fontTitle
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.topHitMeta()
+                                    color: Theme.textSec
+                                    font.pixelSize: Theme.fontMeta
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+                    Item { width: 1; height: Theme.space6 }
                 }
 
                 // The five sections in the query's order: the Loaders stay put,
@@ -613,24 +595,57 @@ Rectangle {
                 Item {
                     objectName: "searchPagingStrip"
                     Layout.fillWidth: true
-                    height: visible ? 56 : 0
                     // "End of results" under three albums would be noise, so
                     // the end is only announced for a kind that paged.
+                    readonly property bool failed: root.moreFailedKind === root.activeTab
+                                                   && !root.loadingMore
+                    height: visible ? (failed ? moreFailColumn.implicitHeight + 32 : 56) : 0
                     visible: root.activeTab !== 0
-                             && (root.loadingMore
+                             && (root.loadingMore || failed
                                  || (!root._more[root.activeTab]
                                      && root.tabHits >= root.pageSize))
                     Text {
                         objectName: "searchPagingLabel"
                         anchors.centerIn: parent
+                        visible: !parent.failed
                         text: root.loadingMore ? qsTr("Loading more…")
                                                : qsTr("End of results")
                         color: Theme.textDim
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontMeta
+                    }
+                    Column {
+                        id: moreFailColumn
+                        anchors.centerIn: parent
+                        width: parent.width - 48
+                        spacing: Theme.space3
+                        visible: parent.failed
+                        Text {
+                            width: parent.width
+                            text: root.moreFailedOffline
+                                  ? qsTr("Tidal cannot be reached, so no more results could be loaded.")
+                                  : qsTr("Tidal could not load more results.")
+                            color: Theme.textSec
+                            font.pixelSize: Theme.fontBody
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        PillButton {
+                            objectName: "searchMoreRetry"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: qsTr("Try again")
+                            accent: false
+                            height: 32
+                            onClicked: {
+                                var kind = root.moreFailedKind
+                                root.moreFailedKind = -1
+                                root._setMore(kind, true)
+                                root.loadMore(kind)
+                            }
+                        }
                     }
                 }
 
-                Item { height: 32 }
+                Item { height: Theme.space8 }
             }
         }
     }
@@ -674,28 +689,48 @@ Rectangle {
                      && root.tracks.length > 0
             implicitHeight: visible ? tracksCol.height : 0
 
+            // Rows are built once a tab shows them and kept until the results
+            // change, so going back to a tab builds nothing. `full` is the
+            // Tracks tab's whole list; the All tab shows its first few of it.
+            property bool seen: false
+            property bool full: false
+            readonly property bool onTracksTab: root.activeTab === root.kTracks
+            function forget() { seen = visible; full = onTracksTab }
+            Component.onCompleted: forget()
+            onVisibleChanged: if (visible) seen = true
+            onOnTracksTabChanged: if (onTracksTab) full = true
+            Connections {
+                target: root
+                function onTracksChanged() { tracksSec.forget() }
+            }
+
             Column {
                 id: tracksCol
                 width: parent.width
 
-                Item { width: 1; height: 16 }
+                Item { width: 1; height: Theme.space4 }
                 Text {
                     x: 24
                     text: root.sectionTitle(root.kTracks)
-                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
                 }
-                Item { width: 1; height: 8 }
+                Item { width: 1; height: Theme.space2 }
 
+                // The tracks are one tab stop; see TrackRow.rowGroup.
+                QtObject { id: trackGroup; property int current: 0 }
                 Repeater {
-                    // Nothing is built for a section nobody is looking at: a
+                    onModelChanged: trackGroup.current = 0
+                    // Nothing is built for a section nobody has looked at: a
                     // type tab other than Tracks would otherwise still carry
                     // every TrackRow of the result set, invisibly.
-                    model: !tracksSec.visible ? 0
-                           : root.activeTab === 0
-                             ? Math.min(root.tracks.length, root.allTabTracksCap)
-                             : root.tracks.length
+                    model: !tracksSec.seen ? 0
+                           : tracksSec.full ? root.tracks.length
+                           : Math.min(root.tracks.length, root.allTabTracksCap)
                     TrackRow {
                         required property int index
+                        visible: tracksSec.onTracksTab || index < root.allTabTracksCap
+                        rowGroup: trackGroup
+                        rowIndex: index
                         x: 16
                         width: tracksCol.width - 32
                         trackNum:       index + 1
@@ -704,9 +739,7 @@ Rectangle {
                         albumTitle:     root.tracks[index].albumTitle
                         durationStr:    root.tracks[index].durationStr
                         coverUrl:       root.tracks[index].coverUrl80
-                        isPlaying:      player.currentTrack.id === root.tracks[index].id && player.playing
                         trackData:      root.tracks[index]
-                        showPopularity: true
                         // Declares "search" as the source so the player bar
                         // stops naming the previous one. markPlayed() drops it,
                         // so nothing is recorded as played.
@@ -716,7 +749,7 @@ Rectangle {
                         }
                     }
                 }
-                Item { width: 1; height: 16 }
+                Item { width: 1; height: Theme.space4 }
             }
         }
     }
@@ -733,6 +766,12 @@ Rectangle {
             readonly property bool asGrid: root.activeTab === kind
             visible: (root.activeTab === 0 || root.activeTab === kind)
                      && tiles.length > 0
+            // The grid is built the first time its tab shows and kept until
+            // the results change, as the tracks are.
+            property bool gridSeen: false
+            Component.onCompleted: gridSeen = asGrid
+            onAsGridChanged: if (asGrid) gridSeen = true
+            onTilesChanged: gridSeen = asGrid
             implicitHeight: !visible ? 0 : (asGrid ? gridCol.height : rowHolder.height)
 
             // The All tab's summary row.
@@ -759,26 +798,27 @@ Rectangle {
                 width: parent.width
                 visible: tileSec.asGrid && tileSec.visible
 
-                Item { width: 1; height: 16 }
+                Item { width: 1; height: Theme.space4 }
                 Text {
                     x: 24
                     text: root.sectionTitle(tileSec.kind)
-                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
                 }
-                Item { width: 1; height: 12 }
+                Item { width: 1; height: Theme.space3 }
 
                 Flow {
                     x: 24
                     width: Math.max(0, gridCol.width - 48)
-                    spacing: 16
+                    spacing: Theme.space4
                     Repeater {
-                        model: tileSec.asGrid ? tileSec.tiles.length : 0
+                        model: tileSec.gridSeen ? tileSec.tiles.length : 0
                         MediaCard {
                             required property int index
                             readonly property var tile: tileSec.tiles[index]
                             coverUrl:  tile ? (tile.coverUrl || "") : ""
                             title:     tile ? (tile.title    || "") : ""
                             subtitle:  tile ? (tile.subtitle || "") : ""
+                            artistList: tile ? (tile.artistList || []) : []
                             mediaType: root.mediaTypeOf(tileSec.kind)
                             itemId:    tile ? ("" + (tile.id || "")) : ""
                             cardSize:  160
@@ -787,7 +827,7 @@ Rectangle {
                         }
                     }
                 }
-                Item { width: 1; height: 16 }
+                Item { width: 1; height: Theme.space4 }
             }
         }
     }
@@ -885,7 +925,7 @@ Rectangle {
         if (kind === kAlbums)
             return albums.map(function (a) {
                 return { id: a.id, title: a.title, subtitle: a.artists,
-                         coverUrl: a.coverUrl }
+                         coverUrl: a.coverUrl, artistList: a.artistList || [] }
             })
         if (kind === kArtists)
             return artists.map(function (a) {
@@ -895,7 +935,7 @@ Rectangle {
         if (kind === kPlaylists)
             return playlists.map(function (p) {
                 return { id: p.uuid, title: p.title,
-                         subtitle: qsTr("%n track(s)", "", p.numTracks),
+                         subtitle: qsTr("%Ln track(s)", "", p.numTracks),
                          coverUrl: p.coverUrl || "", playlistType: p.type || "" }
             })
         if (kind === kMixes)
@@ -920,6 +960,53 @@ Rectangle {
             navigateTo("mix", { mixId: item.id, title: item.title,
                                 subtitle: item.subtitle, coverUrl: item.coverUrl,
                                 mixType: item.mixType || "" })
+    }
+
+    // ── the top result ──────────────────────────────────────────────────
+
+    function topHitTitle() {
+        var h = root.topHit ? root.topHit.item : null
+        if (!h) return ""
+        return root.topHit.kind === "artist" ? (h.name || "") : (h.title || "")
+    }
+
+    function topHitKindLabel() {
+        switch (root.topHit ? root.topHit.kind : "") {
+        case "artist":   return qsTr("Artist")
+        case "album":    return qsTr("Album", "the kind of a search's top result")
+        case "track":    return qsTr("Track", "the kind of a search's top result")
+        case "playlist": return qsTr("Playlist", "the kind of a search's top result")
+        }
+        return ""
+    }
+
+    // The kind, then who made it where that is known.
+    function topHitMeta() {
+        var h = root.topHit ? root.topHit.item : null
+        var parts = [root.topHitKindLabel()]
+        if (h && h.artists && root.topHit.kind !== "artist") parts.push(h.artists)
+        return parts.filter(function (p) { return p && p.length > 0 }).join(" · ")
+    }
+
+    function openTopHit() {
+        if (!root.topHit || !root.topHit.item) return
+        var h = root.topHit.item
+        switch (root.topHit.kind) {
+        case "track":
+            // From its row where the list holds it, as a click on that row
+            // would; on its own otherwise.
+            player.setPlaybackSource("search", root.query, root.query)
+            for (var i = 0; i < root.tracks.length; ++i)
+                if (root.tracks[i].id === h.id) { player.playTracks(root.tracks, i); return }
+            player.playTracks([h], 0)
+            return
+        case "album":    openTile(kAlbums, { id: h.id }); return
+        case "artist":   openTile(kArtists, { id: h.id }); return
+        case "playlist":
+            openTile(kPlaylists, { id: h.uuid, title: h.title, coverUrl: h.coverUrl || "",
+                                   playlistType: h.type || "" })
+            return
+        }
     }
 
     // Declaring the source is what records the play. Inside the callback and
@@ -1055,7 +1142,9 @@ Rectangle {
             // Recording the replied query is what lets the two strips speak.
             root.repliedFor = q
             if (err.length > 0) {
+                console.warn("Search failed:", err)
                 root.errorText = err
+                root.errorOffline = bridge.offline === true
                 // The arrays still hold the last successful query's hits, which
                 // this query cannot claim.
                 root._resetResults()
@@ -1077,6 +1166,7 @@ Rectangle {
             // Ordered from the reply, once, so the sections cannot move under
             // an append or a keystroke.
             root.sectionOrder = root.orderFor(q, results)
+            root.topHit = (results.topHit && results.topHit.item) ? results.topHit : null
 
             // Remembered only once it has found something: the page searches as
             // the user types, and prefixes and typos do not belong here.
@@ -1115,11 +1205,12 @@ Rectangle {
     function loadMore(kind) {
         if (kind < kTracks || kind > kMixes) return
         if (loading || loadingMore || !_more[kind]) return
-        if (query.length < 2) return
+        // The query on screen is the answered one, not what is being typed.
+        if (repliedFor.length < 2) return
 
         loadingMore = true
         var gen = root._searchGen
-        var q = root.query
+        var q = root.repliedFor
         // Where the page sits now. While the column's implicit height lags
         // behind its new children, contentY is clamped to the old maximum and
         // the view jumps up. Put back once the layout has settled.
@@ -1129,11 +1220,14 @@ Rectangle {
         bridge.search(q, function (results, err) {
             if (gen !== root._searchGen) return   // the query moved on
             root.loadingMore = false
+            root.moreFailedKind = -1
             if (err.length > 0) {
                 // The rows already on screen are still a true answer to this
                 // query, so they stay; what stops is the asking, which would
                 // otherwise retry on every pixel of scroll.
-                root.errorText = err
+                console.warn("Search failed:", err)
+                root.moreFailedKind = kind
+                root.moreFailedOffline = bridge.offline === true
                 root._setMore(kind, false)
                 return
             }
@@ -1191,11 +1285,20 @@ Rectangle {
     }
 
     function _resetResults() {
+        moreFailedKind = -1
         tracks = []; albums = []; artists = []; playlists = []; mixes = []
+        topHit = null
         _seen = ({})
         _sent  = [0, 0, 0, 0, 0, 0]
         _total = [0, 0, 0, 0, 0, 0]
         _more  = [false, false, false, false, false, false]
+    }
+
+    // Too short to search: nothing goes out and nothing still out may land,
+    // but the answer on screen stays.
+    function holdResults() {
+        searchDebounce.stop()
+        _searchGen++; loading = false; loadingMore = false
     }
 
     function clearResults() {
@@ -1203,12 +1306,13 @@ Rectangle {
         sectionOrder = [kTracks, kAlbums, kArtists, kPlaylists, kMixes]
         _searchGen++; loading = false; loadingMore = false
         // Back below the threshold: there is no query to have an answer about.
-        repliedFor = ""; errorText = ""
+        repliedFor = ""; errorText = ""; errorOffline = false
     }
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params)
     }
 
-    LoadingOverlay { loading: root.loading }
+    // Below the search field, which keeps the keyboard while results load.
+    Skeleton { loading: root.loading; kind: "cards"; topInset: searchBar.y + searchBar.height }
 }

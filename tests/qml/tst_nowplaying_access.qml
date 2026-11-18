@@ -248,10 +248,10 @@ TestCase {
                "the button is " + btn.width + "x" + btn.height + ", too small to aim at")
 
         // The button opens a view, so it sits with the queue button and outside
-        // the track info group, whose declared widths stay as they are.
+        // the track info group, which keeps its 200 to 280 band.
         var group = bar.trackInfoGroup
-        compare(group.Layout.preferredWidth, 280,
-                "the left group's preferred width moved")
+        verify(group.Layout.preferredWidth >= 200 && group.Layout.preferredWidth <= 280,
+               "the left group wants " + group.Layout.preferredWidth + "px at " + row.tag)
         compare(group.Layout.minimumWidth, 200, "the left group's floor moved")
         var p = btn.parent
         while (p) {

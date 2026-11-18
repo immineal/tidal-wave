@@ -31,11 +31,11 @@ TestCase {
     function makeCache() {
         return [
             { uuid: "p-first", title: "Alte Liste",  description: "unberührt",
-              coverUrl: "cdn/c1.jpg", numTracks: 12, duration: 2400, type: "USER" },
+              coverUrl: "cdn/c1.jpg", numTracks: 12, duration: 2400, type: "USER", editable: true },
             { uuid: "p-tape",  title: "Tape",        description: "",
-              coverUrl: "",           numTracks: 0,  duration: 0,    type: "USER" },
+              coverUrl: "",           numTracks: 0,  duration: 0,    type: "USER", editable: true },
             { uuid: "p-end",   title: "Winterabend", description: "",
-              coverUrl: "cdn/c3.jpg", numTracks: 7,  duration: 1500, type: "USER" }
+              coverUrl: "cdn/c3.jpg", numTracks: 7,  duration: 1500, type: "USER", editable: true }
         ]
     }
 
@@ -172,7 +172,7 @@ TestCase {
     // The expected string, built by the call the delegate makes: the plural
     // form differs per language and per number.
     function countText(n) {
-        return qsTr("%n track(s)", "", n)
+        return qsTr("%Ln track(s)", "", n)
     }
 
     // ── the picker's count ───────────────────────────────────────────────
@@ -189,7 +189,7 @@ TestCase {
                 "the picker did not start from the empty playlist the report starts from")
 
         // The server reports two tracks when asked, which is the only way the
-        // app can know: the post sends onDuplicateFound=SKIP, so a success does
+        // app can know: the post sends onDupes=SKIP, so a success does
         // not mean the playlist grew.
         bridge.setPlaylistHeaderForTest("p-tape", tapeHeaderWithTwo())
 
@@ -243,7 +243,7 @@ TestCase {
 
         compare(bridge.playlistHeaderReadsForTest(), 0,
                 "a refused add still went back for the playlist's header")
-        compare(row.lastConfirmation, qsTr("Could not add the song to “%1”").arg("Tape"),
+        compare(row.lastConfirmation, qsTr("Could not add the track to “%1”").arg("Tape"),
                 "a refused add was not reported, or was reported as a success")
 
         row.openPicker()
@@ -347,7 +347,7 @@ TestCase {
         bridge.setPlaylistTracksForTest([makeTrack()])
         var host = showPane(1200)
         var page = showPlaylistPage(host)
-        compare(page.tracks.length, 1, "the page did not load its one track")
+        compare(page.trackRows.length, 1, "the page did not load its one track")
 
         var row = firstTrackRow(host)
         verify(row, "the playlist page built no track row")
@@ -360,15 +360,15 @@ TestCase {
         compare(bridge.lastRemovedPlaylistForTest(), "p-tape",
                 "the removal was sent for the wrong playlist")
         compare(bridge.lastRemovedIndexForTest(), 0, "the removal was sent for the wrong row")
-        compare(page.tracks.length, 1, "a refused removal took the song off the page anyway")
+        compare(page.trackRows.length, 1, "a refused removal took the song off the page anyway")
         compare(row.lastConfirmation,
-                qsTr("Could not remove the song from the playlist"),
+                qsTr("Could not remove the track from the playlist"),
                 "a refused removal said nothing, so it reads as a click that missed")
     }
 
-    // An accepted removal says nothing: the row leaving the list is the
-    // confirmation. Driven on a standalone row, because on the page a
-    // successful removal destroys the delegate that raised it.
+    // The row says nothing of an accepted removal: the page does, with Undo.
+    // Driven on a standalone row, because on the page a successful removal
+    // destroys the delegate that raised it.
     function test_an_accepted_removal_is_not_announced_and_a_refused_one_is() {
         var host = showPane(1200)
         var row = createTemporaryObject(trackRowC, host.pane,
@@ -381,7 +381,7 @@ TestCase {
                 + "confirmation and a tool tip over the gap is noise")
 
         row.confirmRemovedFromPlaylist(false)
-        compare(row.lastConfirmation, qsTr("Could not remove the song from the playlist"),
+        compare(row.lastConfirmation, qsTr("Could not remove the track from the playlist"),
                 "a refused removal said nothing, or said the wrong thing")
     }
 
@@ -400,16 +400,37 @@ TestCase {
         settle(host.contentItem)
 
         compare(bridge.removeFromPlaylistCallsForTest(), 1, "the removal never went out")
-        compare(page.tracks.length, 0, "an accepted removal left the song on the page")
+        compare(page.trackRows.length, 0, "an accepted removal left the song on the page")
         compare(bridge.playlistHeaderReadsForTest(), 1,
                 "an accepted removal did not repair the cached counts")
+    }
+
+    // The page, not the row, says it landed, and offers the track back at
+    // the row it was taken from.
+    function test_an_accepted_removal_offers_undo_at_the_same_row() {
+        Toasts.dismiss()
+        bridge.setPlaylistTracksForTest([makeTrack()])
+        var host = showPane(1200)
+        var page = showPlaylistPage(host)
+        var row = firstTrackRow(host)
+        verify(row, "the playlist page built no track row")
+
+        row.removeFromPlaylistRequested(0)
+        settle(host.contentItem)
+
+        verify(Toasts.shown, "an accepted removal said nothing")
+        verify(Toasts.text.indexOf("Tape") >= 0, "the toast did not name the playlist: " + Toasts.text)
+        verify(Toasts.actionLabel.length > 0, "an accepted removal offered no Undo")
+        Toasts.runAction()
+        compare(bridge.lastRestoredForTest(), "p-tape 9001 0",
+                "Undo did not put the track back where it was")
     }
 
     // ── getting out of the two popups ────────────────────────────────────
     // Both popups close with Escape and carry SettingsPanel's close button,
     // with SearchBar's keyboard treatment. The hit area is asserted as a
-    // number.
-    readonly property int closeTargetPx: 26
+    // number: 32, the smallest target the app allows.
+    readonly property int closeTargetPx: 32
 
     function clickItem(host, item) {
         var at = item.mapToItem(host.contentItem, item.width / 2, item.height / 2)
@@ -600,7 +621,7 @@ TestCase {
         row.removeFromPlaylistRequested(0)
         settle(host.contentItem)
 
-        compare(page.tracks.length, 0, "the removal did not take the song off the page")
+        compare(page.trackRows.length, 0, "the removal did not take the song off the page")
         compare(page.playlistDuration, 0,
                 "the hero still reports the length the playlist had before the removal")
     }
@@ -658,7 +679,7 @@ TestCase {
                                     type: "USER" })
         var host = showPane(1200)
         var page = showPlaylistPage(host)
-        compare(page.tracks.length, 1, "the page did not load its one track")
+        compare(page.trackRows.length, 1, "the page did not load its one track")
         var fetchesAtLoad = bridge.playlistTracksFetchesForTest()
 
         // The endpoint will answer two tracks next time, and the header says two.
@@ -672,7 +693,7 @@ TestCase {
         bridge.addTracksToPlaylist("p-tape", 9002, function (ok) {})
         settle(host.contentItem)
 
-        compare(page.tracks.length, 2,
+        compare(page.trackRows.length, 2,
                 "a song added to the playlist on screen never appeared on it")
         compare(bridge.playlistTracksFetchesForTest(), fetchesAtLoad + 1,
                 "the page asked for its tracklist "
@@ -698,7 +719,7 @@ TestCase {
         row.removeFromPlaylistRequested(0)
         settle(host.contentItem)
 
-        compare(page.tracks.length, 0, "the removal did not take the song off the page")
+        compare(page.trackRows.length, 0, "the removal did not take the song off the page")
         compare(bridge.playlistTracksFetchesForTest(), fetchesAtLoad,
                 "a removal re-fetched the whole tracklist although the page had "
                 + "already spliced it to match")

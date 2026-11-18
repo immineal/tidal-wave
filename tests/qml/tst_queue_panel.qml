@@ -47,6 +47,7 @@ TestCase {
     }
 
     SignalSpy { id: queueSpy; target: player; signalName: "queueChanged" }
+    SignalSpy { id: pickSpy; target: Edits; signalName: "playlistPickRequested" }
 
     function init() {
         app.setReducedMotionForTest(true)      // no fades to wait out
@@ -78,12 +79,15 @@ TestCase {
         return out
     }
 
-    // Delegates in flat-index order, which is the order the user reads them
-    // in. ListView parents them to contentItem in creation order, not in
-    // index order, so they have to be sorted.
+    // The delegates built, in flat-index order, which is the order the user
+    // reads them in. Asked of the list, not found among its children: a row
+    // taken off the end waits there, culled, in the reuse pool.
     function entries(panel) {
-        var all = collectByName(panel, "queueEntry", [])
-        all.sort(function (a, b) { return a.rowIndex - b.rowIndex })
+        var list = panel.queueList, all = []
+        for (var i = 0; i < list.count; ++i) {
+            var e = list.itemAtIndex(i)
+            if (e) all.push(e)
+        }
         return all
     }
 
@@ -152,6 +156,11 @@ TestCase {
             // this counter moves.
             property int pageClicks: 0
             property int dismissals: 0
+            // Where the panel sent the user, as "page id".
+            property var visits: []
+            function navigate(page, params) {
+                visits = visits.concat([page + " " + (params.albumId || params.artistId || "")])
+            }
             property alias panel: qp
 
             MouseArea {
@@ -216,7 +225,7 @@ TestCase {
         var panel = openPanel(host)
 
         compare(headerLabels(panel).join(" | "),
-                [qsTr("Played"), qsTr("Now Playing"), qsTr("Next in queue"),
+                [qsTr("Earlier in queue"), qsTr("Now playing"), qsTr("Next in queue"),
                  qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "the four section headers, in reading order")
 
@@ -247,6 +256,19 @@ TestCase {
                "the context header does not name the playlist it came from")
     }
 
+    // A search is named as a search, not by its bare query.
+    function test_the_context_header_says_a_search() {
+        seedAll()
+        player.setPlaybackSource("search", "fontaines", "fontaines")
+        var host = showHost()
+        var panel = openPanel(host)
+
+        verify(headerLabels(panel).indexOf(
+                   qsTranslate("QueuePanel", "Next from: search “%1”",
+                               "the queue was started from the search results").arg("fontaines")) >= 0,
+               "the context header shows " + headerLabels(panel).join(" | "))
+    }
+
     // ── empty sections draw no header ────────────────────────────────────
 
     function test_an_empty_section_shows_no_header() {
@@ -262,10 +284,10 @@ TestCase {
         var labels = headerLabels(panel)
         compare(labels.indexOf(qsTr("Next in queue")), -1,
                 "an empty manual queue still drew its header")
-        compare(labels.indexOf(qsTr("Played")), -1,
+        compare(labels.indexOf(qsTr("Earlier in queue")), -1,
                 "an empty history still drew its header")
         compare(labels.join(" | "),
-                [qsTr("Now Playing"), qsTr("Next from: %1").arg("Life 1")].join(" | "),
+                [qsTr("Now playing"), qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "only the two sections with something in them belong on screen")
         compare(rowTitles(panel).join(","), "Ctx 0,Ctx 1,Ctx 2,Ctx 3",
                 "the rows themselves are unaffected")
@@ -331,7 +353,7 @@ TestCase {
         verify(!btn || !btn.visible, "a context row offered a remove button")
     }
 
-    // ── drag to reorder, inside the manual queue and nowhere else ────────
+    // ── drag to reorder ──────────────────────────────────────────────────
 
     function test_dragging_reorders_the_manual_queue() {
         player.setQueueForTest(makeTracks(6, "Ctx"), 2)
@@ -382,18 +404,17 @@ TestCase {
                "the drop indicator outlived the drag")
     }
 
-    // The drag is confined to its section: a manual row dropped over the
-    // context below, over the history above, or off the panel entirely is
-    // not moved at all. A slip of the hand must not be an edit.
-    function test_a_drag_cannot_leave_the_manual_section_data() {
+    // A drag is confined to what is still to come: dropped over the history,
+    // the playing row or off the panel, a row is not moved at all. A slip of
+    // the hand must not be an edit.
+    function test_a_drag_cannot_land_in_the_history_or_off_the_panel_data() {
         return [
-            { tag: "down into the context", dx: 0,   dy:  5 },
             { tag: "up into the played",    dx: 0,   dy: -5 },
             { tag: "sideways onto the page", dx: -600, dy: 1 }
         ]
     }
 
-    function test_a_drag_cannot_leave_the_manual_section(row) {
+    function test_a_drag_cannot_land_in_the_history_or_off_the_panel(row) {
         player.setQueueForTest(makeTracks(6, "Ctx"), 2)
         player.setCurrentTrackForTest(makeTrack(2, "Ctx"))
         player.setManualForTest(makeTracks(3, "Manual"))
@@ -412,39 +433,260 @@ TestCase {
         mouseMove(host.contentItem, toX, toY)
         wait(1)
         verify(!findByName(panel, "queueDropIndicator").visible,
-               "the indicator should go dark once the pointer leaves the section ("
+               "the indicator should go dark once the pointer leaves the queue ("
                + row.tag + ")")
         mouseRelease(host.contentItem, toX, toY)
         settle(host.contentItem)
 
         compare(player.queueCalls.length, 0,
                 "a drop " + row.tag + " reached the player")
-        compare(player.queueManual[0].title + "," + player.queueManual[1].title + ","
-                + player.queueManual[2].title,
-                "Manual 0,Manual 1,Manual 2",
-                "a drop " + row.tag + " reordered the manual queue")
         compare(rowTitles(panel).join(","),
                 "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Manual 2,Ctx 3,Ctx 4,Ctx 5",
                 "the list reordered anyway after a drop " + row.tag)
     }
 
-    function test_only_manual_rows_have_a_grip_data() {
-        return [{ tag: "played" }, { tag: "current" }, { tag: "context" }]
+    // Drags a row by its grip by `dy` pixels and drops it there.
+    function dragRow(host, panel, flatIndex, dy) {
+        var grip = findByName(entryAt(panel, flatIndex), "queueDragArea")
+        verify(grip && grip.enabled, "the row at " + flatIndex + " cannot be dragged")
+        var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
+        mousePress(host.contentItem, from.x, from.y)
+        // In steps, as a hand moves, so the drag starts before it lands.
+        mouseMove(host.contentItem, from.x, from.y + dy / 2)
+        mouseMove(host.contentItem, from.x, from.y + dy)
+        wait(1)
+        verify(findByName(panel, "queueDropIndicator").visible,
+               "the drop indicator never showed")
+        mouseRelease(host.contentItem, from.x, from.y + dy)
+        settle(host.contentItem)
     }
 
-    function test_only_manual_rows_have_a_grip(row) {
+    // The rest of the album is the user's to reorder too.
+    function test_dragging_reorders_the_context() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        dragRow(host, panel, panel.contextAt, 2 * panel.rowHeight)
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 context 2",
+                "the drop asked the player for the wrong move")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Ctx 4,Ctx 5,Ctx 3",
+                "the visible order did not follow the drop")
+    }
+
+    // Across the line between the two, a row takes the section it lands in,
+    // as in Spotify's queue.
+    function test_a_context_row_dropped_in_the_queue_joins_it() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        // Up over the context heading and one queued row: between the two.
+        dragRow(host, panel, panel.contextAt, -(2 * panel.rowHeight + panel.headerHeight))
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 manual 1",
+                "the drop asked the player for the wrong move")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 0,Ctx 3,Manual 1,Ctx 4,Ctx 5",
+                "the row did not land in the queue")
+        compare(panel.manualCount, 3, "the row did not join the queue")
+    }
+
+    function test_a_queued_row_dropped_in_the_context_leaves_the_queue() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        dragRow(host, panel, panel.manualAt, 5 * panel.rowHeight)
+        compare(player.queueCalls.join(","), "moveQueueRow manual 0 context 3",
+                "the drop asked the player for the wrong move")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 1,Ctx 3,Ctx 4,Ctx 5,Manual 0",
+                "the row did not land at the end of the album")
+        compare(panel.manualCount, 1, "the row stayed in the queue")
+    }
+
+    // A row is dragged by its body as well as by the grip, as in Spotify and
+    // Tidal; a press that does not travel is still a click.
+    function test_a_row_drags_by_its_body_too() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        var row = entryAt(panel, panel.contextAt)
+        var from = pointIn(host, row, row.width - 60, row.height / 2)
+        mousePress(host.contentItem, from.x, from.y)
+        mouseMove(host.contentItem, from.x, from.y + panel.rowHeight / 2)
+        mouseMove(host.contentItem, from.x, from.y + panel.rowHeight)
+        wait(1)
+        verify(panel.dragging, "a drag on the row's body did not pick it up")
+        mouseRelease(host.contentItem, from.x, from.y + panel.rowHeight)
+        settle(host.contentItem)
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 context 1",
+                "a drag by the body did not move the row")
+    }
+
+    // Held at the bottom edge, the list scrolls under the row, so a row can
+    // travel further than one screen. The row being dragged outlives the scroll.
+    function test_a_drag_held_at_the_edge_scrolls_the_list() {
+        player.setQueueForTest(makeTracks(200, "Ctx"), 0)
+        player.setCurrentTrackForTest(makeTrack(0, "Ctx"))
+        player.setPlaybackSource("album", "42", "Life 1")
+        player.resetQueueCallsForTest()
+        var host = showHost()
+        var panel = openPanel(host)
+        var view = panel.queueList
+        view.positionViewAtBeginning()
+        settle(host.contentItem)
+        var top = view.contentY
+
+        var grip = findByName(entryAt(panel, panel.contextAt), "queueDragArea")
+        var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
+        var edge = view.mapToItem(host.contentItem, 0, view.height - 4).y
+        mousePress(host.contentItem, from.x, from.y)
+        mouseMove(host.contentItem, from.x, (from.y + edge) / 2)
+        mouseMove(host.contentItem, from.x, edge)
+        tryVerify(function () { return view.contentY > top + 20 * panel.rowHeight }, 5000,
+                  "holding a row at the bottom edge did not scroll the list")
+        var target = panel.dragTo
+        verify(target > 20, "the drop is still aimed at slot " + target)
+        mouseRelease(host.contentItem, from.x, edge)
+        settle(host.contentItem)
+        compare(player.queueCalls.join(","), "moveQueueRow context 0 context " + target,
+                "the drop after the scroll did not reach the player")
+        compare(player.queueContext[target].title, "Ctx 1",
+                "the row did not land where the indicator was")
+    }
+
+    function test_only_upcoming_rows_have_a_grip_data() {
+        return [{ tag: "played", can: false }, { tag: "current", can: false },
+                { tag: "manual", can: true }, { tag: "context", can: true }]
+    }
+
+    function test_only_upcoming_rows_have_a_grip(row) {
         seedAll()
         var host = showHost()
         var panel = openPanel(host)
 
         var at = row.tag === "played"  ? panel.playedAt
                : row.tag === "current" ? panel.currentAt
+               : row.tag === "manual"  ? panel.manualAt
                                        : panel.contextAt
         var entry = entryAt(panel, at)
         verify(entry, "the " + row.tag + " row was never drawn")
         compare(entry.kind, row.tag, "the index arithmetic put the wrong row here")
         var grip = findByName(entry, "queueDragArea")
-        verify(!grip || !grip.enabled, "a " + row.tag + " row can be dragged")
+        compare(!!(grip && grip.enabled), row.can,
+                "a " + row.tag + " row " + (row.can ? "cannot" : "can") + " be dragged")
+    }
+
+    // ── the row menu ─────────────────────────────────────────────────────
+    // What Spotify's queue row offers, in the order the track rows use:
+    // Play next, Add to playlist, the two ways out, then Remove last.
+
+    function menuTexts(menu) {
+        var out = []
+        for (var i = 0; i < menu.count; ++i) {
+            var it = menu.itemAt(i)
+            if (it && it.visible && it.text !== undefined && it.text !== "" && it.height > 0)
+                out.push(it.text)
+        }
+        return out
+    }
+
+    function openRowMenu(host, panel, flatIndex) {
+        var entry = entryAt(panel, flatIndex)
+        verify(entry, "no row at " + flatIndex)
+        var p = pointIn(host, entry, entry.width / 2, entry.height / 2)
+        mouseClick(host.contentItem, p.x, p.y, Qt.RightButton)
+        tryVerify(function () { return panel.rowMenu.visible }, 2000, "the row menu did not open")
+        return panel.rowMenu
+    }
+
+    function test_the_row_menu_data() {
+        return [
+            { tag: "manual",  at: "manualAt",  want: ["Play next", "Add to playlist", "Go to album", "Go to artist", "Remove from queue"] },
+            { tag: "context", at: "contextAt", want: ["Play next", "Add to playlist", "Go to album", "Go to artist", "Remove from queue"] },
+            { tag: "current", at: "currentAt", want: ["Add to playlist", "Go to album", "Go to artist"] },
+            { tag: "played",  at: "playedAt",  want: ["Play next", "Add to playlist", "Go to album", "Go to artist"] }
+        ]
+    }
+
+    function test_the_row_menu(row) {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel[row.at])
+        // The tests run untranslated, so the source words are what is drawn.
+        compare(menuTexts(menu).join(" | "), row.want.join(" | "),
+                "the " + row.tag + " row offers the wrong entries")
+        menu.close()
+    }
+
+    // Play next on an upcoming row moves it to the front of the queue rather
+    // than queueing it twice.
+    function test_play_next_moves_an_upcoming_row_to_the_front() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel.contextAt + 1)
+        menu.playNextItem.triggered()
+        settle(host.contentItem)
+        compare(player.queueCalls.join(","), "moveQueueRow context 1 manual 0",
+                "Play next did not move the row")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Ctx 4,Manual 0,Manual 1,Ctx 3,Ctx 5",
+                "the row is not next")
+    }
+
+    function test_remove_from_queue_takes_a_context_row_out() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel.contextAt + 1)
+        menu.removeItem.triggered()
+        settle(host.contentItem)
+        // The flat index: Ctx 4 sits after two played, the current and two queued.
+        compare(player.queueCalls.join(","), "removeFromQueue 6",
+                "Remove asked the player for the wrong row")
+        compare(rowTitles(panel).join(","),
+                "Ctx 0,Ctx 1,Ctx 2,Manual 0,Manual 1,Ctx 3,Ctx 5",
+                "the row stayed")
+    }
+
+    // Add to playlist hands the row's track to the one picker the window holds.
+    function test_add_to_playlist_asks_for_the_picker() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        pickSpy.clear()
+        var menu = openRowMenu(host, panel, panel.manualAt)
+        menu.addToPlaylistItem.triggered()
+        compare(pickSpy.count, 1, "no picker was asked for")
+        compare(pickSpy.signalArguments[0][0].length, 1, "the picker was asked for the wrong tracks")
+        compare(pickSpy.signalArguments[0][0][0].title, "Manual 0", "the picker got another row")
+    }
+
+    // The header has no button that puts the whole queue into a playlist.
+    // Albums, playlists and mixes keep Add to playlist in their menus.
+    function test_the_header_has_no_add_to_playlist() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var btn = findByName(panel, "queueAddToPlaylist")
+        verify(!btn || !btn.visible, "the queue's header offers to add the queue to a playlist")
+    }
+
+    // Going to the album or the artist leaves the queue for the page.
+    function test_go_to_album_and_artist_open_the_page() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var menu = openRowMenu(host, panel, panel.contextAt)
+        menu.goToAlbumItem.triggered()
+        settle(host.contentItem)
+        compare(host.visits.join(","), "album 55", "Go to album went elsewhere")
+        compare(host.dismissals, 1, "the queue stayed over the page it opened")
     }
 
     // ── going back to something already played ───────────────────────────
@@ -489,6 +731,28 @@ TestCase {
                 "a " + row.tag + " row called the wrong thing")
     }
 
+    // The current row pauses and resumes the track, and starts nothing over.
+    function test_clicking_the_current_row_pauses_and_resumes() {
+        seedAll()
+        player.setPlayingForTest(true)
+        var host = showHost()
+        var panel = openPanel(host)
+
+        var entry = entryAt(panel, panel.currentAt)
+        verify(entry, "the current row was never drawn")
+        var p = pointIn(host, entry, entry.width / 2, entry.height / 2)
+        mouseClick(host.contentItem, p.x, p.y)
+        settle(host.contentItem)
+        verify(!player.playing, "a click on the playing row did not pause it")
+        compare(entry.isCurrent, true, "the paused row lost its place as the current one")
+
+        mouseClick(host.contentItem, p.x, p.y)
+        settle(host.contentItem)
+        verify(player.playing, "a click on the paused row did not resume it")
+        compare(player.queueCalls.join(","), "", "the current row jumped somewhere")
+        player.setPlayingForTest(false)
+    }
+
     // ── finding your place ───────────────────────────────────────────────
 
     // Opening the panel on a queue that has been playing for a while must
@@ -502,7 +766,8 @@ TestCase {
         var panel = openPanel(host)
         var view = panel.queueList
 
-        verify(view.contentY > 0, "the panel opened at the top of the history")
+        // By index: content coordinates are estimates, below 0 on Qt 6.5.
+        verify(view.indexAt(1, view.contentY + 1) > 0, "the panel opened at the top of the history")
         verify(panel.currentOnScreen,
                "the current track is not on screen after opening the panel")
 
@@ -512,6 +777,10 @@ TestCase {
         var top = entry.mapToItem(view, 0, 0).y
         verify(top >= -0.5 && top + entry.height <= view.height + 0.5,
                "the current row is at y=" + top.toFixed(1) + " in a "
+               + view.height + "px viewport")
+        // In the middle, with the tracks before it in sight above.
+        verify(Math.abs(top + entry.height / 2 - view.height / 2) <= entry.height,
+               "the current row opened at y=" + top.toFixed(1) + ", not in the middle of a "
                + view.height + "px viewport")
 
         verify(!findByName(panel, "queueJumpToCurrent").visible,
@@ -530,13 +799,15 @@ TestCase {
         verify(jump, "there is no jump affordance at all")
         verify(!jump.visible, "the affordance showed before anyone scrolled")
 
-        // Away, by a long way, in both directions.
-        view.contentY = 0
+        // Away, by a long way, in both directions. From originY: a list of
+        // mixed heights only estimates where its far rows are, so its top
+        // moves as it is jumped about.
+        view.contentY = view.originY
         settle(host.contentItem)
         verify(!panel.currentOnScreen, "scrolled to the top and still 'on screen'")
         verify(jump.visible, "scrolling to the top revealed no way back")
 
-        view.contentY = view.contentHeight - view.height
+        view.contentY = view.originY + view.contentHeight - view.height
         settle(host.contentItem)
         verify(jump.visible, "scrolling to the bottom revealed no way back")
 
@@ -550,7 +821,7 @@ TestCase {
                   "the affordance outlived its usefulness")
 
         // It hides on its own too, without being used.
-        view.contentY = 0
+        view.contentY = view.originY
         settle(host.contentItem)
         verify(jump.visible, "the affordance did not come back")
         view.positionViewAtIndex(panel.currentAt, ListView.Center)
@@ -637,7 +908,7 @@ TestCase {
         compare(entryAt(panel, panel.playedAt + 2).kind, "played",
                 "the finished track is still drawn as something upcoming")
         compare(headerLabels(panel).join(" | "),
-                [qsTr("Played"), qsTr("Now Playing"), qsTr("Next in queue"),
+                [qsTr("Earlier in queue"), qsTr("Now playing"), qsTr("Next in queue"),
                  qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "the headings did not follow the boundaries")
 
@@ -717,5 +988,48 @@ TestCase {
         var host = showHost()
         compare(host.panel.rowCount, 0, "a closed panel built a model anyway")
         compare(host.panel.queueList.count, 0, "a closed panel built a view anyway")
+    }
+
+    // Closed again, the rows stay built and stand still: the queue moves
+    // under them, and they catch up only when the panel opens.
+    function test_a_closed_panel_keeps_its_rows_still_and_catches_up_on_opening() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var before = rowTitles(panel).join(",")
+        host.panel.visible = false
+        settle(host.contentItem)
+
+        player.advanceForTest()
+        player.setQueueForTest(makeTracks(5000, "Big"), 2500)
+        settle(host.contentItem)
+        compare(rowTitles(panel).join(","), before, "a closed panel followed the queue")
+        verify(panel.queueList.count < 20, "a closed panel built a model of the new queue")
+
+        panel = openPanel(host)
+        compare(entryAt(panel, panel.currentAt).titleText, "Big 2500", "the panel opened on the old queue")
+        verify(entryAt(panel, panel.currentAt + 1), "the rows were not built around the playing one")
+    }
+
+    // A queue of the same length leaves the model as it is, and the rows
+    // read their tracks again.
+    function test_a_queue_replaced_while_closed_shows_on_opening() {
+        player.setQueueForTest(makeTracks(10, "Old"), 4)
+        var host = showHost()
+        var panel = openPanel(host)
+        compare(entryAt(panel, panel.currentAt).titleText, "Old 4")
+        host.panel.visible = false
+        settle(host.contentItem)
+        player.setQueueForTest(makeTracks(10, "New"), 4)
+        panel = openPanel(host)
+        compare(rowTitles(panel).join(","), "New 0,New 1,New 2,New 3,New 4,New 5,New 6,New 7,New 8,New 9")
+
+        // And an advance alone, which republishes nothing.
+        host.panel.visible = false
+        settle(host.contentItem)
+        player.advanceForTest()
+        panel = openPanel(host)
+        compare(entryAt(panel, panel.currentAt).titleText, "New 5", "the panel opened a row behind the player")
+        compare(panel.playedCount, 5)
     }
 }

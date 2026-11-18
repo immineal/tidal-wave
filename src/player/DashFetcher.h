@@ -7,6 +7,7 @@
 // Header-only and no QObject, so no moc. It reports through a std::function
 // and has no tr(): user-visible wording stays with the callers.
 #include <QByteArray>
+#include <QDeadlineTimer>
 #include <QDebug>
 #include <QDir>
 #include <QLatin1String>
@@ -15,6 +16,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTemporaryFile>
+#include <QTimer>
 #include <QUrl>
 #include <QVector>
 #include <QXmlStreamReader>
@@ -40,11 +42,18 @@ public:
 
     // Expands a DASH manifest into the URLs to fetch: [0] is the initialization
     // segment, the rest are the media segments in play order. Empty when the
-    // manifest carries no SegmentTemplate this can expand.
-    static QStringList parseSegmentUrls(const QString &mpdXml);
+    // manifest carries no SegmentTemplate this can expand. lengthMs, if given,
+    // gets the play time: the presentation duration, else the timeline's sum
+    // (segments carry encoder padding, so their sum runs a little long).
+    static QStringList parseSegmentUrls(const QString &mpdXml, qint64 *lengthMs = nullptr);
+
+    // The front of a join up to the end of its moov, with the movie, each
+    // track and each media header stating lengthMs. Empty when head holds no
+    // whole moov. Every box keeps its size, so it overlays the file's bytes.
+    static QByteArray headWithLength(const QByteArray &head, qint64 lengthMs);
 
     DashFetcher(TidalClient *client, const QString &mpdXml)
-        : m_client(client), m_urls(parseSegmentUrls(mpdXml))
+        : m_client(client), m_urls(parseSegmentUrls(mpdXml, &m_lengthMs))
     {
         m_parts.resize(m_urls.size());
         if (m_urls.isEmpty()) return;
@@ -83,6 +92,20 @@ public:
     qint64 bytesReady() const { return m_bytesReady; }
     // Segments on disk, counting the initialization segment.
     int segmentsReady() const { return m_writeCursor; }
+    // How long the track plays, from the manifest; 0 when it does not say.
+    qint64 lengthMs() const { return m_lengthMs; }
+    // The wait a 429 asked for when it ended the join, 0 when none did.
+    int rateLimitedSecs() const { return m_rateLimitedSecs; }
+
+    // A segment that got no answer, a 408, 429 or 5xx is asked again this
+    // many times, after kRetryBaseMs doubling, or after a 429's Retry-After.
+    static constexpr int kSegmentRetries = 3;
+    static constexpr int kRetryBaseMs = 500;
+    // A request that went silent for the whole transfer timeout is asked
+    // once more only, so a dead link ends a load in two timeouts.
+    static constexpr int kTimeoutRetries = 1;
+    // A 429 that asks for longer ends the join instead of stalling it.
+    static constexpr int kMaxRateLimitWaitSecs = 60;
 
     // Optional, set before start(). Called from the event loop, and the
     // receiver may delete this fetcher from inside it.
@@ -93,8 +116,8 @@ public:
     void start(Done done)
     {
         m_done = std::move(done);
-        for (int i = 0; i < kMaxParallel && m_nextToRequest < m_urls.size(); ++i)
-            fetchAt(m_nextToRequest++);
+        m_tries.fill(0, m_urls.size());
+        pump();
     }
 
 private:
@@ -188,23 +211,87 @@ private:
 
     // ── fetching ────────────────────────────────────────────────────────────
 
+    // Sends what may go now: retries first, then the next segments, never
+    // more than kMaxParallel at once and none while a 429's wait runs.
+    void pump()
+    {
+        if (m_settled) return;
+        if (!m_holdUntil.hasExpired()) {
+            if (m_pumpPending) return;
+            m_pumpPending = true;
+            std::weak_ptr<char> alive = m_alive;
+            QTimer::singleShot(int(qMax<qint64>(1, m_holdUntil.remainingTime())), m_client,
+                               [this, alive] {
+                if (alive.expired()) return;
+                m_pumpPending = false;
+                pump();
+            });
+            return;
+        }
+        while (m_active < kMaxParallel) {
+            int index = -1;
+            if (!m_retry.isEmpty())
+                index = m_retry.takeFirst();
+            else if (m_nextToRequest < m_urls.size() && m_nextToRequest < m_writeCursor + kMaxAhead)
+                index = m_nextToRequest++;
+            else
+                break;
+            fetchAt(index);
+        }
+    }
+
+    static bool worthRetrying(int httpStatus)
+    {
+        return httpStatus == 0 || httpStatus == 408 || httpStatus == 429 || httpStatus >= 500;
+    }
+
+    // A retry asks for the same segment URL again: the manifest, and with it
+    // a stream request to Tidal, is never fetched anew from here.
+    void failed(int index, const TidalApi::RawAnswer &a)
+    {
+        const int httpStatus = a.httpStatus;
+        const bool limited = httpStatus == 429;
+        const int secs = !limited ? 0
+            : qMax(1, a.retryAfterSecs >= 0 ? a.retryAfterSecs : int(TidalApi::kRateLimitDefaultSecs));
+        const int allowed = a.timedOut ? kTimeoutRetries : kSegmentRetries;
+        if (!(a.error.isEmpty() || worthRetrying(httpStatus)) || m_tries[index] >= allowed
+            || secs > kMaxRateLimitWaitSecs) {
+            m_rateLimitedSecs = secs;
+            settle(nullptr, a.error);
+            return;
+        }
+        const int waitMs = limited ? secs * 1000 : kRetryBaseMs << m_tries[index];
+        if (limited && m_holdUntil.remainingTime() < waitMs) m_holdUntil = QDeadlineTimer(waitMs);
+        ++m_tries[index];
+        qInfo() << "[dash] segment" << index << "failed with" << httpStatus << a.error
+                << "- asking again in" << waitMs << "ms";
+        std::weak_ptr<char> alive = m_alive;
+        QTimer::singleShot(waitMs, m_client, [this, alive, index] {
+            if (alive.expired() || m_settled) return;
+            m_retry.append(index);
+            pump();
+        });
+    }
+
     void fetchAt(int index)
     {
         std::weak_ptr<char> alive = m_alive;
-        QNetworkReply *reply = m_client->fetchRaw(QUrl(m_urls.at(index)),
-            [this, alive, index](QByteArray data, QString err) {
+        ++m_active;
+        QNetworkReply *reply = m_client->fetchRawWithStatus(QUrl(m_urls.at(index)),
+            [this, alive, index](const TidalApi::RawAnswer &a) {
                 if (alive.expired() || m_settled) return;
+                --m_active;
 
-                if (!err.isEmpty() || data.isEmpty()) {
-                    settle(nullptr, err);
+                if (!a.error.isEmpty() || a.body.isEmpty()) {
+                    failed(index, a);
                     return;
                 }
 
-                m_parts[index] = data;
+                m_parts[index] = a.body;
                 ++m_completed;
 
                 // Written in play order as soon as the gap in front of a segment
-                // closes, so at most kMaxParallel segments are ever in memory.
+                // closes, so at most kMaxAhead segments are ever in memory.
                 const int cursorBefore = m_writeCursor;
                 while (m_writeCursor < m_parts.size() && !m_parts[m_writeCursor].isEmpty()) {
                     if (m_file->write(m_parts[m_writeCursor]) != m_parts[m_writeCursor].size()) {
@@ -232,9 +319,6 @@ private:
                     }
                 }
 
-                if (m_nextToRequest < m_urls.size())
-                    fetchAt(m_nextToRequest++);
-
                 if (m_completed == m_urls.size()) {
                     m_file->flush();
                     qInfo() << "[dash] joined" << m_urls.size() << "segments into"
@@ -243,7 +327,9 @@ private:
                     QTemporaryFile *done = m_file;
                     m_file = nullptr;           // ownership leaves with settle()
                     settle(done, QString());
+                    return;
                 }
+                pump();
             });
 
         // QNetworkAccessManager never emits finished() synchronously, so the
@@ -277,6 +363,8 @@ private:
     }
 
     TidalClient *m_client;
+    // Declared ahead of m_urls, which fills it in the constructor's init list.
+    qint64       m_lengthMs = 0;
     QStringList  m_urls;             // [0] is the initialization segment
     QVector<QByteArray> m_parts;     // arrive out of order, written in order
     QVector<QPointer<QNetworkReply>> m_inFlight;
@@ -287,7 +375,13 @@ private:
     int  m_nextToRequest = 0;
     int  m_completed     = 0;
     int  m_writeCursor   = 0;
+    int  m_active        = 0;    // requests out
     bool m_settled       = false;
+    bool m_pumpPending   = false;
+    int  m_rateLimitedSecs = 0;
+    QVector<int> m_tries;            // failed attempts per segment
+    QVector<int> m_retry;            // segments due to be asked again
+    QDeadlineTimer m_holdUntil;      // expired unless a 429 asked for a wait
 
     // Expires with this object, which is how an in-flight reply's callback
     // learns it has nothing left to call into. Nothing is ever read through it.
@@ -296,6 +390,8 @@ private:
     // Segments are small and independent, so a few run at once. One at a time
     // would add a round trip per segment before the first note.
     static constexpr int kMaxParallel = 6;
+    // How far requests run ahead of a segment that is being retried.
+    static constexpr int kMaxAhead = 2 * kMaxParallel;
 
     // A count no real track comes near. It bounds numbers that arrive over the
     // network: r= attributes that would overflow an int, and a duration
@@ -303,14 +399,16 @@ private:
     static constexpr int kMaxSegments = 20000;
 };
 
-inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
+inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml, qint64 *lengthMs)
 {
+    if (lengthMs) *lengthMs = 0;
     QString initTpl, mediaTpl, repId, bandwidth;
     long long timescale   = 1;
     long long segDuration = 0;   // SegmentTemplate@duration, when there is no timeline
     qint64    totalMs     = 0;   // MPD@mediaPresentationDuration
     int  startNumber  = 1;
     int  segmentCount = 0;
+    double timelineTicks = 0;   // sum of the timeline's durations
     bool haveTemplate = false;
     bool haveTimeline = false;
 
@@ -346,6 +444,7 @@ inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
                 if (r > kMaxSegments || segmentCount > kMaxSegments - 1 - r) return {};
                 haveTimeline = true;
                 segmentCount += 1 + r;
+                timelineTicks += double(at.value(QLatin1String("d")).toLongLong()) * (1 + r);
             }
         } else if (haveTemplate && xml.isEndElement()
                    && xml.name() == QLatin1String("SegmentTemplate")) {
@@ -378,5 +477,91 @@ inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
         if (!ok || u.isEmpty()) return {};
         urls << u;
     }
+    if (lengthMs) {
+        *lengthMs = totalMs > 0 ? totalMs
+                  : (haveTimeline && timelineTicks > 0)
+                  ? qint64(timelineTicks * 1000.0 / double(timescale) + 0.5) : 0;
+    }
     return urls;
+}
+
+namespace dashdetail {
+inline quint64 readBE(const char *p, int n) {
+    quint64 v = 0;
+    for (int i = 0; i < n; ++i) v = (v << 8) | quint8(p[i]);
+    return v;
+}
+inline void writeBE(char *p, int n, quint64 v) {
+    for (int i = n - 1; i >= 0; --i) { p[i] = char(v & 0xff); v >>= 8; }
+}
+// Raises the duration field at off (n bytes) to ms in the given timescale.
+inline void raiseDuration(char *p, int n, quint64 scale, qint64 ms) {
+    if (scale == 0) return;
+    quint64 want = quint64(ms) * scale / 1000;
+    if (n == 4) want = qMin<quint64>(want, 0xfffffffeu);
+    const quint64 have = readBE(p, n);
+    // All ones is "unknown".
+    if (have < want || have == (n == 4 ? 0xffffffffu : ~quint64(0))) writeBE(p, n, want);
+}
+// Walks the boxes in [from, to) of out; false when one runs past the end.
+inline bool statLength(QByteArray &out, qint64 from, qint64 to, qint64 ms, quint64 &movieScale) {
+    char *d = out.data();
+    for (qint64 pos = from; pos < to; ) {
+        if (to - pos < 8) return false;
+        quint64 size = readBE(d + pos, 4);
+        qint64 bodyAt = pos + 8;
+        if (size == 1) {
+            if (to - pos < 16) return false;
+            size = readBE(d + pos + 8, 8);
+            bodyAt = pos + 16;
+        }
+        if (size < quint64(bodyAt - pos) || size > quint64(to - pos)) return false;
+        const qint64 end = pos + qint64(size);
+        const QByteArray type(d + pos + 4, 4);
+        char *b = d + bodyAt;
+        const qint64 len = end - bodyAt;
+        if (type == "trak" || type == "mdia") {
+            if (!statLength(out, bodyAt, end, ms, movieScale)) return false;
+            d = out.data();
+        } else if (type == "mvhd" || type == "mdhd") {
+            // version, flags, created, modified, timescale, duration
+            const bool v1 = len > 0 && b[0] == 1;
+            const int t = v1 ? 8 : 4;
+            if (len < 4 + 2 * t + 4 + t) return false;
+            const quint64 scale = readBE(b + 4 + 2 * t, 4);
+            if (type == "mvhd") movieScale = scale;
+            raiseDuration(b + 4 + 2 * t + 4, t, scale, ms);
+        } else if (type == "tkhd") {
+            // version, flags, created, modified, track id, reserved, duration
+            const bool v1 = len > 0 && b[0] == 1;
+            const int t = v1 ? 8 : 4;
+            if (len < 4 + 2 * t + 8 + t) return false;
+            raiseDuration(b + 4 + 2 * t + 8, t, movieScale, ms);
+        }
+        pos = end;
+    }
+    return true;
+}
+} // namespace dashdetail
+
+inline QByteArray DashFetcher::headWithLength(const QByteArray &head, qint64 lengthMs) {
+    if (lengthMs <= 0) return {};
+    for (qint64 pos = 0; pos + 8 <= head.size(); ) {
+        quint64 size = dashdetail::readBE(head.constData() + pos, 4);
+        qint64 bodyAt = pos + 8;
+        if (size == 1 && pos + 16 <= head.size()) {
+            size = dashdetail::readBE(head.constData() + pos + 8, 8);
+            bodyAt = pos + 16;
+        }
+        if (size < quint64(bodyAt - pos) || size > quint64(head.size() - pos)) return {};
+        const qint64 end = pos + qint64(size);
+        if (head.mid(pos + 4, 4) == "moov") {
+            QByteArray out = head.left(end);
+            quint64 movieScale = 0;
+            if (!dashdetail::statLength(out, bodyAt, end, lengthMs, movieScale)) return {};
+            return out;
+        }
+        pos = end;
+    }
+    return {};
 }

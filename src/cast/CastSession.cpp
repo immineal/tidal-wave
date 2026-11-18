@@ -19,6 +19,18 @@ const QString SENDER        = QStringLiteral("sender-0");
 const QString RECEIVER      = QStringLiteral("receiver-0");
 const QString MEDIA_APP_ID  = QStringLiteral("CC1AD845");   // Default Media Receiver
 
+// How long a closing socket may take to hand the device its STOP and CLOSE,
+// and how long it stays open once they are out, for the device to read them.
+constexpr int kCloseGraceMs  = 3000;
+constexpr int kCloseLingerMs = 500;
+
+// CASTV2 caps a message at 64 KiB.
+constexpr quint32 kMaxFrameBytes = 64 * 1024;
+
+QString lostMessage() {
+    return CastSession::tr("The connection to the cast device was lost.");
+}
+
 QString jsonToString(const QJsonObject &o) {
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
@@ -27,7 +39,17 @@ QString jsonToString(const QJsonObject &o) {
 CastSession::CastSession(QObject *parent) : QObject(parent) {}
 
 CastSession::~CastSession() {
-    disconnectFromDevice();
+    // At shutdown the event loop is gone and a closing socket never writes, so
+    // this waits briefly for STOP to reach the device. No window is up then.
+    if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+        m_socket->disconnect(this);   // nothing is emitted from a destructor
+        sendGoodbye();
+        m_socket->waitForBytesWritten(300);
+    }
+    if (m_socket) {
+        m_socket->disconnect(this);
+        m_socket->abort();   // deleted with this object, its parent
+    }
 }
 
 void CastSession::connectToDevice(const QString &host, int port) {
@@ -38,36 +60,81 @@ void CastSession::connectToDevice(const QString &host, int port) {
     m_socket->setPeerVerifyMode(QSslSocket::VerifyNone);
     connect(m_socket, &QSslSocket::encrypted, this, &CastSession::onEncrypted);
     connect(m_socket, &QSslSocket::readyRead, this, &CastSession::onReadyRead);
-    connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        emit error(m_socket ? m_socket->errorString() : tr("The connection to the cast device failed."));
+    connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError e) {
+        // Only the waitFor* calls time out, and the socket lives on after it.
+        if (e == QAbstractSocket::SocketTimeoutError) return;
+        // Ended here in both cases, so it is one disconnected() whatever the
+        // socket does next. Qt's own text is English only.
+        fail(m_appConnected ? lostMessage() : tr("The connection to the cast device failed."));
     });
     connect(m_socket, &QSslSocket::disconnected, this, [this]() {
+        if (!m_appConnected) {
+            fail(tr("The connection to the cast device failed."));
+            return;
+        }
         m_appConnected = false;
         emit disconnected();
     });
-    m_socket->ignoreSslErrors();
-    m_socket->connectToHostEncrypted(host, quint16(port));
+    if (m_plainText) {
+        connect(m_socket, &QSslSocket::connected, this, &CastSession::onEncrypted);
+        m_socket->connectToHost(host, quint16(port));
+    } else {
+        m_socket->ignoreSslErrors();
+        m_socket->connectToHostEncrypted(host, quint16(port));
+    }
 
     if (!m_timer) {
         m_timer = new QTimer(this);
         m_timer->setInterval(1000);
         connect(m_timer, &QTimer::timeout, this, &CastSession::onTick);
     }
+    // TCP, TLS and LAUNCH together. A device that takes the connection and
+    // never starts the app would leave the UI saying "Connecting" for good.
+    if (!m_connectTimer) {
+        m_connectTimer = new QTimer(this);
+        m_connectTimer->setSingleShot(true);
+        connect(m_connectTimer, &QTimer::timeout, this, [this] {
+            if (!m_appConnected) fail(tr("The cast device did not answer."));
+        });
+    }
+    m_connectTimer->start(m_connectTimeoutMs);
+}
+
+QHostAddress CastSession::localAddress() const {
+    return m_socket ? m_socket->localAddress() : QHostAddress();
+}
+
+void CastSession::fail(const QString &msg) {
+    reset();
+    emit error(msg);
+    emit disconnected();
+}
+
+void CastSession::endedByDevice() {
+    // The app is gone or someone else's, so it is not ours to stop: only the
+    // platform connection is closed, and the socket.
+    sendMessage(NS_CONNECTION, RECEIVER, jsonToString({{"type", "CLOSE"}}));
+    if (m_socket) {
+        closeQuietly(m_socket);
+        m_socket = nullptr;
+    }
+    reset();
+    emit endedOnDevice();
+    emit disconnected();
 }
 
 void CastSession::disconnectFromDevice() {
-    if (m_timer) m_timer->stop();
-    // The Default Media Receiver keeps playing after the sender drops the
-    // socket, so stop playback and quit the receiver app first.
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
-        stopMedia();
-        if (!m_sessionId.isEmpty())
-            sendMessage(NS_RECEIVER, RECEIVER,
-                        jsonToString({{"type", "STOP"}, {"requestId", nextRequestId()},
-                                      {"sessionId", m_sessionId}}));
-        m_socket->flush();
-        m_socket->waitForBytesWritten(300);
+        sendGoodbye();
+        closeQuietly(m_socket);
+        m_socket = nullptr;
     }
+    reset();
+}
+
+void CastSession::reset() {
+    if (m_timer) m_timer->stop();
+    if (m_connectTimer) m_connectTimer->stop();
     if (m_socket) {
         m_socket->disconnect(this);
         m_socket->abort();
@@ -78,9 +145,41 @@ void CastSession::disconnectFromDevice() {
     m_transportId.clear();
     m_sessionId.clear();
     m_mediaSessionId = 0;
+    m_loadRequestId  = 0;
+    m_endedFor       = -1;
     m_appConnected = false;
     m_haveLoad = false;
     m_loadPayload.clear();
+}
+
+void CastSession::closeQuietly(QSslSocket *s) {
+    // Left to close on its own so the GUI thread never waits. Closing with the
+    // device's replies unread would reset the connection and drop what it has
+    // not read yet, so replies are read away and the close waits for the flush.
+    s->disconnect(this);
+    s->setParent(nullptr);
+    connect(s, &QSslSocket::readyRead, s, [s] { s->readAll(); });
+    connect(s, &QSslSocket::disconnected, s, &QObject::deleteLater);
+    const auto closeOnceFlushed = [s] {
+        if (s->bytesToWrite() == 0)
+            QTimer::singleShot(kCloseLingerMs, s, [s] { s->disconnectFromHost(); });
+    };
+    connect(s, &QSslSocket::bytesWritten, s, closeOnceFlushed);
+    closeOnceFlushed();
+    QTimer::singleShot(kCloseGraceMs, s, [s] { s->abort(); s->deleteLater(); });
+}
+
+void CastSession::sendGoodbye() {
+    // The Default Media Receiver keeps playing after the sender drops the
+    // socket, so stop playback, quit the app and close both virtual connections.
+    stopMedia();
+    if (!m_sessionId.isEmpty())
+        sendMessage(NS_RECEIVER, RECEIVER,
+                    jsonToString({{"type", "STOP"}, {"requestId", nextRequestId()},
+                                  {"sessionId", m_sessionId}}));
+    if (!m_transportId.isEmpty())
+        sendMessage(NS_CONNECTION, m_transportId, jsonToString({{"type", "CLOSE"}}));
+    sendMessage(NS_CONNECTION, RECEIVER, jsonToString({{"type", "CLOSE"}}));
 }
 
 void CastSession::onEncrypted() {
@@ -114,12 +213,19 @@ void CastSession::onReadyRead() {
     // Frames are: 4-byte big-endian length + protobuf body.
     while (m_buffer.size() >= 4) {
         const quint32 len = qFromBigEndian<quint32>(m_buffer.constData());
-        if (m_buffer.size() < int(4 + len)) break;
-        const QByteArray body = m_buffer.mid(4, int(len));
-        m_buffer.remove(0, int(4 + len));
+        // A longer frame is a broken peer, and waiting for it would buffer
+        // without end. Checked first, so the sums below cannot overflow.
+        if (len > kMaxFrameBytes) {
+            fail(m_appConnected ? lostMessage() : tr("The connection to the cast device failed."));
+            return;
+        }
+        if (m_buffer.size() < qsizetype(4 + len)) break;
+        const QByteArray body = m_buffer.mid(4, qsizetype(len));
+        m_buffer.remove(0, qsizetype(4 + len));
         CastMessage msg;
         if (CastMessage::decode(body, msg))
             handleMessage(msg);
+        if (!m_socket) return;   // the message ended the session
     }
 }
 
@@ -134,15 +240,35 @@ void CastSession::handleMessage(const CastMessage &msg) {
         return;
     }
 
+    if (msg.ns == NS_CONNECTION && type == "CLOSE") {
+        // The device closed our virtual connection: the user stopped the cast
+        // there, or the app quit.
+        if (m_appConnected) endedByDevice();
+        return;
+    }
+
     if (msg.ns == NS_RECEIVER && type == "RECEIVER_STATUS") {
         const QJsonArray apps = payload.value("status").toObject().value("applications").toArray();
         for (const QJsonValue &a : apps) {
             const QJsonObject app = a.toObject();
-            if (app.value("appId").toString() == MEDIA_APP_ID) {
-                m_sessionId = app.value("sessionId").toString();
-                establishAppConnection(app.value("transportId").toString());
-                return;
-            }
+            if (app.value("appId").toString() != MEDIA_APP_ID) continue;
+            const QString sessionId = app.value("sessionId").toString();
+            // A new session of the same app is another sender's relaunch.
+            if (m_appConnected && sessionId != m_sessionId) break;
+            m_sessionId = sessionId;
+            establishAppConnection(app.value("transportId").toString());
+            return;
+        }
+        // Our app is no longer running: something else took the device.
+        if (m_appConnected) endedByDevice();
+        return;
+    }
+
+    if (msg.ns == NS_MEDIA && type == "LOAD_FAILED") {
+        // Only the answer to the LOAD in force: a superseded one is no news.
+        if (payload.value("requestId").toInt() == m_loadRequestId) {
+            emit playingChanged(false);
+            emit error(tr("The cast device could not play this track."));
         }
         return;
     }
@@ -151,8 +277,14 @@ void CastSession::handleMessage(const CastMessage &msg) {
         const QJsonArray statusArr = payload.value("status").toArray();
         if (statusArr.isEmpty()) return;
         const QJsonObject st = statusArr.first().toObject();
-        if (st.contains("mediaSessionId"))
-            m_mediaSessionId = st.value("mediaSessionId").toInt();
+        if (st.contains("mediaSessionId")) {
+            // Ids grow with each LOAD. A lower one answers a poll of the last
+            // track and would point transport commands back at it.
+            const int id = st.value("mediaSessionId").toInt();
+            if (id < m_mediaSessionId) return;
+            m_mediaSessionId = id;
+        }
+        const int mediaSession = m_mediaSessionId;
         if (st.contains("media") && st.value("media").toObject().contains("duration"))
             emit durationChanged(st.value("media").toObject().value("duration").toDouble());
         if (st.contains("currentTime"))
@@ -160,8 +292,17 @@ void CastSession::handleMessage(const CastMessage &msg) {
         const QString playerState = st.value("playerState").toString();
         if (!playerState.isEmpty())
             emit playingChanged(playerState == "PLAYING");
-        if (playerState == "IDLE" && st.value("idleReason").toString() == "FINISHED")
-            emit mediaFinished();
+        const QString idleReason = playerState == "IDLE" ? st.value("idleReason").toString()
+                                                         : QString();
+        // Every poll repeats the status until the next LOAD, so one end per
+        // media session: a second FINISHED would skip another track.
+        if ((idleReason == "FINISHED" || idleReason == "ERROR") && mediaSession != m_endedFor) {
+            m_endedFor = mediaSession;
+            if (idleReason == "FINISHED")
+                emit mediaFinished();
+            else
+                emit error(tr("The cast device could not play this track."));
+        }
         return;
     }
 }
@@ -173,6 +314,7 @@ void CastSession::establishAppConnection(const QString &transportId) {
     // Virtual connection to the media app is required before media messages.
     sendMessage(NS_CONNECTION, m_transportId, jsonToString({{"type", "CONNECT"}}));
     m_appConnected = true;
+    if (m_connectTimer) m_connectTimer->stop();
     emit connected();
     if (m_haveLoad)
         sendLoad();
@@ -180,7 +322,8 @@ void CastSession::establishAppConnection(const QString &transportId) {
 
 void CastSession::loadMedia(const QString &url, const QString &contentType,
                             const QString &title, const QString &artist,
-                            const QString &album, const QString &artUrl, double durationSec) {
+                            const QString &album, const QString &artUrl, double durationSec,
+                            double startSec) {
     QJsonObject metadata{{"metadataType", 3}, {"title", title},
                          {"artist", artist}, {"albumName", album}};
     if (!artUrl.isEmpty())
@@ -191,8 +334,11 @@ void CastSession::loadMedia(const QString &url, const QString &contentType,
     if (durationSec > 0)
         media.insert("duration", durationSec);
 
-    QJsonObject load{{"type", "LOAD"}, {"requestId", nextRequestId()},
+    m_loadRequestId = nextRequestId();
+    QJsonObject load{{"type", "LOAD"}, {"requestId", m_loadRequestId},
                      {"media", media}, {"autoplay", true}};
+    if (startSec > 0)
+        load.insert("currentTime", startSec);
     m_loadPayload = jsonToString(load);
     m_haveLoad = true;
     if (m_appConnected)

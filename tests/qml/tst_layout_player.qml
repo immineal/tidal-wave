@@ -818,7 +818,9 @@ TestCase {
     }
 
     function test_the_bar_flyout_stands_over_both_rows() {
-        var host = showHost(playerBarHost, 960, 200)
+        // The app's smallest window (Main.qml): in a 200 px one the flyout
+        // runs past the top, and Qt 6.5 and 6.6 push it back down over the bar.
+        var host = showHost(playerBarHost, 960, 600)
         var bar = host.bar
         var btn = bar.volumeButton
         var p = btn.mapToItem(host.contentItem, btn.width / 2, btn.height / 2)
@@ -1365,18 +1367,22 @@ TestCase {
         verify(box && panel && view, "the lyrics panel was not found")
         verify(panel.visible, "the lyrics panel did not open")
 
-        // All the width the page has, up to the measure. At 640 the artwork
-        // already took the whole content width, so the gain there is height.
-        verify(Math.abs(box.width - Math.min(page.contentWidth, page.lyricsMeasure)) <= 1,
+        // Side by side the panel takes the artwork's column, so the text
+        // column beside it stays put. Stacked it gets all the width the page
+        // has, up to the measure.
+        var wanted = page.stacked ? Math.min(page.contentWidth, page.lyricsMeasure)
+                                  : page.sideCoverSize
+        verify(Math.abs(box.width - wanted) <= 1,
                row.tag + ": the lyrics got " + box.width.toFixed(1)
-               + "px of a " + page.contentWidth.toFixed(1) + "px page, capped at "
-               + page.lyricsMeasure)
+               + "px of a " + page.contentWidth.toFixed(1) + "px page, where "
+               + wanted.toFixed(1) + " was meant")
         verify(box.height >= 280 - 0.5,
                row.tag + ": the lyrics column is only " + box.height.toFixed(1) + "px tall")
-        // More room than the artwork's square, at every size. Opening the lyrics
-        // stacks the page, which can shrink the cover, so the square is read
-        // before they open.
-        verify(box.width * box.height > square * square,
+        // Never less room than the artwork's square, and more wherever the
+        // page is wider than the square. Read before they open.
+        verify(box.width * box.height > square * square
+               || (box.width * box.height >= square * square - 1
+                   && page.contentWidth <= square + 0.5),
                row.tag + ": the lyrics got " + box.width.toFixed(1) + "x"
                + box.height.toFixed(1) + " where the artwork square was "
                + square.toFixed(1) + ", which is no more room than before")
@@ -1497,13 +1503,6 @@ TestCase {
         var page = openLyrics(host)
         var docked = panelShape(page)
 
-        // Docked, the words are the smaller half of the page: the text column
-        // is taller than the panel.
-        verify(docked.h < docked.info,
-               row.tag + ": docked, the panel is already " + docked.h.toFixed(1)
-               + " against a " + docked.info.toFixed(1)
-               + "px text column, so this case is measuring nothing")
-
         enterReading(host)
         verify(page.readingView,
                row.tag + ": fullscreen with the lyrics open is the reading view")
@@ -1511,8 +1510,8 @@ TestCase {
         var reading = panelShape(page)
 
         // All the width the page has, up to the measure, which is held in
-        // characters, so at twice the type it is twice the pixels.
-        verify(reading.size === 2 * docked.size,
+        // characters, so it grows with the type.
+        verify(docked.size === Theme.fontSection && reading.size === Theme.fontDisplay,
                row.tag + ": the lyric line is set at " + reading.size
                + "px where docked it was " + docked.size)
         verify(docked.drawn > 0 && reading.drawn > 0,
@@ -1523,7 +1522,8 @@ TestCase {
         verify(reading.drawn > docked.drawn,
                row.tag + ": the lines are painted at " + reading.drawn
                + "px, the same as the " + docked.drawn + " they had docked")
-        verify(Math.abs(reading.w - Math.min(page.contentWidth, 2 * 640)) <= 1,
+        verify(Math.abs(reading.w - Math.min(page.contentWidth,
+                                             640 * Theme.fontDisplay / Theme.fontSection)) <= 1,
                row.tag + ": the words got " + reading.w.toFixed(1)
                + "px of a " + page.contentWidth.toFixed(1) + "px page")
         verify(reading.w > docked.w + 1,
@@ -1536,9 +1536,12 @@ TestCase {
         verify(Math.abs(reading.h - spare) <= 0.5,
                row.tag + ": the panel is " + reading.h.toFixed(1)
                + " where the page could spare " + spare.toFixed(1))
-        verify(reading.h >= docked.h - 0.5,
-               row.tag + ": the panel lost height entering the reading view, "
-               + docked.h.toFixed(1) + " -> " + reading.h.toFixed(1))
+        // Docked side by side the panel is as tall as the text column, which
+        // the reading view may not match in height, only in room.
+        verify(reading.w * reading.h > docked.w * docked.h,
+               row.tag + ": the reading view gives the words "
+               + reading.w.toFixed(0) + "x" + reading.h.toFixed(0) + " where docked they had "
+               + docked.w.toFixed(0) + "x" + docked.h.toFixed(0))
 
         // Up Next has folded, and that is where the height came from: it is the
         // one block on the page that is neither chrome nor a control.
@@ -2252,7 +2255,7 @@ TestCase {
 
     // ── where the volume's two homes change over ─────────────────────────
     // The window widths at which the cluster changes home, behind the 220px
-    // sidebar: 848, 1220 (where the page goes side by side) and 1332. The
+    // sidebar: 852, 1220 (where the page goes side by side) and 1336. The
     // answer at a width must not depend on how the page got there.
 
     // One turn of the event loop: a Window's width property moves on
@@ -2290,21 +2293,21 @@ TestCase {
         // up parts it does not own. Asked of a wide window: the transport's gap
         // tightens in a narrow column.
         compare(page.volumeStackWidth, 36, "the stack's budget")
-        compare(page.volumeClusterWidth, 78, "the cluster's budget")
+        compare(page.volumeClusterWidth, 80, "the cluster's budget")
         compare(page.transportSpacing, 16, "the transport's resting gap")
-        compare(page.transportWithVolumeWidth, 532,
+        compare(page.transportWithVolumeWidth, 536,
                 "what the transport row has to have to carry the cluster")
 
         verify(!widthAnswer(host, 600),
                "the narrowest window should use the own row")
         var up1 = firstWidthWhere(host, 601, 1219, true)
-        compare(up1, 848, "the stacked column picks the volume up at " + up1)
+        compare(up1, 852, "the stacked column picks the volume up at " + up1)
 
         var down = firstWidthWhere(host, up1 + 1, 1300, false)
         compare(down, 1220, "the page goes side by side at " + down)
 
         var up2 = firstWidthWhere(host, down + 1, 1700, true)
-        compare(up2, 1332, "the side-by-side column picks it up at " + up2)
+        compare(up2, 1336, "the side-by-side column picks it up at " + up2)
 
         // And it stays on the transport row from there up to a maximised 1920
         // window.
@@ -2444,6 +2447,100 @@ TestCase {
                                   - view.height / 2) <= 8
         }, 3000, "Resync did not bring the active line back to the middle")
         compare(page.currentLyricLine, 20, "Resync is not a seek")
+    }
+
+    // Scrolling back by hand to where the panel would put the line is a
+    // resync of its own: no button needed.
+    function test_lyrics_scrolling_back_resumes_following() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = openLyrics(host, 40)
+        var view = findChild(page, "nowPlayingLyricsView")
+        player.setPositionForTest(20 * 5000)
+        tryVerify(function () { return page.currentLyricLine === 20 }, 3000,
+                  "the sync timer never reached line 20")
+        tryVerify(function () {
+            var it = view.itemAtIndex(20)
+            return it && Math.abs(it.mapToItem(view, 0, it.height / 2).y - view.height / 2) <= 2
+        }, 3000, "line 20 never came to the middle")
+        var home = view.contentY
+
+        page.userScrolled = true
+        view.contentY = home + 400
+        view.movementEnded()
+        verify(page.userScrolled, "a scroll away from the line resumed following")
+
+        // Near is not enough: a short scroll off the line must stay put.
+        for (var off of [-30, -12, 8, 12, 30]) {
+            view.contentY = home + off
+            view.movementEnded()
+            verify(page.userScrolled, "a scroll ending " + off + " px off the line snapped back")
+        }
+
+        view.contentY = home + 1
+        view.movementEnded()
+        verify(!page.userScrolled, "scrolling back onto the line did not resume following")
+        verify(!findChild(page, "nowPlayingLyricsResync").visible,
+               "Resync is still offered with the line back in the middle")
+    }
+
+    // Before the first line's time nothing is lit; the first line lights when
+    // it starts.
+    function test_lyrics_first_line_waits_for_its_time() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = host.page
+        settlePage(page)
+        var lines = []
+        for (var i = 0; i < 10; i++)
+            lines.push({ ms: 30000 + i * 5000, text: "Line " + i + " of a lyric" })
+        page.lyricsIsTimed = true
+        page.lyricsData = lines
+        page.lyricsState = "ready"
+        page.userScrolled = false
+        page.currentLyricLine = -1
+        page.showLyrics = true
+        settlePage(page)
+        frame(host)
+
+        player.setPositionForTest(10000)
+        wait(900)       // two ticks of the 400 ms sync timer
+        compare(page.currentLyricLine, -1, "a line was lit during the intro")
+        var view = findChild(page, "nowPlayingLyricsView")
+        verify(!view.itemAtIndex(0).active, "the first line is lit before it is sung")
+
+        player.setPositionForTest(30500)
+        tryVerify(function () { return page.currentLyricLine === 0 }, 2000,
+                  "the first line did not light when it started")
+    }
+
+    // In the intro the view holds line 0 against the top; a scroll back up to
+    // the top resumes following, one that stops short of it does not.
+    function test_lyrics_scroll_back_to_top_resumes_in_intro() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = host.page
+        settlePage(page)
+        var lines = []
+        for (var i = 0; i < 40; i++)
+            lines.push({ ms: 30000 + i * 5000, text: "Line " + i + " of a lyric" })
+        page.lyricsIsTimed = true
+        page.lyricsData = lines
+        page.lyricsState = "ready"
+        page.userScrolled = false
+        page.currentLyricLine = -1
+        page.showLyrics = true
+        settlePage(page)
+        frame(host)
+        player.setPositionForTest(10000)
+        wait(900)
+        var view = findChild(page, "nowPlayingLyricsView")
+        var top = view.contentY
+
+        page.userScrolled = true
+        view.contentY = top + 15
+        view.movementEnded()
+        verify(page.userScrolled, "a scroll 15 px below the top snapped back")
+        view.contentY = top
+        view.movementEnded()
+        verify(!page.userScrolled, "scrolling back to the top did not resume following")
     }
 
     // ── the sleep timer pill ─────────────────────────────────────────────
@@ -2832,7 +2929,7 @@ TestCase {
         var r = popupRectInWindow(host, popup)
         var p = pill.mapToItem(host.contentItem, 0, 0)
         var roomBelow = host.contentItem.height - (p.y + pill.height)
-        verify(roomBelow >= popup.height + 6,
+        verify(roomBelow >= popup.height + Theme.space2,
                "960x1200 was picked because the popup fits under the pill "
                + "there, but there are only " + roomBelow.toFixed(1)
                + "px under it for a " + popup.height.toFixed(1) + "px popup")
@@ -2841,8 +2938,8 @@ TestCase {
                + "the popup should still open downwards, but its top is at "
                + r.y.toFixed(1) + " and the pill ends at "
                + (p.y + pill.height).toFixed(1))
-        fuzzyCompare(r.y - (p.y + pill.height), 6, 0.5,
-                     "the popup opened below the pill but not 6px below it")
+        fuzzyCompare(r.y - (p.y + pill.height), Theme.space2, 0.5,
+                     "the popup opened below the pill but not a gap of Theme.space2 below it")
     }
 
     function test_sleep_timer_popup_flips_above_when_it_must() {
@@ -2853,7 +2950,7 @@ TestCase {
         var r = popupRectInWindow(host, popup)
         var p = pill.mapToItem(host.contentItem, 0, 0)
         var roomBelow = host.contentItem.height - (p.y + pill.height)
-        verify(roomBelow < popup.height + 6,
+        verify(roomBelow < popup.height + Theme.space2,
                "960x600 was picked because the popup does NOT fit under the "
                + "pill there, but there are " + roomBelow.toFixed(1)
                + "px under it for a " + popup.height.toFixed(1) + "px popup, "
@@ -2864,8 +2961,8 @@ TestCase {
                + "px tall, so it should open above the pill - but it ends at "
                + r.bottom.toFixed(1) + " and the pill starts at "
                + p.y.toFixed(1))
-        fuzzyCompare(p.y - r.bottom, 6, 0.5,
-                     "the popup opened above the pill but not 6px above it")
+        fuzzyCompare(p.y - r.bottom, Theme.space2, 0.5,
+                     "the popup opened above the pill but not a gap of Theme.space2 above it")
     }
 
     // ── queue panel ──────────────────────────────────────────────────────

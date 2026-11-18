@@ -37,7 +37,7 @@ body:
     id: version
     attributes:
       label: Tidal Wave version
-      placeholder: "0.4.2"
+      placeholder: "0.5.0"
     validations:
       required: true
 

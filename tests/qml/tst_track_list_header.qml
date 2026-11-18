@@ -1,0 +1,604 @@
+// The column headings over a track list: each sits over its column at every
+// width the rows support and goes when the column goes; a click sorts by it,
+// ascending, then descending, then the list's own order; the keyboard reaches
+// them; and the order shown is the order that plays. Every title is invented.
+
+import QtQuick
+import QtQuick.Window
+import QtTest
+import TidalWave
+
+TestCase {
+    id: testCase
+    name: "TrackListHeader"
+    when: windowShown
+    visible: true
+    width: 1900
+    height: 800
+
+    Component { id: rowC;    TrackRow { } }
+    Component { id: headerC; TrackListHeader { } }
+    Component { id: sortC;   TrackListHeader.Sort { } }
+    Component { id: holderC; Item { } }
+    Component { id: collectionC; CollectionPage { anchors.fill: parent } }
+    Component { id: playlistC;   PlaylistPage   { anchors.fill: parent } }
+
+    function init() {
+        app.setReducedMotionForTest(true)
+        bridge.resetForTest()
+    }
+    function cleanup() {
+        bridge.setFavoriteTracksListForTest([])
+        bridge.setPlaylistTracksForTest([])
+        // Here as well as in the test, so a failed check does not leave
+        // every later test in German.
+        bridge.useCatalogueForTest("")
+    }
+
+    function findByName(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            var hit = findByName(kids[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+
+    // Invented, in the order a list would hand them over.
+    function tracks() {
+        return [
+            { id: 11, title: "Mittag", artists: "B", albumTitle: "Zweites", albumId: 2,
+              duration: 300, addedAt: 3000, trackNumber: 2, coverUrl80: "" },
+            { id: 12, title: "abend", artists: "A", albumTitle: "Erstes", albumId: 1,
+              duration: 120, addedAt: 0, trackNumber: 1, coverUrl80: "" },
+            { id: 13, title: "Zug", artists: "C", albumTitle: "Erstes", albumId: 1,
+              duration: 120, addedAt: 1000, trackNumber: 3, coverUrl80: "" },
+            { id: 14, title: "Bahn", artists: "C", albumTitle: "Zweites", albumId: 2,
+              duration: 500, addedAt: 2000, trackNumber: 1, coverUrl80: "" }
+        ]
+    }
+    function titles(list) { return list.map(function (t) { return t.title }).join(",") }
+
+    // ── where the headings sit ───────────────────────────────────────────
+
+    function test_headings_sit_over_their_columns_data() {
+        var out = []
+        var widths = [400, 520, 640, 760, 900, 1100, 1400, 1800]
+        for (var i = 0; i < widths.length; ++i) {
+            out.push({ tag: widths[i] + " with dates", w: widths[i], added: true })
+            out.push({ tag: widths[i] + " without", w: widths[i], added: false })
+        }
+        return out
+    }
+
+    function test_headings_sit_over_their_columns(data) {
+        var t = tracks()[0]
+        var row = createTemporaryObject(rowC, testCase, {
+            width: data.w, showAdded: data.added, trackData: t,
+            title: t.title, artists: t.artists, albumTitle: t.albumTitle })
+        var head = createTemporaryObject(headerC, testCase, {
+            width: data.w, showAdded: data.added, y: 100 })
+        verify(row && head)
+        waitForRendering(head)
+
+        function xIn(item, from) { return item.mapToItem(from, 0, 0).x }
+        var cover = findByName(row, "trackRowCover")
+        var titleHead = findByName(head, "trackListHeadingTitle")
+        fuzzyCompare(xIn(titleHead, head), xIn(cover, row), 1, "the title heading is off its column")
+
+        var album = findByName(row, "trackAlbumColumn")
+        var albumHead = findByName(head, "trackListHeadingAlbum")
+        compare(albumHead.visible, album.visible, "the album heading and its column disagree")
+        if (album.visible) {
+            fuzzyCompare(xIn(albumHead, head), xIn(album, row), 1, "the album heading is off its column")
+            fuzzyCompare(albumHead.width, album.width, 1, "the album heading is not the column's width")
+        }
+
+        var added = findByName(row, "trackAddedColumn")
+        var addedHead = findByName(head, "trackListHeadingAdded")
+        compare(addedHead.visible, added.visible, "the date heading and its column disagree")
+        if (added.visible)
+            fuzzyCompare(xIn(addedHead, head), xIn(added, row), 1, "the date heading is off its column")
+
+        var len = findByName(row, "trackDuration")
+        var lenHead = findByName(head, "trackListHeadingLength")
+        fuzzyCompare(xIn(lenHead, head) + lenHead.width, xIn(len, row) + len.width, 1,
+                     "the length heading does not end where the lengths do")
+    }
+
+    // The date column is as wide as its heading needs in German, set bold
+    // with its arrow, not only as wide as a date.
+    function test_the_date_heading_fits_in_german() {
+        verify(bridge.useCatalogueForTest("de"), "the German catalogue did not load")
+        var sort = createTemporaryObject(sortC, testCase)
+        var head = createTemporaryObject(headerC, testCase, { width: 1200, showAdded: true, sort: sort })
+        waitForRendering(head)
+        var cell = findByName(head, "trackListHeadingAdded")
+        var label = findByName(cell, "trackListHeadingLabel")
+        compare(label.text, "Hinzugefügt am")
+        verify(!label.truncated, "the date heading is cut at rest")
+        sort.cycle("added")
+        waitForRendering(head)
+        verify(!label.truncated, "the date heading is cut while it sorts")
+    }
+
+    // The date in the language picked in the app, whatever the system's
+    // formats, and again after a switch while the row is on screen.
+    function test_the_date_is_written_in_the_apps_language() {
+        var t = { id: 21, title: "Mittag", artists: "B", albumTitle: "Zweites",
+                  addedAt: new Date(2023, 7, 30).getTime() }
+        var before = createTemporaryObject(rowC, testCase, { width: 1200, showAdded: true, trackData: t })
+        verify(bridge.useCatalogueForTest("de"), "the German catalogue did not load")
+        var after = createTemporaryObject(rowC, testCase, { width: 1200, showAdded: true, trackData: t, y: 60 })
+        waitForRendering(after)
+        compare(findByName(after, "trackAddedColumn").text, "30.08.23", "a new row")
+        compare(findByName(before, "trackAddedColumn").text, "30.08.23", "a row from before the switch")
+        bridge.useCatalogueForTest("")
+        var back = findByName(before, "trackAddedColumn").text
+        verify(back !== "30.08.23", "the German date stayed after the switch back")
+        compare(back, findByName(after, "trackAddedColumn").text, "two rows disagree in English")
+    }
+
+    // A column the page turns off has no heading either.
+    function test_a_page_without_albums_has_no_album_heading() {
+        var head = createTemporaryObject(headerC, testCase, { width: 1200, showAlbum: false })
+        verify(!findByName(head, "trackListHeadingAlbum").visible)
+    }
+
+    // ── what a click does ────────────────────────────────────────────────
+
+    function test_a_heading_sorts_up_down_and_back() {
+        var sort = createTemporaryObject(sortC, testCase)
+        var list = tracks()
+        compare(titles(sort.sorted(list)), "Mittag,abend,Zug,Bahn", "the list's own order is kept")
+        sort.cycle("title")
+        compare(titles(sort.sorted(list)), "abend,Bahn,Mittag,Zug", "first click: A to Z, any case")
+        sort.cycle("title")
+        compare(titles(sort.sorted(list)), "Zug,Mittag,Bahn,abend", "second click: Z to A")
+        sort.cycle("title")
+        compare(sort.key, "", "third click did not go back to the list's order")
+        compare(titles(sort.sorted(list)), "Mittag,abend,Zug,Bahn")
+    }
+
+    function test_each_column_sorts_by_what_it_shows_data() {
+        return [
+            { tag: "album, then its track order", key: "album", want: "abend,Zug,Bahn,Mittag" },
+            { tag: "length, ties in list order",  key: "duration", want: "abend,Zug,Mittag,Bahn" },
+            { tag: "date added, undated last",     key: "added", want: "Zug,Bahn,Mittag,abend" }
+        ]
+    }
+    function test_each_column_sorts_by_what_it_shows(data) {
+        var sort = createTemporaryObject(sortC, testCase)
+        sort.cycle(data.key)
+        compare(titles(sort.sorted(tracks())), data.want)
+    }
+
+    function test_undated_rows_stay_last_descending() {
+        var sort = createTemporaryObject(sortC, testCase)
+        sort.cycle("added"); sort.cycle("added")
+        compare(titles(sort.sorted(tracks())), "Mittag,Bahn,Zug,abend")
+    }
+
+    // Where each shown row sits in the list, for a list from C++ whose rows
+    // are new objects on every read.
+    function test_the_order_names_each_rows_place() {
+        var sort = createTemporaryObject(sortC, testCase)
+        compare(sort.order(tracks()).join(","), "0,1,2,3")
+        sort.cycle("title")
+        compare(sort.order(tracks()).join(","), "1,3,0,2")
+    }
+
+    function test_a_click_cycles_and_draws_the_arrow() {
+        var sort = createTemporaryObject(sortC, testCase)
+        var head = createTemporaryObject(headerC, testCase, { width: 1200, sort: sort })
+        waitForRendering(head)
+        var title = findByName(head, "trackListHeadingTitle")
+        var arrow = findByName(title, "trackListSortArrow")
+        verify(!arrow.visible, "an arrow before any sort")
+        mouseClick(title, 10, title.height / 2)
+        compare(sort.key, "title")
+        compare(sort.descending, false)
+        verify(arrow.visible, "the active column shows no arrow")
+        compare(arrow.name, "chevron-up")
+        mouseClick(title, 10, title.height / 2)
+        compare(sort.descending, true)
+        compare(arrow.name, "chevron-down")
+        mouseClick(title, 10, title.height / 2)
+        compare(sort.key, "")
+        verify(!arrow.visible, "the arrow outlived the sort")
+        compare(title.Accessible.role, Accessible.ColumnHeader)
+    }
+
+    function test_the_keyboard_reaches_and_sorts() {
+        var sort = createTemporaryObject(sortC, testCase)
+        var head = createTemporaryObject(headerC, testCase, { width: 1200, sort: sort })
+        waitForRendering(head)
+        var title = findByName(head, "trackListHeadingTitle")
+        verify(title.activeFocusOnTab, "the title heading is no tab stop")
+        title.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space)
+        compare(sort.key, "title")
+        keyClick(Qt.Key_Return)
+        compare(sort.descending, true)
+        var number = findByName(head, "trackListHeadingNumber")
+        verify(!number.activeFocusOnTab, "the number heading sorts nothing and is a tab stop")
+    }
+
+    // ── every list with headings, on its page ────────────────────────────
+
+    Component { id: mixC;   MixPage   { anchors.fill: parent } }
+    Component { id: radioC; RadioPage { anchors.fill: parent } }
+
+    function manyTracks(n) {
+        var out = []
+        for (var i = 0; i < n; ++i)
+            out.push({ id: 300 + i, title: "Stück " + (i + 1), artists: "Eine Band",
+                       albumTitle: "Ein Album", albumId: 5, duration: 200 + i,
+                       durationStr: "3:2" + (i % 10), addedAt: 1000 * (i + 1),
+                       trackNumber: i + 1, coverUrl80: "" })
+        return out
+    }
+
+    // Each page with its list filled, the list and its headings.
+    function openPage(which) {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var page = null, listName = "", headName = "", barName = ""
+        if (which === "collection") {
+            bridge.setFavoriteTracksListForTest(manyTracks(40))
+            page = createTemporaryObject(collectionC, holder, {})
+            page.activeTab = 0
+            listName = "collectionTracksList"; headName = "collectionTracksHeader"
+            barName = "collectionTracksScrollBar"
+        } else if (which === "playlist") {
+            bridge.setPlaylistTracksForTest(manyTracks(40))
+            page = createTemporaryObject(playlistC, holder, {})
+            page.playlistUuid = "11111111-2222-3333-4444-555555555555"
+            listName = "playlistTracksList"; headName = "playlistTracksHeader"
+            barName = "playlistScrollBar"
+        } else if (which === "mix") {
+            bridge.setMixPageForTest({ id: "mx-1", title: "Eine Mischung", subtitle: "",
+                                       coverUrl: "", mixType: "DISCOVERY_MIX" }, manyTracks(40))
+            page = createTemporaryObject(mixC, holder, {})
+            page.mixId = "mx-1"
+            headName = "mixTracksHeader"; barName = "mixScrollBar"
+        } else if (which === "album") {
+            bridge.setAlbumForTest({ id: 900000101, title: "Ein Album", artists: "Eine Band",
+                                     artistId: 3, numTracks: 40, coverUrl: "" }, manyTracks(40))
+            page = createTemporaryObject(albumC, holder, {})
+            page.albumId = 900000101
+            listName = "albumTracksList"; headName = "albumTracksHeader"
+            barName = "albumScrollBar"
+        } else {
+            bridge.setTrackRadioForTest(manyTracks(40))
+            page = createTemporaryObject(radioC, holder, {})
+            page.trackId = 900000022
+            listName = "radioTracksList"; headName = "radioTracksHeader"
+            barName = "radioScrollBar"
+        }
+        var head = null, list = null
+        tryVerify(function () {
+            head = findByName(page, headName)
+            list = listName ? findByName(page, listName) : viewOf(head)
+            return head && list && list.count === 40 && list.itemAtIndex(0) !== null
+        }, 3000, which + " never filled")
+        waitForRendering(page)
+        return { page: page, head: head, list: list, barName: barName }
+    }
+    // The ListView a heading sits in, for a page that names none.
+    function viewOf(item) {
+        for (var p = item; p; p = p.parent)
+            if (typeof p.itemAtIndex === "function") return p
+        return null
+    }
+    function pagesWithHeadings() {
+        return [{ tag: "Liked tracks", which: "collection" }, { tag: "playlist", which: "playlist" },
+                { tag: "mix", which: "mix" }, { tag: "track radio", which: "radio" }]
+    }
+
+    // Measured on the page, so an inset the page gives the headings and not
+    // the rows (or the other way round) shows.
+    function checkAligned(p, row, what) {
+        function xOn(item) { return item.mapToItem(p.page, 0, 0).x }
+        // A row without covers (an album's) starts its title column at the title.
+        var cover = findByName(row, "trackRowCover")
+        var titleCol = cover && cover.parent.visible ? cover : findByName(row, "trackTitle")
+        fuzzyCompare(xOn(findByName(p.head, "trackListHeadingTitle")),
+                     xOn(titleCol), 1, what + ": the title heading is off its column")
+        var pairs = [["trackListHeadingAlbum", "trackAlbumColumn", "album"],
+                     ["trackListHeadingAdded", "trackAddedColumn", "date"]]
+        for (var i = 0; i < pairs.length; ++i) {
+            var h = findByName(p.head, pairs[i][0]), c = findByName(row, pairs[i][1])
+            compare(h.visible, c.visible, what + ": the " + pairs[i][2] + " heading and its column disagree")
+            if (c.visible)
+                fuzzyCompare(xOn(h), xOn(c), 1, what + ": the " + pairs[i][2] + " heading is off its column")
+        }
+        var lh = findByName(p.head, "trackListHeadingLength"), len = findByName(row, "trackDuration")
+        fuzzyCompare(xOn(lh) + lh.width, xOn(len) + len.width, 1,
+                     what + ": the length heading does not end where the lengths do")
+        // The line under the headings spans the row's ground, end to end.
+        var rule = findByName(p.head, "trackListHeaderRule"), ground = findByName(row, "trackRowGround")
+        var lineL = xOn(rule), lineR = xOn(rule) + rule.width
+        fuzzyCompare(lineL, xOn(ground), 0.5,
+                     what + ": the heading line starts at " + lineL + ", the row at " + xOn(ground))
+        fuzzyCompare(lineR, xOn(ground) + ground.width, 0.5,
+                     what + ": the heading line ends at " + lineR
+                     + ", the row at " + (xOn(ground) + ground.width))
+        // Symmetric: as far from the list's left edge as from the scroll
+        // bar's inner edge, and as far before "#" as after the lengths.
+        var bar = findByName(p.page, p.barName)
+        verify(bar, what + ": no scroll bar named " + p.barName)
+        var leftGap = lineL - xOn(p.list), rightGap = xOn(bar) + bar.leftPadding - lineR
+        fuzzyCompare(rightGap, leftGap, 1,
+                     what + ": the line is " + leftGap + " px from the left edge and "
+                     + rightGap + " px from the scroll bar")
+        var hash = findByName(findByName(p.head, "trackListHeadingNumber"), "trackListHeadingLabel")
+        var before = xOn(hash) - lineL, after = lineR - (xOn(len) + len.width)
+        fuzzyCompare(after, before, 1,
+                     what + ": the line starts " + before + " px before \"#\" and ends "
+                     + after + " px after the lengths")
+    }
+
+    // ── the rows' inset ──────────────────────────────────────────────────
+
+    Component { id: albumC;  AlbumPage  { anchors.fill: parent } }
+    Component { id: searchC; SearchPage { anchors.fill: parent } }
+
+    function firstRow(item) {
+        if (!item) return null
+        if (item.visible && item.trackData !== undefined && item.rowIndex !== undefined
+                && item.width > 0) return item
+        for (var i = 0; i < item.children.length; ++i) {
+            var hit = firstRow(item.children[i])
+            if (hit) return hit
+        }
+        return null
+    }
+    // A page's first row and the list it scrolls in, which it is inset from.
+    function openRows(which) {
+        if (which !== "search") {
+            var p = openPage(which)
+            return { page: p.page, frame: p.list, row: firstRow(p.list.itemAtIndex(0)),
+                     bar: findByName(p.page, p.barName) }
+        }
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var page = null
+        if (which === "album") {
+            bridge.setAlbumForTest({ id: 900000101, title: "Ein Album", artists: "Eine Band",
+                                     artistId: 3, numTracks: 12, coverUrl: "" }, manyTracks(12))
+            page = createTemporaryObject(albumC, holder, {})
+            page.albumId = 900000101
+        } else {
+            bridge.setSearchResultsForTest(manyTracks(5), [], [], [])
+            page = createTemporaryObject(searchC, holder, {})
+            findByName(page, "searchPageBar").text = "eine band"
+        }
+        var row = null
+        tryVerify(function () { row = firstRow(page); return row !== null }, 3000, which + " never filled")
+        waitForRendering(page)
+        return { page: page, row: row,
+                 frame: which === "album" ? findByName(page, "albumTracksList") : row.parent }
+    }
+
+    // 16 px from the list's left edge and as far from its right; a list
+    // with headings keeps its scroll bar's lane clear as well.
+    function test_every_track_list_insets_its_rows_data() {
+        return pagesWithHeadings().concat([{ tag: "album", which: "album" },
+                                           { tag: "search", which: "search" }])
+    }
+    function test_every_track_list_insets_its_rows(data) {
+        var r = openRows(data.which)
+        var left = r.row.mapToItem(r.frame, 0, 0).x
+        fuzzyCompare(left, Theme.space4, 0.5, data.tag + ": the rows sit at " + left)
+        var lane = r.bar ? r.bar.width - r.bar.leftPadding : 0
+        fuzzyCompare(r.frame.width - left - r.row.width, Theme.space4 + lane, 0.5,
+                     data.tag + ": the rows' right inset is not their left one")
+    }
+
+    function test_every_page_lines_its_headings_up_with_its_rows_data() {
+        return pagesWithHeadings().concat([{ tag: "album", which: "album" }])
+    }
+    function test_every_page_lines_its_headings_up_with_its_rows(data) {
+        var p = openPage(data.which)
+        checkAligned(p, firstRow(p.list.itemAtIndex(0)), data.tag)
+    }
+
+    // The album's headings name its columns and sort nothing: the album's
+    // own order, by disc, is the point of the page. Scrolled, they stay
+    // under the bar as on the other pages.
+    function test_the_album_headings_stay_at_the_top_and_sort_nothing() {
+        var p = openPage("album")
+        compare(p.head.sort, null, "the album's headings sort")
+        var title = findByName(p.head, "trackListHeadingTitle")
+        verify(!title.activeFocusOnTab, "a heading that sorts nothing is a tab stop")
+        verify(!findByName(p.head, "trackListHeadingAlbum").visible, "the album page heads an album column")
+        var bar = findByName(p.page, "albumStickyHeader")
+        function topOn(item) { return item.mapToItem(p.page, 0, 0).y }
+        var atRest = topOn(p.head)
+        verify(atRest > bar.height + 100, "the headings are not under the hero at rest")
+        fuzzyCompare(atRest, topOn(p.list.headerItem) + p.list.headerItem.height - p.head.height, 1,
+                     "the headings are not the last thing over the rows")
+
+        p.list.contentY = p.list.originY + p.list.headerItem.height + 52 * 10
+        waitForRendering(p.page)
+        fuzzyCompare(topOn(p.head), bar.height, 1, "the headings scrolled away with the rows")
+        compare(bar.reveal, 1, "rows that passed under the headings show through the bar")
+        var under = p.list.itemAt(40, p.list.contentY + bar.height + p.head.height / 2)
+        verify(under, "no row under the headings")
+        checkAligned(p, firstRow(under), "album scrolled")
+        var queued = JSON.stringify(player.queueTracks)
+        mouseClick(title, 10, title.height / 2)
+        compare(JSON.stringify(player.queueTracks), queued, "a click on the headings played the row under them")
+    }
+
+    // Over a disc's heading as over a single disc's rows.
+    function test_the_album_headings_sit_over_the_first_disc() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var t = manyTracks(6)
+        for (var i = 0; i < t.length; ++i) { t[i].volumeNumber = i < 3 ? 1 : 2; t[i].trackNumber = i % 3 + 1 }
+        bridge.setAlbumForTest({ id: 900000102, title: "Zwei Scheiben", artists: "Eine Band",
+                                 artistId: 3, numTracks: 6, coverUrl: "" }, t)
+        var page = createTemporaryObject(albumC, holder, {})
+        page.albumId = 900000102
+        var list = null
+        tryVerify(function () {
+            list = findByName(page, "albumTracksList")
+            return list && list.count === 6 && list.itemAtIndex(0) !== null
+        }, 3000, "the album never filled")
+        waitForRendering(page)
+        var head = findByName(page, "albumTracksHeader")
+        var disc = findByName(list.itemAtIndex(0), "albumDiscHeader")
+        verify(head && head.visible, "a two-disc album has no headings")
+        verify(disc && disc.visible, "the first disc lost its heading")
+        verify(disc.mapToItem(page, 0, 0).y >= head.mapToItem(page, 0, head.height).y - 0.5,
+               "the disc heading is not under the column headings")
+    }
+
+    // Scrolled past the hero, the headings stay at the top of the list with
+    // the rows going under them, still over their columns and still sorting
+    // by click and by key. At rest they sit under the hero.
+    function test_the_headings_stay_at_the_top_while_the_rows_scroll_data() {
+        return pagesWithHeadings().slice(1)
+    }
+    function test_the_headings_stay_at_the_top_while_the_rows_scroll(data) {
+        var p = openPage(data.which)
+        var bar = null
+        for (var i = 0; i < p.page.children.length; ++i)
+            if (p.page.children[i].reveal !== undefined) bar = p.page.children[i]
+        verify(bar, "no bar over the page")
+        function topOn(item) { return item.mapToItem(p.page, 0, 0).y }
+        var atRest = topOn(p.head)
+        verify(atRest > bar.height + 100, "the headings are not under the hero at rest")
+        fuzzyCompare(atRest, topOn(p.list.headerItem) + p.list.headerItem.height - p.head.height, 1,
+                     "the headings left their place under the hero")
+
+        p.list.contentY = p.list.originY + p.list.headerItem.height + 52 * 10
+        waitForRendering(p.page)
+        fuzzyCompare(topOn(p.head), bar.height, 1, "the headings scrolled away with the rows")
+        compare(bar.reveal, 1, "rows that passed under the headings show through the bar")
+        var under = p.list.itemAt(40, p.list.contentY + bar.height + p.head.height / 2)
+        verify(under, "no row under the headings")
+        checkAligned(p, under, data.tag + " scrolled")
+        // Their ground covers the list from edge to edge, insets included.
+        var ground = findByName(p.head, "trackListHeaderGround")
+        verify(ground.visible, "the pinned headings have no ground")
+        fuzzyCompare(ground.mapToItem(p.list, 0, 0).x, 0, 0.5, "the ground does not start at the list's edge")
+        fuzzyCompare(ground.width, p.list.width, 0.5, "the ground is not as wide as the list")
+        // The heart's slot has no heading; a click there is not the row's.
+        var lh = findByName(p.head, "trackListHeadingLength")
+        var queued = JSON.stringify(player.queueTracks)
+        mouseClick(p.head, lh.mapToItem(p.head, 0, 0).x - 24, p.head.height / 2)
+        compare(JSON.stringify(player.queueTracks), queued, "a click on the headings played the row under them")
+
+        var title = findByName(p.head, "trackListHeadingTitle")
+        var sort = p.head.sort
+        function staysPinned() { return Math.abs(topOn(p.head) - bar.height) <= 1 }
+        mouseClick(title, 10, title.height / 2)
+        compare(sort.key, "title", "a click on the pinned headings did not reach them")
+        tryVerify(staysPinned, 1000, "a sort by click moved the headings off the top")
+        title.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space)
+        compare(sort.descending, true, "the keyboard does not reach the pinned headings")
+        tryVerify(staysPinned, 1000, "a sort by key moved the headings off the top")
+        var first = p.list.itemAtIndex(0)
+        verify(first, "the first sorted row is not drawn")
+        fuzzyCompare(topOn(first), bar.height + p.head.height, 1,
+                     "a sort from the pinned headings does not show the first rows under them")
+
+        p.list.contentY = p.list.originY
+        waitForRendering(p.page)
+        fuzzyCompare(topOn(p.head), atRest, 1, "the headings did not go back under the hero")
+    }
+
+    // A long list opens at the top, its hero on screen, not scrolled by
+    // the hero's height.
+    function test_a_long_list_opens_at_its_hero_data() {
+        return pagesWithHeadings().slice(1).concat([{ tag: "album", which: "album" }])
+    }
+    function test_a_long_list_opens_at_its_hero(data) {
+        var p = openPage(data.which)
+        compare(p.list.contentY, p.list.originY, "the page opened scrolled")
+        verify(p.head.mapToItem(p.page, 0, 0).y > 200, "the headings are not under the hero")
+    }
+
+    // Each row is handed its place on the playlist as it is made, also
+    // while the order for the new list is still on its way.
+    function test_a_playlist_hands_every_row_its_place() {
+        failOnWarning(/Unable to assign \[undefined\]/)
+        var p = openPage("playlist")
+        for (var i = 0; i < 5; ++i)
+            compare(p.list.itemAtIndex(i).trackItemIndex, i)
+    }
+
+    // ── Liked tracks ─────────────────────────────────────────────────────
+
+    function makeCollection() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        bridge.setFavoriteTracksListForTest(tracks())
+        var page = createTemporaryObject(collectionC, holder, {})
+        verify(page)
+        page.activeTab = 0
+        waitForRendering(page)
+        return page
+    }
+
+    // Every row there is liked, so every row has the filled heart; a row
+    // unliked there leaves the list.
+    function test_every_liked_track_shows_its_heart() {
+        var page = makeCollection()
+        var list = findByName(page, "collectionTracksList")
+        tryVerify(function () { return list.itemAtIndex(3) !== null })
+        for (var i = 0; i < 4; ++i)
+            verify(findByName(list.itemAtIndex(i), "trackLikeButton").liked,
+                   "row " + i + " of Liked tracks has no heart")
+        list.itemAtIndex(1).toggleLike()
+        tryCompare(list, "count", 3)
+        verify(!bridge.isTrackFavorite(12), "the unlike did not reach the bridge")
+    }
+
+    function test_liked_tracks_sort_in_the_headings_and_play_in_that_order() {
+        var page = makeCollection()
+        var head = findByName(page, "collectionTracksHeader")
+        verify(head && head.visible, "Liked tracks has no column headings")
+        verify(findByName(head, "trackListHeadingAdded").visible,
+               "Liked tracks has no date added heading")
+        var pill = findByName(page, "collectionSortDefault")
+        verify(!pill || !pill.visible, "the sort words are still over the track list")
+
+        var list = findByName(page, "collectionTracksList")
+        var title = findByName(head, "trackListHeadingTitle")
+        mouseClick(title, 10, title.height / 2)
+        compare(titles(list.model.rows()), "abend,Bahn,Mittag,Zug")
+        tryVerify(function () { return list.itemAtIndex(1) !== null })
+        list.itemAtIndex(1).playRequested()
+        compare(titles(player.queueTracks), "abend,Bahn,Mittag,Zug", "the queue is not the order shown")
+        compare(player.queueIndex, 1)
+    }
+
+    // ── a playlist ───────────────────────────────────────────────────────
+
+    // A sort is the view's: rows still say where they are on Tidal's list,
+    // which is what a removal names.
+    function test_a_sorted_playlist_keeps_each_rows_place_on_tidal() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        bridge.setPlaylistTracksForTest(tracks())
+        var page = createTemporaryObject(playlistC, holder, {})
+        page.playlistUuid = "11111111-2222-3333-4444-555555555555"
+        var list = null
+        tryVerify(function () {
+            list = findByName(page, "playlistTracksList")
+            return list && list.count === 4
+        }, 3000, "the playlist never filled")
+        var head = findByName(page, "playlistTracksHeader")
+        verify(head && head.visible, "the playlist has no column headings")
+        var title = findByName(head, "trackListHeadingTitle")
+        mouseClick(title, 10, title.height / 2)
+        compare(titles(list.model.rows()), "abend,Bahn,Mittag,Zug")
+        compare(titles(page.trackRows.list()), "Mittag,abend,Zug,Bahn", "the sort reordered the playlist itself")
+        tryVerify(function () { return list.itemAtIndex(0) !== null })
+        compare(list.itemAtIndex(0).trackItemIndex, 1, "a row lost its place on the playlist")
+        list.itemAtIndex(0).playRequested()
+        compare(titles(player.queueTracks), "abend,Bahn,Mittag,Zug", "the queue is not the order shown")
+    }
+}

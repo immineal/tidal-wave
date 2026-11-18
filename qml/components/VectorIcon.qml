@@ -7,7 +7,8 @@ Item {
     id: root
     property string name: ""
     property color color: Theme.textPrimary
-    property real strokeWidth: 1.8
+    // One stroke for every glyph in the app.
+    property real strokeWidth: Theme.iconStroke
 
     implicitWidth: 24
     implicitHeight: 24
@@ -25,6 +26,18 @@ Item {
     // "track" is not drawn as a path; see trackStrip below for why.
     readonly property bool isSnappedBars: name === "track"
 
+    // The software backend draws a Shape scrolled wholly out of a clip without
+    // the clip, and never repaints where it drew. There the same paths are
+    // painted as SVG, which is clipped like an image.
+    readonly property bool _software: GraphicsInfo.api === GraphicsInfo.Software
+
+    // Set the first time the icon is shown, and kept: a row's play glyph or a
+    // card's placeholder is hidden most of its life and draws nothing until
+    // then, and one that was drawn is not built again for a page coming back.
+    property bool _shown: false
+    onVisibleChanged: if (visible) _shown = true
+    Component.onCompleted: if (visible) _shown = true
+
     // The Shape is built anew each time the icon enters a scene. Qt 6.4's
     // software renderer crashes on one that left a scene and came back, as
     // every glyph in a menu does when the menu reopens.
@@ -34,7 +47,7 @@ Item {
         width: 24
         height: 24
         anchors.centerIn: parent
-        active: root.Window.window !== null
+        active: root.Window.window !== null && !root._software && root._shown && !root.isSnappedBars
 
         transform: Scale {
             origin.x: 12
@@ -58,9 +71,11 @@ Item {
                 PathSvg { path: root._pathFor(root.name) }
             }
 
-            // Solid detail drawn on top of a stroked glyph.
+            // Solid detail drawn on top of a stroked glyph. No stroke colour:
+            // on Qt 6.6 and older a width of 0 still draws a 1 px white line.
             ShapePath {
                 strokeWidth: 0
+                strokeColor: "transparent"
                 fillColor: root.color
                 PathSvg { path: root._accentFor(root.name) }
             }
@@ -75,6 +90,12 @@ Item {
                 PathSvg { path: root._overlayFor(root.name) }
             }
         }
+    }
+
+    Loader {
+        anchors.fill: parent
+        active: root._software && !root.isSnappedBars && root._shown
+        sourceComponent: SvgGlyph { svg: root._svg() }
     }
 
     // The seven-bar "track" strip, snapped to whole device pixels. As a stroked
@@ -116,7 +137,7 @@ Item {
         readonly property var halfUnits: [3, 6.5, 4, 9, 5, 7.5, 2.5]
 
         Repeater {
-            model: 7
+            model: root.isSnappedBars && root._shown ? 7 : 0
             Rectangle {
                 required property int index
                 objectName: "trackBar"
@@ -148,6 +169,14 @@ Item {
                  + " M 15.2 7 V 17 M 18.4 4.5 V 19.5 M 21.6 9.5 V 14.5"
         case "artist":
             return "M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z"
+        // The artist figure moved left, with a plus or a tick beside it, for
+        // Follow and Following. Like keeps the heart to itself.
+        case "artist-follow":
+            return "M 16 21 V 19 A 4 4 0 0 0 12 15 H 6 A 4 4 0 0 0 2 19 V 21 M 9 11 A 4 4 0 1 0 9 3 A 4 4 0 0 0 9 11 Z"
+                 + " M 19 8 V 14 M 16 11 H 22"
+        case "artist-following":
+            return "M 16 21 V 19 A 4 4 0 0 0 12 15 H 6 A 4 4 0 0 0 2 19 V 21 M 9 11 A 4 4 0 1 0 9 3 A 4 4 0 0 0 9 11 Z"
+                 + " M 16 11 L 18 13 L 22 9"
         case "settings":
             return "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M 12 15 A 3 3 0 1 1 12 9 A 3 3 0 0 1 12 15 Z"
         case "volume-mute":
@@ -171,7 +200,7 @@ Item {
         case "repeat":
             return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3"
         case "repeat-one":
-            return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3 M 11 11 L 12 10 V 14 M 10 14 H 14"
+            return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3"
         case "clock":
             return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 6 V 12 L 16 14"
         // Three bare lines read as a hamburger menu, so _accentFor adds a mark.
@@ -240,6 +269,8 @@ Item {
             return "M 12 3 V 15 M 7 10 L 12 15 L 17 10 M 4 20 H 20"
         case "check":
             return "M 5 12 L 10 17 L 19 7"
+        case "folder":
+            return "M 4 20 H 20 A 2 2 0 0 0 22 18 V 8.5 A 2 2 0 0 0 20 6.5 H 12 L 10 4 H 4 A 2 2 0 0 0 2 6 V 18 A 2 2 0 0 0 4 20 Z"
         // A sheet over a sheet, for "Copy link". A chain link cannot be drawn
         // at this size: its two half-rings close into one flat oval.
         case "copy":
@@ -263,11 +294,42 @@ Item {
         return ""
     }
 
+    // The three ShapePaths above as one SVG document. The viewBox puts the
+    // 24-unit box at 85 % of the item, centred and stretched, as the Scale does.
+    function _svg() {
+        var c = root.color
+        var rgb = "rgb(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + ","
+                + Math.round(c.b * 255) + ")"
+        var fill = ' fill="' + rgb + '" fill-opacity="' + c.a + '"'
+        var stroke = function (w) {
+            return ' fill="none" stroke="' + rgb + '" stroke-opacity="' + c.a + '" stroke-width="' + w
+                 + '" stroke-linecap="round" stroke-linejoin="round"'
+        }
+        var w = root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth
+        var out = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2.1176 -2.1176 28.2353 28.2353"'
+                + ' preserveAspectRatio="none">'
+        var main = root._pathFor(root.name)
+        if (main !== "")
+            out += '<path d="' + main + '"' + (root.isFilled ? fill : stroke(w)) + '/>'
+        var accent = root._accentFor(root.name)
+        if (accent !== "")
+            out += '<path d="' + accent + '"' + fill + '/>'
+        var overlay = root._overlayFor(root.name)
+        if (overlay !== "")
+            out += '<path d="' + overlay + '"' + stroke(root.strokeWidth) + '/>'
+        return out + '</svg>'
+    }
+
     function _accentFor(n) {
         switch (n) {
         case "queue":  return "M 16.5 14.6 L 22 18 L 16.5 21.4 Z"
         case "mix":    return "M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z"
         case "cast":   return "M 3.7 19.5 A 1.2 1.2 0 1 0 1.3 19.5 A 1.2 1.2 0 1 0 3.7 19.5 Z"
+        // A solid disc with the "1" cut out of it, which still reads at 18px
+        // where a stroked "1" was a speck.
+        case "repeat-one":
+            return "M 16.2 12 A 4.2 4.2 0 1 0 7.8 12 A 4.2 4.2 0 1 0 16.2 12 Z"
+                 + " M 12.9 9.4 V 14.6 H 11.5 V 11.4 L 10.6 12 V 10.7 L 11.8 9.4 Z"
         }
         return ""
     }
@@ -293,10 +355,25 @@ Item {
         implicitWidth: 16
         implicitHeight: 14
 
-        // Derived from the width, so the bars never reach past their own box.
-        // Five bars and four gaps of three quarters of a bar are 8 bar widths.
-        readonly property real barWidth: width / 8
-        readonly property real gap: barWidth * 0.75
+        // Bars, gaps and heights in whole device pixels, unantialiased, so
+        // every bar comes out the same width with the same gap at any scale.
+        // A test sets dpr to check 1.5x and 2x.
+        property real dpr: Math.max(1, Screen.devicePixelRatio)
+        readonly property int boxWDev: Math.max(5, Math.floor(width * dpr + 0.001))
+        readonly property int floorDev: Math.max(1, Math.floor(height * dpr + 0.001))
+        // About eight bar widths across, gaps three quarters of a bar, and
+        // the gap gives way first where five bars and four gaps do not fit.
+        readonly property int barDev: {
+            var b = Math.max(1, Math.round(boxWDev / 8))
+            while (b > 1 && 5 * b + 4 > boxWDev) --b
+            return b
+        }
+        readonly property int gapDev: {
+            var g = Math.max(1, Math.round(barDev * 0.75))
+            while (g > 1 && 5 * barDev + 4 * g > boxWDev) --g
+            return g
+        }
+        readonly property int stripXDev: Math.round((boxWDev - (5 * barDev + 4 * gapDev)) / 2)
 
         // ── live levels ──────────────────────────────────────────────────
         // True only while the preference is on and audio is arriving. A paused
@@ -317,25 +394,32 @@ Item {
         }
 
         opacity: animate ? 1 : 0.45
-        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
 
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            height: ind.height
-            spacing: ind.gap
+        property bool _shown: false
+        onVisibleChanged: if (visible) _shown = true
+        Component.onCompleted: if (visible) _shown = true
+
+        // The bars are laid out in device pixels, scaled down by dpr. In
+        // logical units a bar's y and height are fractions, and the software
+        // renderer rounds each on its own, a device pixel apart at 2x.
+        Item {
+            width: ind.boxWDev
+            height: ind.floorDev
+            transform: Scale { xScale: 1 / ind.dpr; yScale: 1 / ind.dpr }
 
             Repeater {
                 // Heights as fractions of the box, so the figure is the same
                 // at any size. The resting row is uneven on purpose: five
-                // bars of one height read as a bar chart.
-                model: [
+                // bars of one height read as a bar chart. Built when first
+                // shown: every track row has an indicator, one row shows it.
+                model: ind._shown ? [
                     { rest: 0.45, peak: 1.00, trough: 0.20, ms: 420 },
                     { rest: 0.80, peak: 0.55, trough: 1.00, ms: 320 },
                     { rest: 0.30, peak: 0.90, trough: 0.15, ms: 500 },
                     { rest: 0.65, peak: 0.35, trough: 0.95, ms: 360 },
                     { rest: 0.50, peak: 0.85, trough: 0.25, ms: 460 }
-                ]
+                ] : []
 
                 delegate: Rectangle {
                     id: bar
@@ -354,41 +438,46 @@ Item {
                         ind.height * (ind.minFrac
                                       + (1 - ind.minFrac) * ind.levelAt(bar.index))
 
-                    // A Row places its children only horizontally, so the
-                    // floor is set here. Not an anchor: `parent` is null while
-                    // a Repeater builds its delegate, and that warns.
-                    y: ind.height - bar.height
-                    width: ind.barWidth
-                    height: bar.restH
-                    radius: width / 2
+                    // `level` is the smooth height the animations write; the
+                    // drawn height is that, rounded to whole device pixels.
+                    property real level: bar.restH
+                    readonly property int hDev:
+                        Math.min(ind.floorDev, Math.max(1, Math.round(bar.level * ind.dpr)))
+                    // Not anchors: `parent` is null while a Repeater builds
+                    // its delegate, and that warns.
+                    x: ind.stripXDev + bar.index * (ind.barDev + ind.gapDev)
+                    y: ind.floorDev - bar.hDev
+                    width: ind.barDev
+                    height: bar.hDev
+                    antialiasing: false
                     color: ind.color
 
-                    // The animation below writes `height` directly, which
+                    // The animation below writes `level` directly, which
                     // drops the binding above; this puts the resting height
                     // back if the box is resized while the bars are still.
-                    onRestHChanged: if (!seq.running && !ind.useSpectrum) bar.height = bar.restH
+                    onRestHChanged: if (!seq.running && !ind.useSpectrum) bar.level = bar.restH
 
-                    // Spectrum mode assigns the height, like the animation. A
-                    // conditional binding on `height` would be dropped by the
+                    // Spectrum mode assigns the level, like the animation. A
+                    // conditional binding on `level` would be dropped by the
                     // animation's first write and never come back.
-                    onSpecHChanged: if (ind.useSpectrum) bar.height = bar.specH
+                    onSpecHChanged: if (ind.useSpectrum) bar.level = bar.specH
 
                     // Leaving the live path: the animation restarts by itself
                     // if it is allowed to, but a paused row has no animation
                     // to put the bar back, so it is put back here.
                     readonly property bool live: ind.useSpectrum
                     onLiveChanged: {
-                        if (bar.live) bar.height = bar.specH
-                        else if (!seq.running) bar.height = bar.restH
+                        if (bar.live) bar.level = bar.specH
+                        else if (!seq.running) bar.level = bar.restH
                     }
 
                     // Enabled only on the live path. The analyser publishes at
                     // 25 Hz and the screen draws at 60; without this the bars
                     // step where they should move.
-                    Behavior on height {
+                    Behavior on level {
                         enabled: ind.useSpectrum
                         NumberAnimation {
-                            duration: Theme.dur(70)
+                            duration: Theme.dur(Theme.motionFast)
                             easing.type: Easing.OutQuad
                         }
                     }
@@ -398,21 +487,21 @@ Item {
                         running: ind.animate && ind.visible && !ind.useSpectrum
                         loops: Theme.reduceMotion ? 1 : Animation.Infinite
                         NumberAnimation {
-                            target: bar; property: "height"; to: bar.peakH
+                            target: bar; property: "level"; to: bar.peakH
                             duration: Theme.dur(bar.modelData.ms)
                             easing.type: Easing.InOutSine
                         }
                         NumberAnimation {
-                            target: bar; property: "height"; to: bar.troughH
+                            target: bar; property: "level"; to: bar.troughH
                             duration: Theme.dur(bar.modelData.ms)
                             easing.type: Easing.InOutSine
                         }
                         NumberAnimation {
-                            target: bar; property: "height"; to: bar.restH
+                            target: bar; property: "level"; to: bar.restH
                             duration: Theme.dur(Math.round(bar.modelData.ms * 0.6))
                             easing.type: Easing.InOutSine
                         }
-                        onStopped: if (!ind.useSpectrum) bar.height = bar.restH
+                        onStopped: if (!ind.useSpectrum) bar.level = bar.restH
                     }
                 }
             }

@@ -5,35 +5,16 @@ import TidalWave
 
 // The one context menu in the app: the pin menu that sidebar rows, media
 // cards and the page hero headers open on a right-click, with the two queue
-// actions above it. Only this file knows the labels and the player calls.
+// actions above it and Copy link under Pin. Only this file knows the labels and the player calls.
 // It also owns ContextMenu.Entry, the row every Menu in the app is built
-// from, and the fades and FavoriteAction that other hosts borrow.
-Menu {
+// from, and the FavoriteAction that other hosts borrow. The panel, fades and
+// insets are MenuBase's.
+MenuBase {
     id: root
 
-    // ── how a menu arrives and leaves, once ─────────────────────────────
-    // Opacity and nothing else. Qt 6.4 has a Popup/Layout polish loop when a
-    // popup's geometry feeds back into its contents, and animating height,
-    // scale or y would hand the positioner a moving target.
-    component OpenFade : Transition {
-        NumberAnimation {
-            property: "opacity"
-            from: 0; to: 1
-            duration: Theme.dur(110)
-            easing.type: Easing.OutCubic
-        }
-    }
-    component CloseFade : Transition {
-        NumberAnimation {
-            property: "opacity"
-            from: 1; to: 0
-            duration: Theme.dur(90)
-            easing.type: Easing.InCubic
-        }
-    }
-
-    enter: OpenFade { }
-    exit:  CloseFade { }
+    // MenuBase's fades under their old names, for menus not yet on MenuBase.
+    component OpenFade : MenuBase.OpenFade { }
+    component CloseFade : MenuBase.CloseFade { }
 
     // ── what a menu entry looks like, once ───────────────────────────────
     // Every entry carries an icon.
@@ -46,8 +27,8 @@ Menu {
         // Destructive. Tints the label and the icon red.
         property bool danger: false
 
-        leftPadding: 12
-        rightPadding: 12
+        leftPadding: Theme.space3
+        rightPadding: Theme.space3
 
         // The menu decides the gutter: every row reserves it when any row has
         // an icon, so the labels line up. Its own icon is asked first because
@@ -65,11 +46,11 @@ Menu {
         }
 
         readonly property color ink: !entry.enabled ? Theme.textDim
-                                   : entry.danger   ? Theme.red
+                                   : entry.danger   ? Theme.redText
                                                     : Theme.textPrimary
 
         contentItem: RowLayout {
-            spacing: entry.showsGutter ? 10 : 0
+            spacing: entry.showsGutter ? Theme.space2 : 0
             Item {
                 Layout.preferredWidth:  entry.showsGutter ? 16 : 0
                 Layout.preferredHeight: 16
@@ -79,14 +60,13 @@ Menu {
                     visible: entry.iconName !== ""
                     name: entry.iconName
                     color: entry.ink
-                    strokeWidth: 1.6
                 }
             }
             Text {
                 Layout.fillWidth: true
                 text: entry.text
                 color: entry.ink
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 verticalAlignment: Text.AlignVCenter
                 // Past Theme.menuWidth's maximum the label elides. Its
                 // implicitWidth is still the full label, which is what the menu
@@ -94,7 +74,21 @@ Menu {
                 elide: Text.ElideRight
             }
         }
-        background: Rectangle { color: entry.highlighted ? Theme.surfaceHov : "transparent" }
+        background: Rectangle {
+            radius: Theme.radiusRow
+            color: entry.highlighted ? Theme.hoverFill : "transparent"
+        }
+    }
+
+    // ── a rule between groups of entries ─────────────────────────────────
+    // A hidden MenuSeparator still adds its height, so `shown` zeroes it.
+    component Separator : MenuSeparator {
+        property bool shown: true
+        visible: shown
+        height: shown ? implicitHeight : 0
+        topPadding: Theme.space1
+        bottomPadding: Theme.space1
+        contentItem: Rectangle { implicitHeight: 1; color: Theme.border }
     }
 
     // ── queueing ───────────────────────────────────────────────────────
@@ -103,18 +97,16 @@ Menu {
     // yet. The callback may never run. Null offers neither action.
     property var trackSource: null
 
-    // The item the confirmation is drawn above, so a host passes a part of
-    // itself with room above it. Falls back to the item the menu pops up on.
-    property Item confirmAnchor: null
-
-    // How long the confirmation stays readable. Not Theme.dur(): it is a
-    // dwell time, not an animation, and dur() collapses to 0 under reduced
-    // motion, which ToolTip reads as "never time out".
-    readonly property int confirmMs: 2000
-
     // So a test can read the labels without walking a popup's contents.
     readonly property alias playNextItem:   playNextEntry
     readonly property alias addToQueueItem: addToQueueEntry
+    readonly property alias addToPlaylistItem: addToPlaylistEntry
+
+    // Every track of it, into a playlist the window's picker asks for.
+    function addToPlaylist() {
+        if (!root.trackSource) return
+        root.trackSource(function (tracks) { Edits.pickPlaylist(tracks) })
+    }
 
     function playNext()   { _queue(true) }
     function addToQueue() { _queue(false) }
@@ -130,121 +122,65 @@ Menu {
     }
 
     // Says the queueing worked, so nobody clicks again and queues it twice.
-    // The tool tip takes no focus, blocks nothing and times out by itself.
     function _confirm(n, atFront) {
-        var at = root.confirmAnchor || root.parent
-        if (!at) return
-        at.ToolTip.show(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", n)
-                                : qsTr("%n track(s) added to queue", "queue confirmation", n),
-                        root.confirmMs)
+        Toasts.show(atFront ? qsTr("%Ln track(s) added to play next", "queue confirmation", n)
+                            : qsTr("%Ln track(s) added to queue", "queue confirmation", n))
     }
 
     // ── a favourite the server can refuse ────────────────────────────────
-    // The favourite call, and a word when it comes back refused. It writes no
-    // state: the hearts read back through the bridge, which changes its caches
-    // only on a yes. Silent on success, which the heart already shows.
+    // The favourite call. It writes no state: the hearts read back through
+    // the bridge, which changes its caches only on a yes. Edits says what
+    // happened once Tidal shows it, with Undo.
     component FavoriteAction : QtObject {
         id: fav
 
-        // Its own copy of the dwell. An inline component does not share the
-        // enclosing file's id scope, so root.confirmMs is a ReferenceError
-        // here. Not Theme.dur(), which is 0 under reduced motion.
-        property int confirmMs: 2000
-
-        // What the last reply said, or "" when it was accepted, kept because
-        // the shared tool tip cannot be read back. Cleared when a call goes
-        // out, so the value never belongs to the previous press.
+        // What the last refusal said, or "" when the reply was a yes, so a
+        // test can read it. Cleared when a call goes out.
         property string lastMessage: ""
 
-        // The bool is the state now, which the press undoes. `anchor` is what
-        // the refusal is drawn above, per call because delegates are recycled.
-        // It must not bind ToolTip.visible, text or delay: one tip per window.
+        // The bool is the state now, which the press undoes. `anchor` is kept
+        // for the callers. The write, its read-back, the notice and Undo are
+        // Edits'; this keeps what a refusal said, for the tests.
         function toggleTrack(trackId, liked, anchor) {
             if (!(trackId > 0)) return
-            fav.lastMessage = ""
-            if (liked) bridge.removeTrackFavorite(trackId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not unlike the song",
-                                              "shown when removing a track from favourites failed"))
-            })
-            else       bridge.addTrackFavorite(trackId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not like the song",
-                                              "shown when adding a track to favourites failed"))
-            })
+            fav._send("track", trackId, !liked)
         }
 
         function toggleAlbum(albumId, saved, anchor) {
             if (!(albumId > 0)) return
-            fav.lastMessage = ""
-            if (saved) bridge.removeAlbumFavorite(albumId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not remove the album from your library",
-                                              "shown when removing an album from the library failed"))
-            })
-            else       bridge.addAlbumFavorite(albumId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not save the album",
-                                              "shown when saving an album to the library failed"))
-            })
+            fav._send("album", albumId, !saved)
         }
 
         function toggleArtist(artistId, following, anchor) {
             if (!(artistId > 0)) return
-            fav.lastMessage = ""
-            if (following) bridge.removeArtistFavorite(artistId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not unfollow the artist",
-                                              "shown when unfollowing an artist failed"))
-            })
-            else           bridge.addArtistFavorite(artistId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not follow the artist",
-                                              "shown when following an artist failed"))
-            })
+            fav._send("artist", artistId, !following)
         }
 
         // A mix id is a string of hex characters, so the guard is on length:
-        // Number(id) > 0 is false for a real id.
+        // Number(id) > 0 is false for a real id. A track radio is a mix to
+        // Tidal and to this call, so the words name the mix even on a page
+        // whose heading reads "Radio".
         function toggleMix(mixId, saved, anchor) {
             if (!mixId || String(mixId).length === 0) return
+            fav._send("mix", mixId, !saved)
+        }
+
+        function _send(kind, id, on) {
             fav.lastMessage = ""
-            // A track radio is a mix to Tidal and to this call, so the message
-            // names the mix even on a page whose heading reads "Radio".
-            if (saved) bridge.removeMixFavorite(mixId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not remove the mix from your library",
-                                              "shown when removing a mix from the library failed"))
-            })
-            else       bridge.addMixFavorite(mixId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not save the mix",
-                                              "shown when saving a mix to the library failed"))
+            Edits.setFavorite(kind, id, on, function (ok, message) {
+                if (ok !== true) fav.lastMessage = message
             })
         }
 
         // Only an explicit true counts as accepted. A reply that never arrived
         // leaves the argument undefined, and that must not read as success.
-        function _refused(ok, anchor, message) {
-            if (ok === true) return
-            // Recorded first: a grid delegate can be destroyed between the
-            // press and the reply, which leaves `anchor` null.
+        function _refused(ok, message) {
+            if (ok === true) return true
             fav.lastMessage = message
-            if (anchor) anchor.ToolTip.show(message, fav.confirmMs)
+            Toasts.show(message)
+            return false
         }
     }
-
-    // Insets reset, not inherited. A style sets them for its drop shadow (the
-    // native macOS style uses -32), and this menu draws its own background,
-    // so inherited insets lay the panel out past the popup and clip entries.
-    leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-
-    // popupType and Popup.Item are Qt 6.8. Declared, the property makes this
-    // type and every type using it unavailable on older Qt, so it is assigned
-    // where it exists. `this.` matters: a bare unknown name throws.
-    Component.onCompleted: {
-        if (this.popupType !== undefined) this.popupType = Popup.Item
-    }
-
-    // Sized to its longest item; see Theme.menuWidth for why a styled Menu
-    // does not do that by itself.
-    implicitWidth: Theme.menuWidth(root)
-
-    // Qt may let a menu hang `overlap` pixels past the window edge (Basic asks
-    // for 1, for submenus). This menu has no submenus.
-    overlap: 0
 
     // ── the pin face ─────────────────────────────────────────────────────
 
@@ -274,6 +210,33 @@ Menu {
         function onChanged() { root.refreshPinned() }
     }
 
+    // ── the artists ──────────────────────────────────────────────────────
+    // Go to artist, as a track row's menu has it: [{id, name}], every id
+    // usable. Empty on menus that stand for no one record's artists. The host
+    // navigates, because a popup that is not shown has no window.
+    property var artistCredits: []
+    signal artistRequested(real artistId)
+
+    // The row that opens the artists' submenu, built from this delegate with
+    // the submenu's title as its text. Hidden for one artist or none.
+    delegate: Entry {
+        id: artistSubRow
+        objectName: "goToArtistSubMenuRow"
+        iconName: "artist"
+        visible: root.artistCredits.length > 1
+        height: visible ? implicitHeight : 0
+        // Room for the arrow, which the style draws beside the content item.
+        rightPadding: Theme.space3 + Theme.space5
+        arrow: VectorIcon {
+            visible: artistSubRow.subMenu
+            x: artistSubRow.width - width - 12
+            y: (artistSubRow.height - height) / 2
+            width: 14; height: 14
+            name: "chevron-right"
+            color: artistSubRow.ink
+        }
+    }
+
     // ── taking it away ───────────────────────────────────────────────────
     // The destructive entry. The host supplies the wording, because only it
     // knows what removing means. Empty means the row is not there.
@@ -294,13 +257,18 @@ Menu {
 
     // So a right-click handler can skip the menu entirely, and so the tests
     // can read the label without walking a popup's contents.
-    readonly property alias pinItem:    pinEntry
-    readonly property alias removeItem: removeEntry
+    readonly property alias pinItem:      pinEntry
+    readonly property alias copyLinkItem: copyLinkEntry
+    readonly property alias removeItem:   removeEntry
 
-    background: Rectangle {
-        color: Theme.surfaceHigh
-        border.color: Theme.border
-        radius: Theme.radiusPopup
+    // The web link of what the menu is on, the short form TrackRow copies for
+    // a track. Every kind that can be pinned has one.
+    readonly property string linkUrl: canPin ? "https://tidal.com/" + pinKind + "/" + pinId : ""
+
+    function copyLink() {
+        if (root.linkUrl.length === 0) return
+        bridge.copyToClipboard(root.linkUrl)
+        Toasts.show(qsTr("Link copied"))
     }
 
     // A hidden MenuItem still contributes its height to the menu, so every
@@ -326,10 +294,45 @@ Menu {
         iconName: "queue"
         onTriggered: root.addToQueue()
     }
-    MenuSeparator {
-        visible: root.trackSource !== null && root.canPin
+    // As the track rows' menu has it: the plus, after the queue entries.
+    Entry {
+        id: addToPlaylistEntry
+        objectName: "addToPlaylistMenuItem"
+        visible: root.trackSource !== null
         height: visible ? implicitHeight : 0
-        contentItem: Rectangle { height: 1; color: Theme.border }
+        text: qsTranslate("TrackRow", "Add to playlist")
+        iconName: "plus"
+        onTriggered: root.addToPlaylist()
+    }
+    Separator {
+        shown: root.trackSource !== null && (root.canPin || root.artistCredits.length > 0)
+    }
+
+    // First in its group, where a track row's menu has its Go to rows.
+    Entry {
+        id: goToArtistEntry
+        objectName: "goToArtistMenuItem"
+        visible: root.artistCredits.length === 1
+        height: visible ? implicitHeight : 0
+        text: qsTranslate("TrackRow", "Go to artist")
+        iconName: "artist"
+        onTriggered: if (root.artistCredits.length === 1) root.artistRequested(root.artistCredits[0].id)
+    }
+    MenuBase {
+        id: artistSubMenu
+        objectName: "goToArtistSubMenu"
+        title: qsTranslate("TrackRow", "Go to artist")
+        // Not a Repeater, which a Menu would take for an entry of its own.
+        Instantiator {
+            model: root.artistCredits
+            delegate: Entry {
+                objectName: "goToArtistCreditItem"
+                text: modelData.name
+                onTriggered: root.artistRequested(modelData.id)
+            }
+            onObjectAdded: (index, object) => artistSubMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
+        }
     }
 
     Entry {
@@ -347,14 +350,21 @@ Menu {
                                       root.pinSubtitle, root.pinImageUrl)
         }
     }
+    Entry {
+        id: copyLinkEntry
+        objectName: "copyLinkMenuItem"
+        visible: root.linkUrl.length > 0
+        height: visible ? implicitHeight : 0
+        text: qsTranslate("TrackRow", "Copy link")
+        iconName: "copy"
+        onTriggered: root.copyLink()
+    }
 
     // Last, under a rule of its own: the one row where a misclick costs you
     // something should not sit against the row above it.
-    MenuSeparator {
-        visible: root.removeLabel.length > 0
-                 && (root.canPin || root.trackSource !== null)
-        height: visible ? implicitHeight : 0
-        contentItem: Rectangle { height: 1; color: Theme.border }
+    Separator {
+        shown: root.removeLabel.length > 0
+               && (root.canPin || root.trackSource !== null)
     }
     Entry {
         id: removeEntry

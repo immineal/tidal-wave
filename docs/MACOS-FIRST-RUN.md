@@ -6,7 +6,7 @@ a question rather than a regression.
 
 The repository is public, so start by cloning the release:
 
-    git clone --branch v0.4.2 https://github.com/immineal/tidal-wave.git
+    git clone --branch v0.5.0 https://github.com/immineal/tidal-wave.git
     cd tidal-wave
 
 ## What is already known to be absent
@@ -163,8 +163,10 @@ goes through CFPreferences and writes
 `~/Library/Preferences/com.tidalwave.Tidal Wave.plist` whatever `HOME` says, so
 a settings change in a test run lands in the real user's preferences. Back that
 file up before you change any setting, and put it back afterwards. The same root
-cause makes `QStandardPaths::AppDataLocation` ignore `HOME` and `XDG_DATA_HOME`,
-which is why `tst_library` aborts in `initTestCase` here.
+cause makes `QStandardPaths` ignore `HOME` and `XDG_DATA_HOME`. Under `ctest`
+every test gets `CFFIXED_USER_HOME`, which CoreFoundation reads instead, so
+`~/Library/Application Support` and `~/Library/Caches` stay as they are; a test
+binary started by hand has no such guard.
 
 A first run on this machine also came up already signed in, from a
 `credentials.json` left by an install months earlier, and refreshed the token.

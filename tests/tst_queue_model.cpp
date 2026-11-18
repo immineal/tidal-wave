@@ -70,6 +70,12 @@ struct Rig {
     Rig() { QTest::qWait(30); }
 };
 
+// Through the meta-object, the way the queue panel's drop calls it.
+bool insertRows(Player &p, const QVariantList &tracks, const char *section, int slot) {
+    return QMetaObject::invokeMethod(&p, "insertQueueRows", Q_ARG(QVariantList, tracks),
+                                     Q_ARG(QString, QString::fromLatin1(section)), Q_ARG(int, slot));
+}
+
 } // namespace
 
 class TestQueueModel : public QObject {
@@ -286,6 +292,35 @@ private slots:
         verify(p);
     }
 
+    // A page's Shuffle turns shuffle on and starts on a random row. Every row
+    // plays: the start row first, all the others shuffled after it, and none
+    // is filed behind the cursor as if it had played.
+    void shuffleFromARandomRowPlaysTheWholeContext() {
+        Rig rig;
+        auto &p = rig.player;
+        p.setShuffle(true);
+        p.playTracks(contextOf(1000, 12), 8);
+
+        QCOMPARE(currentId(p), 1008);
+        QVERIFY(p.queuePlayed().isEmpty());
+        const QList<qlonglong> ahead = ids(p.queueContext());
+        QList<qlonglong> others;
+        for (int i = 0; i < 12; ++i) if (i != 8) others.append(1000 + i);
+        QCOMPARE(QSet<qlonglong>(ahead.begin(), ahead.end()),
+                 QSet<qlonglong>(others.begin(), others.end()));
+        QCOMPARE(ahead.count(), 11);
+        verify(p);
+
+        // Off again, the album goes on in its own order from where it is, and
+        // the rows before that point are behind the cursor, as without shuffle.
+        p.setShuffle(false);
+        QCOMPARE(currentId(p), 1008);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1009, 1010, 1011}));
+        QCOMPARE(ids(p.queuePlayed()),
+                 (QList<qlonglong>{1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007}));
+        verify(p);
+    }
+
     // ── walking the combined order ──────────────────────────────────────────
 
     void nextAndPreviousWalkAcrossTheBoundaryBetweenSections() {
@@ -489,6 +524,147 @@ private slots:
         verify(p);
     }
 
+    // ── a drag anywhere in what is still to come ────────────────────────────
+    // The queue panel's drag: inside either section, or across the line
+    // between them, where the row takes the section it lands in.
+
+    void aRowMovesInsideTheContext() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 6), 1);
+        p.addToQueue(one(9001));
+        QSignalSpy queueSpy(&p, &Player::queueChanged);
+
+        p.moveQueueRow(QStringLiteral("context"), 0, QStringLiteral("context"), 2);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1003, 1004, 1002, 1005}));
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QCOMPARE(currentId(p), 1001);
+        QCOMPARE(queueSpy.count(), 1);
+        verify(p);
+
+        // And back up past its old place.
+        p.moveQueueRow(QStringLiteral("context"), 3, QStringLiteral("context"), 0);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1005, 1003, 1004, 1002}));
+        verify(p);
+    }
+
+    void aContextRowDroppedInTheQueueBecomesAQueuedRow() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 5), 0);
+        p.addToQueue(one(9001));
+        p.addToQueue(one(9002));
+
+        p.moveQueueRow(QStringLiteral("context"), 2, QStringLiteral("manual"), 1);
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001, 1003, 9002}));
+        QCOMPARE(p.manualCount(), 3);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 1002, 1004}));
+        verify(p);
+
+        // It is the user's now: an album started next keeps it, as it keeps
+        // everything else queued by hand.
+        p.playTracks(contextOf(2000, 2), 0);
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001, 1003, 9002}));
+        verify(p);
+    }
+
+    void aQueuedRowDroppedInTheContextLeavesTheQueue() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 4), 0);
+        p.addToQueue(one(9001));
+        p.addToQueue(one(9002));
+
+        p.moveQueueRow(QStringLiteral("manual"), 0, QStringLiteral("context"), 1);
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9002}));
+        QCOMPARE(p.manualCount(), 1);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 9001, 1002, 1003}));
+        verify(p);
+
+        // The last queued row going leaves no queue behind.
+        p.moveQueueRow(QStringLiteral("manual"), 0, QStringLiteral("context"), 4);
+        QCOMPARE(p.manualCount(), 0);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 9001, 1002, 1003, 9002}));
+        verify(p);
+    }
+
+    void aMoveThatGoesNowhereChangesNothing() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 4), 1);
+        p.addToQueue(one(9001));
+        QSignalSpy queueSpy(&p, &Player::queueChanged);
+
+        p.moveQueueRow(QStringLiteral("context"), 1, QStringLiteral("context"), 1);
+        p.moveQueueRow(QStringLiteral("context"), 5, QStringLiteral("context"), 0);
+        p.moveQueueRow(QStringLiteral("manual"), -1, QStringLiteral("context"), 0);
+        p.moveQueueRow(QStringLiteral("played"), 0, QStringLiteral("context"), 0);
+        p.moveQueueRow(QStringLiteral("context"), 0, QStringLiteral("current"), 0);
+        QCOMPARE(queueSpy.count(), 0);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1002, 1003}));
+        QCOMPARE(currentId(p), 1001);
+        verify(p);
+
+        // Past the end of the section is its end.
+        p.moveQueueRow(QStringLiteral("context"), 0, QStringLiteral("context"), 99);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1003, 1002}));
+        verify(p);
+    }
+
+    // ── tracks dropped on the queue from a page ─────────────────────────────
+
+    void tracksDroppedAmongTheQueuedOnesLandAtTheGap() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 4), 0);
+        p.addToQueue(one(9001));
+        p.addToQueue(one(9002));
+        QSignalSpy queueSpy(&p, &Player::queueChanged);
+
+        QVERIFY2(insertRows(p, one(9003) + one(9004), "manual", 1), "no insertQueueRows to call");
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001, 9003, 9004, 9002}));
+        QCOMPARE(p.manualCount(), 4);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 1002, 1003}));
+        QCOMPARE(queueSpy.count(), 1);
+        verify(p);
+
+        // Past the end is the end.
+        QVERIFY(insertRows(p, one(9005), "manual", 99));
+        QCOMPARE(ids(p.queueManual()).last(), 9005);
+        verify(p);
+    }
+
+    void tracksDroppedAmongTheContextJoinIt() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 4), 0);
+        p.addToQueue(one(9001));
+
+        QVERIFY2(insertRows(p, one(9003), "context", 1), "no insertQueueRows to call");
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 9003, 1002, 1003}));
+        verify(p);
+
+        // Not the user's queue: a new album replaces it with the rest.
+        p.playTracks(contextOf(2000, 2), 0);
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QVERIFY(!ids(p.queueTracks()).contains(9003));
+        verify(p);
+    }
+
+    void aDropNowhereChangesNothing() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 3), 0);
+        QSignalSpy queueSpy(&p, &Player::queueChanged);
+        QVERIFY2(insertRows(p, QVariantList{}, "manual", 0), "no insertQueueRows to call");
+        QVERIFY(insertRows(p, one(9001), "played", 0));
+        QVERIFY(insertRows(p, one(9001), "current", 0));
+        QCOMPARE(queueSpy.count(), 0);
+        QCOMPARE(p.queueCount(), 3);
+        verify(p);
+    }
+
     // ── the empty cases ─────────────────────────────────────────────────────
 
     void anEmptyManualQueueAndAnEmptyContext() {
@@ -562,7 +738,7 @@ private slots:
                  "a consumed queue entry survived the loop back to the album");
     }
 
-    void repeatOneStaysPut() {
+    void nextUnderRepeatOneMovesOn() {
         Rig rig;
         auto &p = rig.player;
         p.playTracks(contextOf(1000, 3), 1);
@@ -570,8 +746,14 @@ private slots:
         p.setRepeatMode(2);
 
         p.next();
-        QCOMPARE(currentId(p), 1001);
-        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QCOMPARE(currentId(p), 9001);
+        QCOMPARE(ids(p.queueManual()), QList<qlonglong>());
+        verify(p);
+        // At the end it goes round, as repeat-all does.
+        p.next();
+        QCOMPARE(currentId(p), 1002);
+        p.next();
+        QCOMPARE(currentId(p), 1000);
         verify(p);
     }
 

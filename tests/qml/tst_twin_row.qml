@@ -99,7 +99,7 @@ TestCase {
         verify(page, "PlaylistPage did not load")
         wait(1)
         frame(host.contentItem)
-        compare(page.tracks.length, 3, "the page did not load its three tracks")
+        compare(page.trackRows.length, 3, "the page did not load its three tracks")
         return host
     }
 
@@ -123,7 +123,7 @@ TestCase {
         var bars  = findByName(row, "trackRowPlayingIndicator")
         var title = findByName(row, "trackTitle")
         verify(bars && title, "the row has no playing indicator or no title")
-        return bars.visible && Qt.colorEqual(title.color, Theme.accent)
+        return bars.visible && Qt.colorEqual(title.color, Theme.accentText)
     }
 
     // ── the tests ────────────────────────────────────────────────────────

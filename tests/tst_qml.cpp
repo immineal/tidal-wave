@@ -6,24 +6,30 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QObject>
+#include <QQmlContext>
 #include <QQmlEngine>
 
+#include "A11yProbe.h"
 #include "TestStubs.h"
 
 class QmlTestSetup : public QObject {
     Q_OBJECT
 
 public:
-    QmlTestSetup() = default;
+    // Built before QtQuickTest makes any engine, so the tests collect
+    // garbage the way the app does.
+    QmlTestSetup() { Application::useWholeHeapQmlCollector(); }
 
 public slots:
     // Called by QtQuickTest once per QML test file, before that file is loaded.
     void qmlEngineAvailable(QQmlEngine *engine) {
         m_stubs = installTestStubs(engine, this);
+        engine->rootContext()->setContextProperty(QStringLiteral("a11y"), &m_a11y);
     }
 
 private:
     TestStubs m_stubs;
+    A11yProbe m_a11y;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(tidalwave, QmlTestSetup)

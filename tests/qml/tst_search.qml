@@ -229,13 +229,17 @@ TestCase {
         return ""
     }
 
+    // The line a failed search shows; the raw reason goes to the log only.
+    readonly property string failPhrase: "could not answer this search"
+    readonly property string morePhrase: "could not load more results"
+
     // Everything the page can say about the outcome of a search: the lines
     // above plus the one a failure prints. Returns the offending line, or an
     // empty string.
     function outcomeClaim(item) {
         var claim = emptyClaim(item)
         if (claim !== "") return claim
-        var failed = visibleTextsSaying(item, "Search failed")
+        var failed = visibleTextsSaying(item, failPhrase)
         return failed.length > 0 ? failed[0].text : ""
     }
 
@@ -427,9 +431,11 @@ TestCase {
                   settleMs, "the page never dispatched a search")
         tryVerify(function () { return !win.page.loading }, settleMs,
                   "the page is still loading after the reply")
-        verify(saysSomethingContaining(win.page, "Host tidal.example is unreachable"),
+        verify(saysSomethingContaining(win.page, failPhrase),
                "a failed search surfaced nothing at all - the page is showing: "
                + visibleCopy(win.page))
+        verify(!saysSomethingContaining(win.page, "Host tidal.example"),
+               "Qt's raw reason is on screen: " + visibleCopy(win.page))
         verify(!saysSomethingContaining(win.page, "No results"),
                "a failed search was reported as an empty one: "
                + visibleCopy(win.page))
@@ -452,7 +458,7 @@ TestCase {
         verify(!saysSomethingContaining(win.page, "Erfundenes Lied 1"),
                "the previous query's results stayed on screen under a query "
                + "whose search failed: " + visibleCopy(win.page))
-        verify(saysSomethingContaining(win.page, "Connection closed"),
+        verify(saysSomethingContaining(win.page, failPhrase),
                "the failure was never surfaced: " + visibleCopy(win.page))
     }
 
@@ -460,7 +466,7 @@ TestCase {
         var win = showPage()
         bridge.setSearchErrorForTest("Connection closed")
         typeInto(win.page, query)
-        tryVerify(function () { return saysSomethingContaining(win.page, "Connection closed") },
+        tryVerify(function () { return saysSomethingContaining(win.page, failPhrase) },
                   settleMs, "the failure was never surfaced")
 
         bridge.setSearchResultsForTest(fakeTracks(2), [], [], [])   // clears the error
@@ -470,7 +476,7 @@ TestCase {
                              "a retry of a query whose search had failed")
         tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
                   settleMs, "the retry never produced results")
-        verify(!saysSomethingContaining(win.page, "Connection closed"),
+        verify(!saysSomethingContaining(win.page, failPhrase),
                "the old failure is still on screen: " + visibleCopy(win.page))
     }
 
@@ -528,6 +534,77 @@ TestCase {
                   "after Ctrl+2 a second time the keyboard belongs to "
                   + win.activeFocusItem + ", which is not a text field: the page "
                   + "is up and typing goes nowhere")
+    }
+
+    // ── coming back to an old query ─────────────────────────────────────
+    // Ctrl+2 over an old query and then typing appended to it. The field has
+    // to come up with its text selected, so a keystroke replaces the query.
+
+    function test_coming_back_selects_the_old_query() {
+        var win = showApp()
+        keyClick(Qt.Key_2, Qt.ControlModifier)
+        tryVerify(function () { return win.currentPage === "search" }, settleMs,
+                  "Ctrl+2 did not navigate to the search page")
+        var bar = searchBarIn(win.contentItem)
+        bar.text = query
+
+        keyClick(Qt.Key_1, Qt.ControlModifier)
+        tryVerify(function () { return win.currentPage === "home" }, settleMs,
+                  "Ctrl+1 did not navigate home")
+        keyClick(Qt.Key_2, Qt.ControlModifier)
+        tryVerify(function () { return win.currentPage === "search" }, settleMs,
+                  "Ctrl+2 did not navigate back to the search page")
+        frame(win.contentItem)
+
+        var input = win.activeFocusItem
+        verify(win.isTypingContext(input), "the field did not take the keyboard")
+        compare(input.selectedText, query,
+                "the old query was not selected, so typing appends to it")
+
+        // What a keystroke does to a selection: it goes, and the key is all
+        // that is left.
+        input.remove(input.selectionStart, input.selectionEnd)
+        input.insert(input.cursorPosition, "k")
+        compare(bar.text, "k", "the keystroke did not replace the old query")
+    }
+
+    // Typing a new query over the old one keeps the old results up until the
+    // new search runs; the page does not drop back to recents in between.
+    function test_the_old_results_stay_until_the_new_query_runs() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        typeInto(win.page, query)
+        tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
+                  settleMs, "the first query never produced results")
+        var searches = bridge.searchCountForTest()
+
+        typeInto(win.page, "k")
+        frame(win.contentItem)
+        verify(saysSomethingContaining(resultsArea(win.page), "Erfundenes Lied 1"),
+               "the results went the moment a new query was started: "
+               + visibleCopy(win.page))
+        compare(bridge.searchCountForTest(), searches,
+                "a one-letter query went out as a search")
+
+        bridge.setSearchResultsForTest(fakeTracks(1), [], [], [])
+        typeInto(win.page, "ke")
+        tryVerify(function () { return bridge.searchCountForTest() === searches + 1 },
+                  settleMs, "the new query never went out")
+        tryVerify(function () { return win.page.tracks.length === 1 }, settleMs,
+                  "the new query's results never replaced the old ones")
+    }
+
+    // Emptying the field is not a new query, and goes back to recents.
+    function test_an_emptied_field_still_drops_the_results() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        typeInto(win.page, query)
+        tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
+                  settleMs, "the first query never produced results")
+        typeInto(win.page, "")
+        frame(win.contentItem)
+        verify(!saysSomethingContaining(win.page, "Erfundenes Lied 1"),
+               "the results stayed on screen with the field emptied")
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -880,16 +957,31 @@ TestCase {
 
         bridge.setSearchErrorForTest("Connection closed")
         scrollToBottom(win.page)
-        tryVerify(function () { return saysSomethingContaining(win.page, "Connection closed") },
+        tryVerify(function () { return saysSomethingContaining(win.page, morePhrase) },
                   settleMs, "a failed page said nothing: " + visibleCopy(win.page))
         compare(win.page.tracks.length, 20,
                 "a failed page threw away the rows that had already arrived")
+        // Said where the listener is, at the foot of the list; the strip at
+        // the top would be scrolled out of view.
+        verify(!findByName(win.page, "searchErrorStrip").visible,
+               "a failed page put its message at the top of the list")
+        verify(findByName(win.page, "searchPagingStrip").visible)
 
         var settled = bridge.searchCountForTest()
         scrollToBottomAndDraw(win)
         wait(200)
         compare(bridge.searchCountForTest(), settled,
                 "the page retries the failed page on every pixel of scroll")
+
+        // Try again at the foot asks for that page once more.
+        bridge.setSearchErrorForTest("")
+        bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
+        var retry = findByName(win.page, "searchMoreRetry")
+        verify(retry && retry.visible, "no Try again at the foot of the list")
+        retry.clicked()
+        tryVerify(function () { return win.page.tracks.length > 20 }, settleMs,
+                  "Try again did not fetch the page")
+        verify(!saysSomethingContaining(win.page, morePhrase))
     }
 
     // The rows of a page exist when its reply lands and are positioned when
@@ -1455,7 +1547,9 @@ TestCase {
         search(win, "slate")
         compare(orderNames(win.page)[0], "Artists")
 
-        typeInto(win.page, "s")
+        // Emptied, not shortened: a short query typed over this one keeps the
+        // answer up until it runs (test_the_old_results_stay_until_...).
+        typeInto(win.page, "")
         compare(orderNames(win.page),
                 ["Tracks", "Albums", "Artists", "Playlists", "Mixes"],
                 "the previous query's order outlived the query")
@@ -1534,18 +1628,27 @@ TestCase {
 
     readonly property var tabWidths: [1280, 1100, 900, 740]
 
+    // The pill as drawn, in the row's coordinates. Every chip holds the whole
+    // pill as a slice, in a window that starts 2px outside the chip, so chip
+    // 0's slice reports all of it.
     function pillAndTabs(win) {
         var tabs = findByName(win.page, "searchTabsRow")
         verify(tabs, "the tab row was not found")
-        var pills = findAllByName(win.page, "searchTabPill")
-        compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
-        return { tabs: tabs, pill: pills[0] }
+        var slices = findAllByName(tabs.children[0], "searchTabPillSlice")
+        compare(slices.length, 1, "a chip does not hold one slice of the pill: found " + slices.length)
+        var chip0 = tabs.children[0], slice = slices[0]
+        var pill = {
+            get x()      { return chip0.x + slice.x - 2 },
+            get y()      { return chip0.y + slice.y - 2 },
+            get width()  { return slice.width },
+            get height() { return slice.height }
+        }
+        return { tabs: tabs, pill: pill }
     }
 
-    // A chip's box in the pill's coordinates, so the two are comparable.
+    // A chip's box in the row's coordinates, as the pill's is.
     function chipBoxIn(pill, chip) {
-        var p = chip.mapToItem(pill.parent, 0, 0)
-        return { x: p.x, y: p.y, w: chip.width, h: chip.height }
+        return { x: chip.x, y: chip.y, w: chip.width, h: chip.height }
     }
 
     function pillSays(pill) {
@@ -1606,9 +1709,7 @@ TestCase {
         return item.mapToItem(win.contentItem, item.width / 2, item.height / 2)
     }
 
-    // The hover tint loses to the highlight. The pill is behind the row and
-    // surfaceHov is opaque, so a tint drawn over the marked chip would paint
-    // the highlight out from under the pointer.
+    // The chip the pill marks takes no hover: it is already chosen.
     function test_the_marked_chip_takes_no_hover_tint() {
         var win = showPage()
         typeInto(win.page, query)
@@ -1624,20 +1725,20 @@ TestCase {
         // A chip the pill is nowhere near takes the tint, so the tint works.
         var f = centreOf(win, far)
         mouseMove(win.contentItem, f.x, f.y)
-        tryVerify(function () { return sameColor(far.color, Theme.surfaceHov) }, settleMs,
+        var lit = Qt.tint(Theme.surfaceHigh, Theme.hoverFill)
+        tryVerify(function () { return sameColor(far.color, lit) }, settleMs,
                   "a chip under the pointer does not light up, got " + far.color)
 
         // The chip the pill is on refuses it.
         var m = centreOf(win, marked)
         mouseMove(win.contentItem, m.x, m.y)
-        tryVerify(function () { return marked.color.a === 0 }, settleMs,
-                  "the marked chip painted its hover tint over the highlight, got "
-                  + marked.color)
+        tryVerify(function () { return sameColor(marked.color, Theme.surfaceHigh) }, settleMs,
+                  "the marked chip took a hover tint, got " + marked.color)
         // The pill is still exactly on it.
         var c = chipBoxIn(pill, marked)
         verify(Math.abs(pill.x - c.x) < 0.01 && Math.abs(pill.width - c.w) < 0.01,
                "the pill is not on the chip under the pointer: " + pillSays(pill))
-        tryVerify(function () { return far.color.a === 0 }, settleMs,
+        tryVerify(function () { return sameColor(far.color, Theme.surfaceHigh) }, settleMs,
                   "the chip the pointer left kept its tint, got " + far.color)
     }
 
@@ -1665,6 +1766,113 @@ TestCase {
                   }, settleMs,
                   "the results for the handed-over query never reached the page: "
                   + visibleCopy(win.contentItem))
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  The top result, the empty page
+    // ════════════════════════════════════════════════════════════════════
+    // `topHit` is the server's own best match. It leads the All tab as one
+    // card of its own; the type tabs are lists of one kind and do without it.
+
+    function test_the_servers_top_hit_leads_the_all_tab() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), fakeAlbums(2), fakeArtists(2), [])
+        bridge.setSearchTopHitForTest({ kind: "artist",
+                                        item: { id: 7002, name: "Beispielkapelle 2", coverUrl: "" } })
+        search(win, query)
+        frame(win.contentItem)
+
+        var card = findByName(win.page, "searchTopHit")
+        verify(card, "the page has no top result at all")
+        verify(card.visible, "the server named a top hit and the All tab does not show it")
+        verify(visibleTextsSaying(card, "Beispielkapelle 2").length > 0,
+               "the top result does not name the hit: " + visibleCopy(card))
+        verify(visibleTextsSaying(card, "Artist").length > 0,
+               "the top result does not say what kind of thing it is: " + visibleCopy(card))
+        verify(visibleTextsSaying(win.page, "Top result").length > 0,
+               "the card has no heading")
+
+        // Above every section.
+        var tracksHeading = visibleTextsSaying(resultsArea(win.page), "Tracks")
+        verify(tracksHeading.length > 0)
+        var cardY = card.mapToItem(win.contentItem, 0, 0).y
+        var tracksY = tracksHeading[0].mapToItem(win.contentItem, 0, 0).y
+        verify(cardY < tracksY, "the top result is not above the sections")
+
+        mouseClick(card)
+        compare(win.navCalls.length, 1, "a click on the top artist opened nothing")
+        compare(win.navCalls[0].page, "artist")
+        compare(win.navCalls[0].params.artistId, 7002)
+    }
+
+    function test_a_top_track_plays_on_a_click() {
+        var win = showPage()
+        var tracks = fakeTracks(3)
+        bridge.setSearchResultsForTest(tracks, [], [], [])
+        bridge.setSearchTopHitForTest({ kind: "track", item: tracks[1] })
+        search(win, query)
+        frame(win.contentItem)
+
+        var card = findByName(win.page, "searchTopHit")
+        verify(card && card.visible, "the top track is not shown")
+        mouseClick(card)
+        compare(player.currentTrack.id, tracks[1].id,
+                "a click on the top track did not play it")
+        compare(win.navCalls.length, 0, "a click on a track navigated away")
+    }
+
+    function test_the_top_hit_is_left_to_the_all_tab() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), fakeAlbums(2), [], [])
+        bridge.setSearchTopHitForTest({ kind: "album",
+                                        item: { id: 8001, title: "Erfundenes Album 1",
+                                                artists: "Beispielkapelle", coverUrl: "" } })
+        search(win, query)
+        win.page.activeTab = 2
+        frame(win.contentItem)
+        var card = findByName(win.page, "searchTopHit")
+        verify(!card || !card.visible, "the Albums tab repeats the top result above its grid")
+    }
+
+    function test_no_top_hit_draws_no_card() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        search(win, query)
+        frame(win.contentItem)
+        var card = findByName(win.page, "searchTopHit")
+        verify(!card || !card.visible, "a reply without a top hit drew an empty card")
+        verify(!saysSomethingContaining(win.page, "Top result"),
+               "a heading over no top result")
+    }
+
+    // The list hangs under the field, where the eye is after a click into
+    // it, and not in the middle of an empty page.
+    function test_recent_searches_sit_under_the_field() {
+        var win = showPage()
+        bridge.setRecentSearchesForTest(["grubenlampe", "beispielkapelle"])
+        frame(win.contentItem)
+
+        var bar = findByName(win.page, "searchPageBar")
+        var list = findByName(win.page, "searchRecents")
+        verify(list && list.visible, "the recent searches are not shown")
+        var barBottom = bar.mapToItem(win.contentItem, 0, bar.height).y
+        var listTop = list.mapToItem(win.contentItem, 0, 0).y
+        verify(listTop - barBottom < 64,
+               "the recent searches float " + (listTop - barBottom)
+               + " px below the field, in the middle of the page")
+        var barLeft = bar.mapToItem(win.contentItem, 0, 0).x
+        var listLeft = list.mapToItem(win.contentItem, 0, 0).x
+        verify(Math.abs(listLeft - barLeft) <= Theme.space3,
+               "the list does not line up with the field: " + listLeft + " vs " + barLeft)
+    }
+
+    // The first-run page says something a reader can use, not a slogan.
+    function test_the_first_run_page_has_no_filler_line() {
+        var win = showPage()
+        verify(!saysSomethingContaining(win.page, "Find tracks, albums, artists and more"),
+               "the generic filler line is still there")
+        verify(saysSomethingContaining(win.page, "as you type"),
+               "the first-run page does not say how search works: " + visibleCopy(win.page))
     }
 
     // Every Item in the tree with this objectName, in tree order.

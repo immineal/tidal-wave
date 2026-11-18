@@ -120,13 +120,13 @@ TestCase {
     function test_collection_tracks_5000() {
         exercise(collectionC, "CollectionPage", function (page, data) {
             S.fill(page, { activeTab: 0 })
-            S.fill(page, { filteredTracks: data })
+            S.fill(page, { savedTracks: data })
         })
     }
 
     function test_playlist_tracks_5000() {
         exercise(playlistC, "PlaylistPage", function (page, data) {
-            S.fill(page, { playlistUuid: "uuid-big", playlistType: "USER",
+            S.fill(page, { playlistUuid: "uuid-big", playlistType: "USER", playlistEditable: true,
                            playlistTitle: "Fünftausend", playlistDuration: 1200000 })
             S.fill(page, { tracks: data })
         })

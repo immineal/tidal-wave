@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QAbstractListModel>
+#include <QSet>
 #include <QStringList>
 #include "TidalApi.h"
 #include "Models.h"
@@ -59,9 +60,63 @@ private:
 };
 
 // ──────────── High-level API client ────────────
+// How to tell, in one request, whether a list of favourites has changed: any
+// add moves `newest` and any removal alone moves `total`.
+struct FavoritesHead {
+    int     total = -1;
+    QString newest;
+    bool operator==(const FavoritesHead &o) const {
+        return total == o.total && newest == o.newest;
+    }
+};
+
+// Every saved id, unavailable ones included, from users/<id>/favorites/ids.
+// The listings leave out what is unavailable in the account's country.
+struct FavoriteIds {
+    QSet<qint64> tracks;
+    QSet<qint64> albums;
+    QSet<qint64> artists;
+};
+
+// One card of Tidal's own Home feed (v2/home/feed/<feed>).
+struct HomeItem {
+    enum class Kind { Album, Playlist, Mix, Artist };
+    Kind     kind = Kind::Album;
+    Album    album;
+    Playlist playlist;
+    Mix      mix;
+    Artist   artist;
+};
+
+// One row of that feed, titled as Tidal titles it in the locale asked for.
+struct HomeModule {
+    QString id;          // Tidal's moduleId, e.g. NEW_ALBUM_SUGGESTIONS
+    QString title;
+    // The item a "Because you listened to" row is about; "" for most rows.
+    QString context;
+    // Where one of Home's own rows stands in for this one: "recent", "mixes",
+    // "artists" or "playlists". Such a row carries no items, except "recent":
+    // the account's history from every device, which Home merges with its own.
+    QString ownRow;
+    QList<HomeItem> items;
+};
+
+struct HomeFeed {
+    QList<HomeModule> modules;
+    // The feeds the header offers, as {name, key}; key is a feed name
+    // fetchHomeFeed() takes.
+    QList<std::pair<QString, QString>> tabs;
+};
+
 class TidalClient : public QObject {
     Q_OBJECT
 public:
+    enum class FavoriteKind { Tracks, Albums, Artists, Playlists };
+    // How a playlist write that sends an ETag ended. Stale is a 412: the
+    // playlist changed since this client last read it.
+    enum class PlaylistWrite { Done, Stale, Failed };
+    using HeadCallback     = std::function<void(FavoritesHead,  QString)>;
+    using FavoriteIdsCallback = std::function<void(FavoriteIds, QString)>;
     using TracksCallback   = std::function<void(QList<Track>,   QString)>;
     using AlbumsCallback   = std::function<void(QList<Album>,   QString)>;
     using ArtistsCallback  = std::function<void(QList<Artist>,  QString)>;
@@ -78,20 +133,51 @@ public:
     qint64 userId() const             { return m_userId; }
     void setAudioQuality(AudioQuality q) { m_quality = q; }
     AudioQuality audioQuality() const { return m_quality; }
+    // Which version of a record lists show where Tidal has it explicit and
+    // clean; see RecordVersions.h. Explicit unless set.
+    void setPreferExplicit(bool on) { m_preferExplicit = on; }
+    bool preferExplicit() const { return m_preferExplicit; }
 
-    // Home page feeds
-    void fetchHomeMixes   (MixesCallback cb);
+    // Home page feeds. fetchHomeMixes is a test seam too (see fetchMixPage).
+    virtual void fetchHomeMixes(MixesCallback cb);
     void fetchMixTracks   (const QString &mixId, TracksCallback cb);
+    // Every page of v2/home/feed/<feed> merged into one body: the first
+    // page's header and all pages' items. `locale` words the titles. A later
+    // page failing still delivers the earlier ones.
+    using FeedCallback = std::function<void(QJsonObject, QString)>;
+    void fetchHomeFeed(const QString &feed, const QString &locale, FeedCallback cb);
+    // The feeds fetchHomeFeed() takes: "For you" and the staff picks.
+    static constexpr auto kHomeFeedForYou   = "static";
+    static constexpr auto kHomeFeedEditorial = "editorial";
+    static constexpr int  kMaxHomeFeedPages = 5;
+    // The rows and tabs of such a body. Rows of a kind the app cannot show
+    // (track lists, shortcuts, videos, types it does not know) are left out,
+    // and so is a row left with no cards.
+    static HomeFeed parseHomeFeed(const QJsonObject &root);
     // The same request as fetchMixTracks(), delivering the MIX_HEADER beside
     // the tracks. The virtuals in this class are test seams: a fake client
     // answers them and nothing in the app overrides one.
     virtual void fetchMixPage(const QString &mixId, MixPageCallback cb);
 
-    // My collection
+    // My collection. The favourites pages are parsed off the GUI thread: a
+    // whole list in one page runs to megabytes.
     void fetchFavoriteTracks  (TracksCallback    cb, int limit=50, int offset=0);
-    void fetchFavoriteAlbums  (AlbumsCallback    cb, int limit=50, int offset=0);
-    void fetchFavoriteArtists (ArtistsCallback   cb, int limit=50, int offset=0);
-    void fetchUserPlaylists   (PlaylistsCallback cb, int limit=50, int offset=0);
+    virtual void fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset);
+    // The same rows by order=INDEX, the order they were liked in. Unlike DATE
+    // it breaks ties, so paging by it repeats and skips nothing. Undocumented:
+    // a refusal is retried by DATE.
+    virtual void fetchFavoriteTracksByIndex(TracksCallback cb, int limit, int offset,
+                                            bool newestFirst);
+    virtual void fetchFavoriteAlbums (AlbumsCallback    cb, int limit=50, int offset=0);
+    virtual void fetchFavoriteArtists(ArtistsCallback   cb, int limit=50, int offset=0);
+    virtual void fetchUserPlaylists  (PlaylistsCallback cb, int limit=50, int offset=0);
+    virtual void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb);
+    virtual void fetchFavoriteIds(FavoriteIdsCallback cb);
+
+    // Tidal's largest favourites page; a larger limit answers 400. It also
+    // caps a collection at 10000 tracks, so one page holds every liked song.
+    static constexpr int kFavoritesPageMax = 10000;
+    static FavoriteIds parseFavoriteIds(const QJsonObject &root);
 
     // Content
     void fetchAlbumTracks  (qint64 albumId,        TracksCallback    cb);
@@ -104,6 +190,9 @@ public:
     // list, with one entry per record: see RecordVersions.h.
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
+    // artists/<id>/similar, one page. Asked apart from fetchArtistDetail so
+    // the page never waits for it. A 404 means Tidal has no list.
+    void fetchSimilarArtists(qint64 artistId,      ArtistsCallback   cb);
     void fetchAlbum        (qint64 albumId,        std::function<void(Album,QString)>  cb);
     virtual void fetchTrack(qint64 trackId,        std::function<void(Track,QString)>  cb);
 
@@ -112,8 +201,8 @@ public:
     void search(const QString &query, SearchCb cb, int limit = 20, int offset = 0);
 
     // Favorites management
-    void addTrackFavorite   (qint64 trackId,    std::function<void(bool)> cb);
-    void removeTrackFavorite(qint64 trackId,    std::function<void(bool)> cb);
+    virtual void addTrackFavorite(qint64 trackId, std::function<void(bool)> cb);
+    virtual void removeTrackFavorite(qint64 trackId, std::function<void(bool)> cb);
     void addAlbumFavorite    (qint64 albumId,    std::function<void(bool)> cb);
     void removeAlbumFavorite (qint64 albumId,    std::function<void(bool)> cb);
     void addArtistFavorite   (qint64 artistId,   std::function<void(bool)> cb);
@@ -135,6 +224,9 @@ public:
     // does not have in a format of that quality is refused.
     void fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb);
     QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
+    QNetworkReply* fetchRawWithStatus(const QUrl &url, TidalApi::RawStatusCallback cb);
+    // Seconds Tidal asked stream requests at `quality` to wait, 0 when none.
+    int streamRequestsHeldFor(AudioQuality quality) const;
 
     // Playlist management
     virtual void createPlaylist  (const QString &title, std::function<void(Playlist,QString)> cb);
@@ -144,10 +236,30 @@ public:
     void editPlaylist            (const QString &uuid,  const QString &title,
                                   const QString &description, std::function<void(bool)> cb);
     virtual void addTrackToPlaylist     (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
-    virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,  std::function<void(bool)> cb);
+    // Several at the end in one POST, in order. With allowDupes a track the
+    // playlist holds already is added again (ADD), else it is left out (SKIP).
+    virtual void addTracksToPlaylist    (const QString &uuid,  const QList<qint64> &trackIds,
+                                         bool allowDupes, std::function<void(bool)> cb);
+    // Puts a removed row back at `toIndex`, a duplicate or not: the undo of
+    // removeTrackFromPlaylist.
+    virtual void restoreTrackToPlaylist (const QString &uuid,  qint64 trackId, int toIndex,
+                                         std::function<void(bool)> cb);
+    // Takes out the row at `itemIndex`, sending the ETag of the version
+    // fetchPlaylist() last read, so a view that has gone stale is refused.
+    virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,
+                                          std::function<void(PlaylistWrite)> cb);
+    // Several rows in one DELETE, each counted as the playlist is before it.
+    virtual void removeTracksFromPlaylist(const QString &uuid,  const QList<int> &itemIndices,
+                                          std::function<void(PlaylistWrite)> cb);
+    // Moves the row at `fromIndex` so it ends at `toIndex`, with the ETag as
+    // removeTrackFromPlaylist sends it. python-tidal's move_by_index().
+    virtual void moveTrackInPlaylist     (const QString &uuid,  int fromIndex, int toIndex,
+                                          std::function<void(PlaylistWrite)> cb);
+    // Deletes a playlist this account made. A 404 counts: it is gone.
+    virtual void deletePlaylist          (const QString &uuid,  std::function<void(bool)> cb);
 
     // Track features
-    void fetchTrackRadio(qint64 trackId, TracksCallback cb);
+    virtual void fetchTrackRadio(qint64 trackId, TracksCallback cb);
     void fetchLyrics    (qint64 trackId, std::function<void(QString, bool, QString)> cb);
     // Three GETs behind one call. See TrackCredits in Models.h.
     void fetchTrackCredits(qint64 trackId,
@@ -160,9 +272,6 @@ public:
     // ISRC with another id. Of several, the one on an album of the same
     // title, then one in hi-res, then the more popular, then the lower id.
     static Track pickTwin(const QJsonObject &root, const Track &of);
-
-    // Recently played
-    void fetchRecentlyPlayed(TracksCallback cb);
 
     // The parsers and merges below are public and static so tests can reach
     // them. They touch no member state.
@@ -188,6 +297,9 @@ public:
     // server's relevance order.
     static QList<Mix> parseSearchMixes(const QJsonObject &node);
 
+    // A whole search response, `topHit` included.
+    static SearchResults parseSearch(const QJsonObject &root);
+
     // The cursor for the next page of v2/favorites/mixes, or "" when the run
     // is over. `previous` is the cursor this page was fetched with. The
     // endpoint reports no total, so this alone ends a run.
@@ -205,13 +317,16 @@ public:
 
     // ── the other versions of a record ──────────────────────────────────
     // Tidal's own album page names them: `pages/album` has an ALBUM_LIST
-    // module titled "Other versions". Empty where the page names none.
+    // module titled "Other versions". Where it names no version with the
+    // other explicit flag, the artist's own lists are searched for one.
     void fetchAlbumOtherVersions(qint64 albumId, AlbumsCallback cb);
 
     // The albums of that module, without `albumId` itself and without
     // repeats. The page holds two more album lists and the title alone tells
     // them apart, so the page is asked for in kAlbumPageLocale.
     static QList<Album> parseAlbumOtherVersions(const QJsonObject &root, qint64 albumId);
+    // The album the page is about, from its ALBUM_HEADER module.
+    static Album parseAlbumPageHeader(const QJsonObject &root);
     static constexpr auto kAlbumPageLocale    = "en_US";
     static constexpr auto kOtherVersionsTitle = "Other versions";
 
@@ -222,6 +337,9 @@ public:
     // by other artists that this one appears on, and the constant is named
     // for that.
     static constexpr auto kFilterAppearsOn     = "COMPILATIONS";
+
+    // One row of cards. The endpoint pages, and its total only counts the page.
+    static constexpr int kSimilarArtistsLimit = 20;
 
     // The two sources fetchHomeMixes merges: the generated feed
     // (pages/my_collection_my_mixes) and the saved list (v2/favorites/mixes,
@@ -260,11 +378,13 @@ public:
 signals:
     void error(const QString &msg);
     void userIdChanged(qint64 uid);
+    // TidalApi's: whether the last request got any answer at all.
+    void reachableChanged(bool reachable);
 
 private:
     // Pages through `endpoint` until totalNumberOfItems is reached and
     // delivers the whole list in one callback. The API caps a response at 100
-    // items whatever `limit` says.
+    // items whatever `limit` says. A failed page ends it with the error.
     void fetchAllTracks(const QString &endpoint, TracksCallback cb,
                         int offset = 0, QList<Track> acc = {});
 
@@ -275,6 +395,10 @@ private:
     // One of fetchArtistAlbums()'s three requests. An empty `filter` asks for
     // the albums. A failed page delivers what came before it and reports the
     // error only when nothing did.
+    // The page names no version with the other explicit flag: look for one
+    // in the artist's own lists and add it to `versions`.
+    void findVersionCounterparts(const Album &self, QList<Album> versions, AlbumsCallback cb);
+
     void fetchArtistAlbumPage(qint64 artistId, const QString &filter,
                               AlbumPages pages, AlbumsCallback cb,
                               int offset = 0, QList<Album> acc = {});
@@ -285,10 +409,20 @@ private:
     // total it never reaches.
     static constexpr int kMaxArtistAlbums = 500;
 
+    void fetchHomeFeedPage(const QString &feed, const QString &locale, FeedCallback cb,
+                           const QString &cursor, QJsonObject acc, int page);
+
     // Daily Discovery, then New Arrivals, then the order they came in.
     static QList<Mix> orderMixes(QList<Mix> mixes);
 
     static QList<Track> parseTracks(const QJsonObject &root);
+
+    // A v1 GET whose body is parsed by `parse` on a worker thread. `cb` runs
+    // on this object's thread, and not at all once this object is gone.
+    template <typename T>
+    void getListOffThread(const QString &endpoint, const QUrlQuery &params,
+                          QList<T> (*parse)(const QJsonObject &),
+                          std::function<void(QList<T>, QString)> cb);
 
     static QString qualityString(AudioQuality q);
 
@@ -299,6 +433,10 @@ public:
     // True for the tiers that go to v2/trackManifests, because
     // tracks/<id>/playbackinfopostpaywall does not serve them FLAC.
     static bool usesTrackManifests(AudioQuality q);
+
+    // Lists whose body is still being parsed: a test's "settled" is no
+    // request out and none of these.
+    int listsParsingForTest() const { return m_listsParsing; }
 
     // The `formats` to ask the track-manifest endpoint for, one query item
     // each. The server picks the best one the track has.
@@ -318,6 +456,11 @@ public:
 private:
 
     TidalApi     *m_api;
+    // Per playlist uuid, the ETag of the version last read. A write of ours
+    // moves the server's on, so it drops the entry until the next read.
+    QHash<QString, QString> m_playlistEtags;
     qint64        m_userId  = 0;
     AudioQuality  m_quality = AudioQuality::Lossless;
+    bool          m_preferExplicit = true;
+    int           m_listsParsing = 0;
 };

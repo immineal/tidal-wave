@@ -341,7 +341,7 @@ TestCase {
               kind: "artist",   id: "7",       drawn: qsTr("Artist"),
               stored: "" },
             { tag: "playlist stores no track count",
-              kind: "playlist", id: "uuid-p1", drawn: qsTr("%n track(s)", "", 31),
+              kind: "playlist", id: "uuid-p1", drawn: qsTr("%Ln track(s)", "", 31),
               stored: "" }
         ]
     }
@@ -393,12 +393,49 @@ TestCase {
         compare(row.modelData.subtitle, "Kestrel Arcade", "the row drew the pin's subtitle")
         compare(row.modelData.imageUrl, "cdn/42.jpg", "the row drew the pin's artwork")
 
-        // The tooltip is on every row, because in the collapsed rail the title
-        // is not on screen. It is built from the library row too.
+        // The tip says what the rail does not show. It is built from the
+        // library row too.
         var box = findByName(row, "libraryRowTitle").parent
         verify(box, "the row has no content box to carry the tooltip")
-        compare(box.ToolTip.text, "Glass Orchard · Kestrel Arcade",
+        compare(box.tipText, "Glass Orchard · Kestrel Arcade",
                 "the row tooltip is not built from the library row")
+    }
+
+    // A name the open panel shows whole needs no tip; a cut-off one gets
+    // one, beside the row and never over the row above it.
+    function test_a_row_tip_only_where_the_name_is_cut_off() {
+        var entries = baseEntries()
+        entries[0].title = "An album title far too long to fit in any sidebar at all"
+        library.setEntriesForTest(entries)
+        var host = showHost(1280)
+        var sb = host.sidebar
+        settle(host.contentItem)
+        verify(sb.showsWide, "the sidebar is not open")
+        var tip = null
+        for (var i = 0; i < sb.data.length; ++i)
+            if (sb.data[i].objectName === "sidebarTip") tip = sb.data[i]
+        verify(tip, "the sidebar has no tip of its own")
+
+        var shortBox = findByName(rowFor(sb, "42"), "libraryRowTitle").parent
+        var p = shortBox.mapToItem(host.contentItem, shortBox.width / 2, shortBox.height / 2)
+        mouseMove(host.contentItem, p.x, p.y)
+        wait(Theme.tooltipDelay + 300)
+        verify(!tip.visible, "a name shown whole got a tip as well")
+
+        var longBox = findByName(rowFor(sb, "43"), "libraryRowTitle").parent
+        verify(findByName(longBox, "libraryRowTitle").truncated, "the long name was not cut off")
+        p = longBox.mapToItem(host.contentItem, longBox.width / 2, longBox.height / 2)
+        mouseMove(host.contentItem, p.x, p.y)
+        tryVerify(function () { return tip.opened }, 2000, "a cut-off name got no tip")
+        var top = tip.contentItem.mapToItem(longBox, 0, 0)
+        verify(top.y >= -1, "the tip covers the row above: its top is at " + top.y)
+        verify(top.x >= longBox.width, "the tip sits over its own row")
+        // Dressed like the app's menus and notices, not the style's pale tip.
+        compare(String(tip.background.color), String(Theme.surfaceHigh), "the tip's ground")
+        compare(String(tip.background.border.color), String(Theme.border), "the tip's border")
+        compare(tip.background.radius, Theme.radiusButton, "the tip's corners")
+        compare(String(tip.contentItem.color), String(Theme.textPrimary), "the tip's text")
+        mouseMove(host.contentItem, host.width - 8, host.height - 8)
     }
 
     // ── Collection's grids pin through the shared menu ───────────────────
@@ -409,8 +446,8 @@ TestCase {
         var page = createTemporaryObject(collectionC, host.pane)
         verify(page, "CollectionPage was not created")
         page.activeTab = tab
-        if (tab === 1) page.filteredAlbums  = items
-        else           page.filteredArtists = items
+        if (tab === 1) page.savedAlbums  = items
+        else           page.savedArtists = items
         settle(host.contentItem)
         return page
     }
@@ -452,7 +489,7 @@ TestCase {
         compare(menu.pinItem.text, qsTr("Unpin"), "the label must follow the pin state")
         verify(menu.playNextItem.visible, "an album tile must still offer Play next")
         verify(menu.addToQueueItem.visible, "an album tile must still offer Add to queue")
-        compare(menu.removeItem.text, qsTr("Remove from library"))
+        compare(menu.removeItem.text, qsTr("Remove from collection"))
         verify(menu.removeItem.danger, "removing from the library is destructive")
         compare(menu.removeItem.iconName, "trash")
         verify(!menu.pinItem.danger, "pinning is not destructive")

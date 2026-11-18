@@ -24,6 +24,10 @@ Rectangle {
     property bool loading: false
     property bool showAllTracks: false
     property bool isFollowing: false
+    // artists/<id>/similar, fetched beside the rest. Empty hides the row.
+    property var similarArtists: []
+    property bool bioExpanded: false
+    readonly property int bioCollapsedLines: 4
 
     // What the last load was told, "" when it was served.
     property string loadError: ""
@@ -35,9 +39,29 @@ Rectangle {
         loadError.length > 0 && !loading && !artistData.name
         && topTracks.length === 0 && albums.length === 0
 
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
     // The first reason is kept: all three calls fail with the same message.
     function noteLoadError(err) {
-        if (root.loadError.length === 0) root.loadError = err
+        if (root.loadError.length > 0) return
+        root.loadError = err
+        root.loadOffline = bridge.offline === true
+    }
+
+    function retryLoad() {
+        if (!(root.artistId > 0)) return
+        if (bridge.offline) bridge.retryConnection()
+        loadArtist()
+    }
+
+    // The artist's radio as a mix id; "" where Tidal names none.
+    readonly property string artistMixId: artistData.artistMixId || ""
+
+    function startRadio() {
+        if (root.artistMixId.length === 0) return
+        navigateTo("mix", { mixId: root.artistMixId, title: root.artistData.name || "",
+                            mixType: "ARTIST_MIX" })
     }
 
     // Records this artist as the "playing from" source, then plays.
@@ -60,11 +84,17 @@ Rectangle {
     Connections {
         target: bridge
         function onFavoriteArtistsChanged() { root.updateFollowState() }
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
     }
 
     function loadArtist() {
         loading = true
         loadError = ""
+        loadOffline = false
+        bioExpanded = false
+        similarArtists = []
         // Which artist these three replies are about. artistId can change while
         // they are in flight, and a reply for the artist just left must not
         // touch the one on screen. Checked before the error.
@@ -88,6 +118,12 @@ Rectangle {
             // arrives with one entry per record.
             root.albums = a
         })
+        // Not part of `loading` or the page's error: many artists have no
+        // list (Tidal answers 404), and the row just stays hidden.
+        bridge.fetchSimilarArtists(artistId, function(s, err) {
+            if (requested !== root.artistId || err) return
+            root.similarArtists = s
+        })
     }
 
     // The row a release belongs in: "a" Albums, "s" Singles & EPs, "f" Appears
@@ -95,16 +131,6 @@ Rectangle {
     // one record. An entry that names none stays on the page, with the albums.
     function sectionOf(a) {
         return a.section || "a"
-    }
-
-    // Worded as AlbumPage.durationText().
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
     }
 
     // Dolby Atmos and no stereo mode, as AlbumPage.atmosOnly() reads it.
@@ -122,10 +148,10 @@ Rectangle {
     // Atmos only one gives up its year.
     function secondLine(a, withLength) {
         if (!a.titleShared) return a.year
-        var tracks = a.numTracks > 0 ? qsTr("%n track(s)", "", a.numTracks) : ""
+        var tracks = a.numTracks > 0 ? qsTr("%Ln track(s)", "", a.numTracks) : ""
         var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
-        if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
-        return parts.filter(function (p) { return p.length > 0 }).join(" • ")
+        if (withLength && a.duration > 0) parts.push(Theme.lengthText(a.duration))
+        return parts.filter(function (p) { return p.length > 0 }).join(" · ")
     }
 
     // The cards of a row. Two that would still read the same add their length.
@@ -143,9 +169,10 @@ Rectangle {
     }
 
     ScrollView {
+        id: artistScroll
         objectName: "artistContent"
         anchors.fill: parent
-        rightPadding: 14
+        rightPadding: Theme.space4
         contentWidth: availableWidth
         // Stated, because a ScrollView on Qt 6.5 works its content height
         // out once and does not follow the column as rows arrive.
@@ -160,122 +187,124 @@ Rectangle {
             width: parent.width
             spacing: 0
 
-            // Hero. Grows with its content, so a wrapped name or pill row fits.
-            Rectangle {
+            // No artwork tile: the photo is the whole hero's backdrop.
+            DetailHero {
+                id: hero
                 Layout.fillWidth: true
-                implicitHeight: Math.max(320, heroCol.implicitHeight + 56)
-                color: "transparent"
-                clip: true
-
-                Image {
-                    anchors.fill: parent
-                    source: artistData.coverUrl750 ? "image://tidal/" + artistData.coverUrl750 : ""
-                    fillMode: Image.PreserveAspectCrop
-                    opacity: 0.4
-                    smooth: true
-                    mipmap: true
+                kind: qsTr("Artist")
+                title: artistData.name || ""
+                titleObjectName: "artistName"
+                titleLines: 2
+                showArt: false
+                backdropSource: artistData.coverUrl750 || ""
+                backdropObjectName: "artistHeroPhoto"
+                backdropOpacity: 0.4
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
                 }
 
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        orientation: Gradient.Vertical
-                        GradientStop { position: 0.4; color: "transparent" }
-                        GradientStop { position: 1; color: Theme.bg }
-                    }
-                }
-
-                ColumnLayout {
-                    id: heroCol
-                    // Anchored right too, so a long name has room to wrap.
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 28
-                    spacing: 8
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: artistData.name || ""
-                        color: Theme.textPrimary
-                        font.pixelSize: 36
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 2
-                        elide: Text.ElideRight
-                        style: Text.Outline
-                        styleColor: Theme.artScrimStrong
-                    }
-
-                    // A Flow, so the pills wrap when a translation widens them.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: 12
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
+                    },
+                    PillButton {
+                        // Album's word, so it shares its translation.
+                        text: qsTranslate("AlbumPage", "Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (topTracks.length > 0) {
+                                player.setShuffle(true)
+                                root.playFrom(topTracks, Math.floor(Math.random() * topTracks.length))
+                            }
                         }
-
-                        PillButton {
-                            objectName: "artistFollowPill"
-                            text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
-                            icon: root.isFollowing ? "heart-filled" : "heart"
-                            accent: root.isFollowing
-                            // On the action row, which has clear space above.
-                            onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
-                                                                      heroActions)
+                    },
+                    PillButton {
+                        objectName: "artistFollowPill"
+                        text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
+                        icon: root.isFollowing ? "artist-following" : "artist-follow"
+                        accent: root.isFollowing
+                        // On the action row, which has clear space above.
+                        onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
+                                                                  hero.actionRow)
+                    },
+                    // The artist's station, where Tidal names one. Opens on
+                    // MixPage, as a track's radio does, so it can be saved.
+                    PillButton {
+                        objectName: "artistRadioPill"
+                        visible: root.artistMixId.length > 0
+                        text: qsTr("Artist radio")
+                        icon: "waves"
+                        accent: false
+                        onClicked: root.startRadio()
+                    },
+                    // The hero's menu, which right-click also opens: Pin and
+                    // Copy link.
+                    IconButton {
+                        objectName: "heroMoreButton"
+                        icon: "more"
+                        label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                        size: 20
+                        pad: Theme.space5
+                        backed: true
+                        onClicked: {
+                            var p = mapToItem(root, 0, height)
+                            root.showHeroPinMenu(p.x, p.y)
                         }
                     }
-                }
-
-                // A right-click on the hero pins what the page is showing.
-                MouseArea {
-                    objectName: "heroPinArea"
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function (mouse) {
-                        var p = mapToItem(root, mouse.x, mouse.y)
-                        root.showHeroPinMenu(p.x, p.y)
-                    }
-                }
+                ]
             }
 
-            Item { height: 8 }
+            Item { height: Theme.space2 }
 
             RowLayout {
                 visible: root.topTracks.length > 0
                 Layout.fillWidth: true
-                Layout.leftMargin: 24
-                Layout.rightMargin: 24
+                Layout.leftMargin: Theme.space6
+                Layout.rightMargin: Theme.space6
                 Text {
                     text: qsTr("Popular")
                     color: Theme.textPrimary
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     Layout.fillWidth: true
                 }
                 Text {
+                    objectName: "artistShowAllTracks"
                     visible: root.topTracks.length > 5
                     text: root.showAllTracks ? qsTr("Show less") : qsTr("Show all")
-                    color: showAllHov.hovered ? Theme.textPrimary : Theme.textSec
-                    font.pixelSize: 13
+                    color: showAllHov.hovered || activeFocus ? Theme.textPrimary : Theme.textSec
+                    font.pixelSize: Theme.fontMeta
+                    font.underline: activeFocus
+                    activeFocusOnTab: visible
+                    Keys.onReturnPressed: root.showAllTracks = !root.showAllTracks
+                    Keys.onSpacePressed:  root.showAllTracks = !root.showAllTracks
+                    Accessible.role: Accessible.Button
+                    Accessible.name: text
+                    Accessible.onPressAction: root.showAllTracks = !root.showAllTracks
                     HoverHandler { id: showAllHov }
                     TapHandler { onTapped: root.showAllTracks = !root.showAllTracks }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
                 }
             }
 
-            Item { height: 8; visible: root.topTracks.length > 0 }
+            Item { height: Theme.space2; visible: root.topTracks.length > 0 }
 
+            // The top tracks are one tab stop; see TrackRow.rowGroup.
+            QtObject { id: topTrackGroup; property int current: 0 }
             Repeater {
                 model: root.showAllTracks ? root.topTracks : root.topTracks.slice(0, 5)
+                onModelChanged: topTrackGroup.current = 0
                 TrackRow {
+                    rowGroup: topTrackGroup
+                    rowIndex: index
                     Layout.fillWidth: true
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
+                    Layout.leftMargin: Theme.space4
+                    Layout.rightMargin: Theme.space4
                     // Against the width this row would have with the sidebar
                     // out, so the column cannot reappear as the window
                     // narrows. See root.sidebarReclaim.
@@ -286,13 +315,12 @@ Rectangle {
                     albumTitle:  modelData.albumTitle
                     durationStr: modelData.durationStr
                     coverUrl:    modelData.coverUrl80
-                    isPlaying:   player.currentTrack.id === modelData.id && player.playing
                     trackData:   modelData
                     onPlayRequested: root.playFrom(root.topTracks, index)
                 }
             }
 
-            Item { height: 24; visible: root.topTracks.length > 0 }
+            Item { height: Theme.space6; visible: root.topTracks.length > 0 }
 
             HorizontalSection {
                 id: albumsSection
@@ -349,7 +377,7 @@ Rectangle {
                     return root.sectionOf(a) === "f"
                 })
                 visible: appearances.length > 0
-                title: qsTr("Appears On")
+                title: qsTr("Appears on")
                 showViewAll: false
                 mediaType: "album"
                 items: root.releaseCards(appearances)
@@ -365,28 +393,44 @@ Rectangle {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                Layout.leftMargin: 24
-                Layout.rightMargin: 24
+                Layout.leftMargin: Theme.space6
+                Layout.rightMargin: Theme.space6
                 visible: (artistData.bio || "").length > 0
-                spacing: 8
+                spacing: Theme.space2
 
-                Item { height: 8 }
+                Item { height: Theme.space2 }
 
                 Text {
                     text: qsTr("About")
                     color: Theme.textPrimary
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                 }
 
+                FontMetrics { id: bioMetrics; font: bioText.font }
+
+                // StyledText, not RichText: only its layout honours
+                // maximumLineCount, and the clamp relies on `truncated`.
                 Text {
+                    id: bioText
+                    objectName: "artistBio"
                     Layout.fillWidth: true
+                    // About 75 characters a line; the page width is too long a line.
+                    Layout.maximumWidth: Math.ceil(bioMetrics.averageCharacterWidth * 75)
                     text: root.formatBio(artistData.bio || "")
                     color: Theme.textSec
-                    font.pixelSize: 14
+                    linkColor: Theme.accentText
+                    font.pixelSize: Theme.fontBody
                     wrapMode: Text.WordWrap
-                    lineHeight: 1.5
-                    textFormat: Text.RichText
+                    // Of the font's own line height, which is already ~1.35 em.
+                    lineHeight: 1.15
+                    textFormat: Text.StyledText
+                    // undefined resets the limit, so the whole bio shows.
+                    maximumLineCount: root.bioExpanded ? undefined : root.bioCollapsedLines
+                    elide: Text.ElideRight
+                    HoverHandler {
+                        cursorShape: bioText.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    }
                     onLinkActivated: (link) => {
                         var parts = link.split(":")
                         if (parts.length === 2) {
@@ -400,35 +444,78 @@ Rectangle {
                         }
                     }
                 }
+
+                // Shown once the bio is cut, and kept while it is open.
+                Text {
+                    objectName: "artistBioToggle"
+                    visible: root.bioExpanded || bioText.truncated
+                    text: root.bioExpanded ? qsTr("Show less") : qsTr("Read more")
+                    color: bioToggleHov.hovered ? Theme.textPrimary : Theme.textSec
+                    font.pixelSize: Theme.fontMeta
+                    font.bold: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: text
+                    HoverHandler { id: bioToggleHov }
+                    TapHandler { onTapped: root.bioExpanded = !root.bioExpanded }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                }
+
+                Item { height: Theme.space6 }
             }
 
             HorizontalSection {
+                objectName: "artistRelatedSection"
                 Layout.fillWidth: true
-                visible: (artistData.similarArtists || []).length > 0
-                title: qsTr("Related Artists")
+                visible: root.similarArtists.length > 0
+                title: qsTr("Related artists")
                 mediaType: "artist"
                 showViewAll: false
-                items: (artistData.similarArtists || []).map(function(a) {
+                items: root.similarArtists.map(function(a) {
                     return { id: a.id, title: a.name, subtitle: qsTr("Artist"), coverUrl: a.coverUrl || "" }
                 })
                 onItemClicked: function(i, item) { navigateTo("artist", { artistId: item.id }) }
             }
 
-            Item { height: 32 }
+            Item { height: Theme.space8 }
         }
     }
 
+    function escapeBio(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
+    // A reference becomes a link only where it opens another page here.
+    function bioLink(kind, id, label) {
+        var core = label.trim()
+        var words = root.escapeBio(core)
+        var opens = /^\d+$/.test(id)
+            && (kind === "album" || (kind === "artist" && Number(id) !== Number(root.artistId)))
+        if (opens && core.length > 0)
+            words = '<a href="' + kind + ':' + id + '">' + words + '</a>'
+        // Spaces Tidal puts inside the reference stay outside the link.
+        return (/^\s/.test(label) ? " " : "") + words + (/\s$/.test(label) ? " " : "")
+    }
+
+    // Tidal separates paragraphs with one or two <br/> and refers to pages as
+    // [wimpLink artistId="…"]name[/wimpLink]. Any other markup is shown as text.
     function formatBio(bio) {
         if (!bio) return ""
-        var html = bio
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-        html = html.replace(/\[wimpLink\s+(artistId|albumId|playlistId|trackId)="([^"]+)"\](.*?)\[\/wimpLink\]/g, function(match, typeAttr, id, text) {
-            var type = typeAttr.replace("Id", "")
-            return "<a href='" + type + ":" + id + "' style='color: " + Theme.accent + "; text-decoration: none; font-weight: bold;'>" + text + "</a>"
-        })
-        return html.replace(/\n/g, "<br/>")
+        var paragraphs = bio.split(/(?:\s*<br\s*\/?>\s*|\s*\n\s*)+/i)
+        var out = []
+        for (var i = 0; i < paragraphs.length; ++i) {
+            var p = paragraphs[i].trim()
+            if (p.length === 0) continue
+            var re = /\[wimpLink\s+(\w+?)Id="([^"]*)"\]([\s\S]*?)\[\/wimpLink\]/g
+            var html = "", last = 0, m
+            while ((m = re.exec(p)) !== null) {
+                html += root.escapeBio(p.slice(last, m.index)) + root.bioLink(m[1], m[2], m[3])
+                last = re.lastIndex
+            }
+            html += root.escapeBio(p.slice(last))
+            // A reference that never closes leaves no tag on screen.
+            out.push(html.replace(/\[\/?wimpLink[^\]]*\]/g, ""))
+        }
+        return out.join("<br><br>")
     }
 
     function navigateTo(page, params) {
@@ -448,9 +535,6 @@ Rectangle {
         id: heroPinMenu
         objectName: "heroPinMenu"
         // No trackSource, so no queue actions: an artist is not a tracklist.
-
-        // The hero's action row, which has the page above it to draw over.
-        confirmAnchor: heroActions
     }
 
     // What the page says when there is nothing to draw and a reason for it.
@@ -461,53 +545,25 @@ Rectangle {
         visible: root.loadFailed
         color: Theme.bg
 
-        ColumnLayout {
+        ErrorState {
             anchors.centerIn: parent
             width: Math.min(parent.width - 96, 420)
-            spacing: 10
-
-            VectorIcon {
-                Layout.alignment: Qt.AlignHCenter
-                // A Layout owns the size of its direct children, so a plain
-                // width would be overwritten.
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
-                name: "artist"
-                color: Theme.textDim
-                strokeWidth: 1.5
-            }
-
-            Text {
-                objectName: "artistLoadErrorText"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("This artist is not available")
-                color: Theme.textPrimary
-                font.pixelSize: 18
-                font.bold: true
-                wrapMode: Text.WordWrap
-            }
-
-            // Not the server's own string, which is a Qt network error with the
-            // request URL in it.
-            Text {
-                objectName: "artistLoadErrorDetail"
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                // One long literal: lupdate cannot read a concatenation.
-                text: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
-                color: Theme.textSec
-                font.pixelSize: 13
-                wrapMode: Text.WordWrap
-            }
+            namePrefix: "artistLoadError"
+            icon: "artist"
+            offline: root.loadOffline
+            title: qsTr("This artist is not available")
+            // One long literal: lupdate cannot read a concatenation.
+            detail: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
+            onRetry: root.retryLoad()
         }
     }
 
-    Rectangle {
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+    DetailBar {
+        objectName: "artistStickyHeader"
+        flickable: artistScroll.contentItem
+        heroHeight: hero.height
+        title: artistData.name || ""
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 }

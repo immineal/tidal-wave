@@ -30,6 +30,25 @@ ApplicationWindow {
     property var    pageParams:  ({})
     property bool   queueOpen:   false
 
+    // The queue takes the keyboard while it is open and gives it back to
+    // whatever had it, as a dialog does.
+    property Item _focusBeforeQueue: null
+    onQueueOpenChanged: {
+        if (queueOpen) {
+            root._focusBeforeQueue = root.activeFocusItem
+            Qt.callLater(function () { if (root.queueOpen) queuePanel.takeFocus() })
+        } else {
+            // Deferred, so the panel has seen `open` go false and lets go.
+            var back = root._focusBeforeQueue
+            root._focusBeforeQueue = null
+            Qt.callLater(function () {
+                if (root.queueOpen) return
+                if (back && back.visible) back.forceActiveFocus(Qt.TabFocusReason)
+                else focusStealer.forceActiveFocus()
+            })
+        }
+    }
+
     // ─── Where back goes ───────────────────────────────────────────────────
     // A stack of (page, params) pairs. The top is where one back goes. Arriving
     // at a top-level destination empties it (see navigate), so it is as deep as
@@ -52,7 +71,7 @@ ApplicationWindow {
     // A Behavior does not run on a binding's first evaluation, so a window that
     // somehow starts on Now Playing starts with it up rather than sliding it in.
     Behavior on nowPlayingness {
-        NumberAnimation { duration: Theme.dur(190); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // ─── Fullscreen ────────────────────────────────────
@@ -162,13 +181,7 @@ ApplicationWindow {
     }
 
     function formatSleepTime(seconds) {
-        var h = Math.floor(seconds / 3600)
-        var m = Math.floor((seconds % 3600) / 60)
-        var s = seconds % 60
-        if (h > 0) {
-            return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s
-        }
-        return m + ":" + (s < 10 ? "0" : "") + s
+        return Theme.clock(seconds * 1000)
     }
 
     Timer {
@@ -266,8 +279,56 @@ ApplicationWindow {
         if (page === "search") return searchLoader
         if (page === "collection") return collectionLoader
         if (page === "nowplaying") return nowPlayingLoader
-        if (["album", "artist", "playlist", "mix", "radio"].indexOf(page) !== -1) return detailLoader
         return null
+    }
+
+    // ─── Pages kept for back ───────────────────────────────────────────────
+    // Each visit to a detail page gets its own Loader. The history entry it is
+    // left for keeps it, so back shows it as it was, scrolled and loaded.
+    readonly property var detailSources: ({
+        album: "pages/AlbumPage.qml", artist: "pages/ArtistPage.qml",
+        playlist: "pages/PlaylistPage.qml", mix: "pages/MixPage.qml",
+        radio: "pages/RadioPage.qml"
+    })
+
+    // How many of the newest history entries keep their page. Older entries
+    // keep only their params, and back to one builds and fetches it anew.
+    readonly property int maxKeptPages: 5
+
+    // The detail page on screen, or null while another kind of page is.
+    property Item detailView: null
+    property var _detailViews: []
+
+    function _createDetailView(page, params) {
+        var v = detailViewComponent.createObject(detailHost, {
+            pageName: page, navParams: params, source: root.detailSources[page] })
+        root._detailViews = root._detailViews.concat([v])
+        return v
+    }
+
+    // Lets go of every view that is neither on screen nor held by one of the
+    // newest maxKeptPages history entries.
+    function _pruneDetailViews() {
+        var keep = root.detailView ? [root.detailView] : []
+        var held = 0
+        for (var i = root.navHistory.length - 1; i >= 0; --i) {
+            var e = root.navHistory[i]
+            if (!e.view) continue
+            if (held < root.maxKeptPages && keep.indexOf(e.view) === -1) {
+                keep.push(e.view)
+                ++held
+            } else if (keep.indexOf(e.view) === -1) {
+                e.view = null
+            }
+        }
+        var left = []
+        for (var j = 0; j < root._detailViews.length; ++j) {
+            var v = root._detailViews[j]
+            if (!v) continue
+            if (keep.indexOf(v) !== -1) left.push(v)
+            else v.destroy()
+        }
+        root._detailViews = left
     }
 
     // Pages a user can be inside of, where one consistent back action (button,
@@ -276,18 +337,22 @@ ApplicationWindow {
     readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying", "radio"]
 
     // The other side of that line, and the bottom of the back history: these
-    // are reached in one press from the sidebar (and from Ctrl+H/Ctrl+F/Ctrl+L),
+    // are reached in one press from the sidebar (and from Ctrl+1/2/3),
     // so there is never a chain of them to walk back through.
     readonly property var topLevelPages: ["home", "search", "collection"]
 
     // `fromHistory` is goBack()'s alone: it stops a back step from recording
-    // the page it is leaving.
+    // the page it is leaving. goBack() leaves the entry's kept page in
+    // _returnView for it.
+    property Item _returnView: null
     function navigate(page, params, fromHistory) {
         // Fullscreen belongs to Now Playing. A link out of it brings the window
         // back first, so no other page is left without chrome and sidebar.
         if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
 
         var p = params || {}
+        var reuse = fromHistory ? root._returnView : null
+        root._returnView = null
         if (!fromHistory) {
             if (root.topLevelPages.indexOf(page) !== -1) {
                 // A sidebar destination is the bottom of history, so arriving
@@ -297,40 +362,35 @@ ApplicationWindow {
                 // Navigating onto the page that back would return to is a back
                 // step, so unwind. The top entry only: a match further down is
                 // a page the user has since walked away from.
+                reuse = root.navHistory[root.navHistory.length - 1].view || null
                 root.navHistory = root.navHistory.slice(0, -1)
-            } else if (currentPage !== ""
-                       && (page !== currentPage
-                           || !root._sameNavParams(_currentNavParams, p))) {
+            } else if (page !== currentPage
+                       || !root._sameNavParams(_currentNavParams, p)) {
                 // A different page, or the same page type with different
-                // params. Same page and params is a reload (below), which
-                // blanks currentPage for a turn, hence the `!== ""`.
-                root._pushHistory(currentPage, _currentNavParams)
+                // params. Same page and params is a reload (below).
+                root._pushHistory(currentPage, _currentNavParams,
+                                  root.detailSources[currentPage] ? root.detailView : null)
             }
         }
         _currentNavParams = p
 
-        var targetLoader = getLoader(page)
-        if (targetLoader) {
-            if (currentPage === page
-                && ["home", "search", "collection", "nowplaying"].indexOf(page) === -1) {
-                // Force reload of the same detail page type by toggling state
-                var savedPage = currentPage
-                currentPage = ""
-                currentPage = savedPage
-            }
-            // home/search/collection have a fixed `source`, so their item
-            // always matches the target. detailLoader's item matches only when
-            // it already shows that page type; otherwise pageParams holds them.
-            var loaderAlwaysMatchesTarget = targetLoader !== detailLoader
-            if ((loaderAlwaysMatchesTarget || currentPage === page) && targetLoader.status === Loader.Ready) {
-                applyParams(targetLoader.item, p)
-            } else {
-                root.pageParams = p
-            }
+        if (root.detailSources[page]) {
+            // A kept page is shown as it was. Anything else, a reload of the
+            // page on screen included, gets a new one.
+            root.detailView = reuse ? reuse : root._createDetailView(page, p)
         } else {
-            root.pageParams = p
+            // A page left for this one is kept, if at all, by its history entry.
+            root.detailView = null
+            var targetLoader = getLoader(page)
+            // These have a fixed `source`, so their item always matches.
+            if (targetLoader && targetLoader.status === Loader.Ready)
+                applyParams(targetLoader.item, p)
+            else
+                root.pageParams = p
         }
         currentPage = page
+        root._rememberPage(page, p)
+        root._pruneDetailViews()
         if (page === "search") {
             searchLoader.forceActiveFocus()
             // Then the field inside it: the Loader, the page root and the bar's
@@ -346,9 +406,9 @@ ApplicationWindow {
 
     // A copy and an assignment: push() in place changes nothing the property's
     // change signal can see.
-    function _pushHistory(page, params) {
+    function _pushHistory(page, params, view) {
         var h = root.navHistory.slice()
-        h.push({ page: page, params: params || {} })
+        h.push({ page: page, params: params || {}, view: view || null })
         if (h.length > root.maxNavHistory)
             h.splice(0, h.length - root.maxNavHistory)
         root.navHistory = h
@@ -380,20 +440,40 @@ ApplicationWindow {
         var h = root.navHistory.slice()
         var entry = h.pop()
         root.navHistory = h
+        root._returnView = entry.view || null
         root.navigate(entry.page, entry.params, true)
+    }
+
+    // A deleted playlist: its page is left and the back history forgets it,
+    // so no back step lands on a page that answers 404.
+    Connections {
+        target: bridge
+        function onPlaylistDeleted(uuid) { root.forgetPlaylist(uuid) }
+    }
+
+    function forgetPlaylist(uuid) {
+        var isIt = function (e) {
+            return e.page === "playlist" && e.params && e.params.playlistUuid === uuid
+        }
+        root.navHistory = root.navHistory.filter(function (e) { return !isIt(e) })
+        if (isIt({ page: root.currentPage, params: root._currentNavParams })) root.goBack()
+        else root._pruneDetailViews()
     }
 
     Connections {
         target: auth
         function onStateChanged(state) {
             if (state === 2) {
-                root.navigate("home")
+                root.openStartPage()
             } else {
                 // Signing out lands on the login page, where every way out of
                 // fullscreen is gated on being signed in.
                 root.leaveFullScreen()
-                // The history belongs to the session that just ended.
+                // The history belongs to the session that just ended, and so
+                // do the pages it kept.
                 root.navHistory = []
+                root.detailView = null
+                root._pruneDetailViews()
             }
         }
     }
@@ -412,6 +492,43 @@ ApplicationWindow {
         return true
     }
 
+    // A tab stop answers Space itself (a button presses, a switch flips),
+    // unless it says it leaves Space to play/pause, as a track row does.
+    function focusTakesSpace(f) {
+        return !!f && f.activeFocusOnTab === true && f.leavesSpaceToPlayer !== true
+    }
+
+    // Find: the search page with the keyboard in its field. Already there,
+    // only the field takes focus, so the query on screen stays.
+    function focusSearch() {
+        if (root.currentPage !== "search") { root.navigate("search"); return }
+        searchLoader.forceActiveFocus()
+        if (searchLoader.item && typeof searchLoader.item.takeFocus === "function")
+            searchLoader.item.takeFocus()
+    }
+
+    // A press outside the text field that has the keyboard hands it back to
+    // the window, so Space pauses again. A SearchBar's icon and padding count
+    // as its field.
+    function releaseTextFocusAt(scenePos) {
+        var f = root.activeFocusItem
+        if (!isTypingContext(f)) return
+        var box = f
+        for (var p = f; p; p = p.parent)
+            if (typeof p.takeFocus === "function" && typeof p.focused === "boolean") { box = p; break }
+        var local = box.mapFromItem(null, scenePos.x, scenePos.y)
+        if (box.contains(local)) return
+        focusStealer.forceActiveFocus()
+    }
+
+    // Whether the keyboard is inside a popup: every Popup's item lives in the
+    // window's overlay, so this covers dialogs, menus and pickers alike.
+    readonly property bool popupHasKeyboard: {
+        for (var f = root.activeFocusItem; f; f = f.parent)
+            if (f === Overlay.overlay) return true
+        return false
+    }
+
     Item {
         id: focusStealer
         focus: true
@@ -427,7 +544,8 @@ ApplicationWindow {
         // Shortcut goes there first: tst_shortcuts.cpp fails on a literal.
 
         // Playback Shortcuts
-        Shortcut { sequence: Shortcuts.sequence("playPause");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.playPause() }
+        // Space presses a control the keyboard is on, as everywhere else.
+        Shortcut { sequence: Shortcuts.sequence("playPause");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem) && !root.focusTakesSpace(root.activeFocusItem); onActivated: player.playPause() }
         Shortcut { sequence: Shortcuts.sequence("next"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.next() }
         Shortcut { sequence: Shortcuts.sequence("previous");  context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.previous() }
         Shortcut { sequence: Shortcuts.sequence("seekForward");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.seek(Math.min(player.duration, player.position + 10000)) }
@@ -437,6 +555,17 @@ ApplicationWindow {
         Shortcut { sequence: Shortcuts.sequence("mute");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setMuted(!player.muted) }
         Shortcut { sequence: Shortcuts.sequence("shuffle");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setShuffle(!player.shuffle) }
         Shortcut { sequence: Shortcuts.sequence("repeat");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setRepeatMode((player.repeatMode + 1) % 3) }
+        // The heart's own call, so the write is read back and the notice and Undo follow.
+        Shortcut {
+            sequence: Shortcuts.sequence("like")
+            context: Qt.ApplicationShortcut
+            enabled: auth.state === 2
+            onActivated: {
+                var t = player.currentTrack
+                if (t && t.id > 0) likeShortcutAction.toggleTrack(t.id, bridge.isTrackFavorite(t.id), null)
+            }
+        }
+        ContextMenu.FavoriteAction { id: likeShortcutAction }
 
         // Navigation Shortcuts
         Shortcut { sequence: Shortcuts.sequence("home"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("home") }
@@ -454,17 +583,24 @@ ApplicationWindow {
                 }
             }
         }
+        Shortcut { sequence: Shortcuts.sequence("find"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.focusSearch() }
+        Shortcut { sequence: Shortcuts.sequence("findAlt"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.focusSearch() }
+        Shortcut { sequence: Shortcuts.sequence("newPlaylist"); context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.popupHasKeyboard; onActivated: sideBar.openNewPlaylist() }
+        // Signed in or not: quitting needs no account.
+        // A text field keeps Ctrl+Z for its own text.
+        Shortcut { sequence: Shortcuts.sequence("undo"); context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: Edits.undoLast() }
+        Shortcut { sequence: Shortcuts.sequence("quit"); context: Qt.ApplicationShortcut; onActivated: app.quit() }
         Shortcut { sequence: Shortcuts.sequence("fullScreen"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.toggleFullScreen() }
         Shortcut { sequence: Shortcuts.sequence("queue"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.queueOpen = !root.queueOpen }
         Shortcut { sequence: Shortcuts.sequence("settings"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: sideBar.openSettings() }
         Shortcut {
             sequence: Shortcuts.sequence("escape")
             context: Qt.ApplicationShortcut
-            // An application shortcut outranks the key handling of an open
-            // Popup, so this one stands down while a modal is up. Any Popup
-            // added in future has to be named on this line too.
-            enabled: auth.state === 2 && !updatePrompt.visible
-                     && !sideBar.settingsPanel.visible
+            // An application shortcut outranks an open Popup's own Escape, so
+            // this one stands down while any popup holds the keyboard. A field
+            // that wants Escape claims it with Keys.onShortcutOverride.
+            enabled: auth.state === 2 && !root.popupHasKeyboard && !TrackDrag.active
+                     && !updatePrompt.visible && !sideBar.settingsPanel.visible
             // Innermost first, so one Escape undoes one thing: the queue
             // overlay, then fullscreen, then the page.
             onActivated: {
@@ -508,9 +644,22 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 clip: true
 
+                // Above the page, not laid over it: the page gives up the height.
+                OfflineNotice {
+                    id: offlineNotice
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: implicitHeight
+                    source: auth.state === 2 ? bridge : null
+                }
+
                 Item {
                     id: mainContainer
-                    anchors.fill: parent
+                    anchors.top: offlineNotice.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
                     visible: auth.state === 2
 
                     Loader {
@@ -564,29 +713,24 @@ ApplicationWindow {
                         }
                     }
 
-                    Loader {
-                        id: detailLoader
+                    // The detail pages, one Loader per visit; see navigate().
+                    Item {
+                        id: detailHost
+                        objectName: "detailHost"
                         anchors.fill: parent
-                        visible: ["home", "search", "collection",
-                                  "nowplaying"].indexOf(root.currentPage) === -1
-                        active: auth.state === 2
-                        source: {
-                            if (!active) return ""
-                            switch (root.currentPage) {
-                                case "album":      return "pages/AlbumPage.qml"
-                                case "artist":     return "pages/ArtistPage.qml"
-                                case "playlist":   return "pages/PlaylistPage.qml"
-                                case "mix":        return "pages/MixPage.qml"
-                                case "radio":      return "pages/RadioPage.qml"
-                                default:           return ""
-                            }
-                        }
-                        onLoaded: {
-                            if (item && root.pageParams) {
-                                var params = root.pageParams
-                                root.pageParams = {}
-                                root.applyParams(item, params)
-                            }
+                    }
+
+                    Component {
+                        id: detailViewComponent
+                        Loader {
+                            id: detailView
+                            objectName: "detailView"
+                            property string pageName: ""
+                            property var navParams: ({})
+                            anchors.fill: parent
+                            visible: root.detailView === detailView
+                                     && root.currentPage === detailView.pageName
+                            onLoaded: root.applyParams(item, navParams)
                         }
                     }
 
@@ -635,6 +779,9 @@ ApplicationWindow {
                     open:        root.queueOpen
                     onDismissed: root.queueOpen = false
                 }
+
+                // Over the page and the queue, at the foot of the content.
+                ToastHost { anchors.fill: parent }
             }
         }
 
@@ -657,5 +804,108 @@ ApplicationWindow {
 
     // The cached answer is already in UpdateCheck when the engine runs.
     // Whatever the network says afterwards is for the next launch.
-    Component.onCompleted: updatePrompt.showIfAvailable()
+    Component.onCompleted: {
+        updatePrompt.showIfAvailable()
+        root._startPage = app.startPage()
+        if (auth.state === 2) root.openStartPage()
+    }
+
+    // ─── The page a restart opens on ───────────────────────────────────
+    // Now Playing is left out: it needs a track, and a restart starts
+    // paused. Only plain values are kept, and a search is not run again.
+    readonly property var restorablePages:
+        ["home", "search", "collection", "album", "artist", "playlist", "mix", "radio"]
+    property string _startPage: ""
+    function _rememberPage(page, params) {
+        if (root.restorablePages.indexOf(page) === -1) return
+        var kept = {}
+        for (var k in params) {
+            var v = params[k]
+            if (k === "requestedQuery") continue
+            if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") kept[k] = v
+        }
+        prefs.lastPage = JSON.stringify({ page: page, params: kept })
+    }
+    // Once per run: a later sign-in is a new session and starts at Home.
+    function openStartPage() {
+        var saved = root._startPage
+        root._startPage = ""
+        var entry = null
+        try { entry = saved.length > 0 ? JSON.parse(saved) : null } catch (e) { entry = null }
+        if (entry && typeof entry.page === "string" && root.restorablePages.indexOf(entry.page) !== -1)
+            root.navigate(entry.page, entry.params || {})
+        else
+            root.navigate("home")
+    }
+
+    CastErrorTip { }
+
+    // The device ended the cast itself, so the player bar going back to
+    // local is no surprise. CastManager exists only on Linux.
+    Connections {
+        target: (typeof cast !== "undefined") ? cast : null
+        ignoreUnknownSignals: true
+        function onEndedOnDevice(deviceName) {
+            Toasts.show(qsTr("Casting ended on %1", "the cast device ended the cast itself")
+                        .arg(deviceName))
+        }
+    }
+
+    // Asks before a track goes into a playlist that holds it already.
+    DuplicateAddDialog { }
+
+    // Answers Edits.pickPlaylist(): the queue's rows, an album, the queue.
+    PlaylistPickerHost { }
+
+    // A Tidal link from the command line or the desktop. Track links arrive
+    // as their album; each page loads its header from the id.
+    Connections {
+        target: app
+        function onOpenRequested(kind, id) {
+            switch (kind) {
+            case "album":    root.navigate("album",    { albumId: parseInt(id) }); break
+            case "artist":   root.navigate("artist",   { artistId: parseInt(id) }); break
+            case "playlist": root.navigate("playlist", { playlistUuid: id }); break
+            case "mix":      root.navigate("mix",      { mixId: id }); break
+            }
+        }
+    }
+
+    // ─── A link dropped on the window ───────────────────────────────────
+    // A link dragged from a browser comes as a URL, or as text from the
+    // address bar. Only a Tidal link is taken; the cursor says so on entry.
+    function _droppedLink(urls, text) {
+        for (var i = 0; urls && i < urls.length; ++i)
+            if (app.isTidalLink(String(urls[i]))) return String(urls[i])
+        var t = (text || "").trim()
+        return app.isTidalLink(t) ? t : ""
+    }
+    function takesDrop(urls, text) { return _droppedLink(urls, text) !== "" }
+    function openDropped(urls, text) {
+        var link = _droppedLink(urls, text)
+        if (link !== "") app.openLink(link)
+    }
+    DropArea {
+        anchors.fill: parent
+        enabled: auth.state === 2
+        onEntered: (drag) => { drag.accepted = root.takesDrop(drag.urls, drag.text) }
+        onDropped: (drop) => {
+            if (!root.takesDrop(drop.urls, drop.text)) return
+            root.openDropped(drop.urls, drop.text)
+            drop.acceptProposedAction()
+        }
+    }
+
+    // Over everything but popups: sees each press first, then turns it down so
+    // it reaches the item under it. A parent's PointHandler misses presses a
+    // MouseArea accepts.
+    MouseArea {
+        anchors.fill: parent
+        z: 1000
+        acceptedButtons: Qt.AllButtons
+        onPressed: (mouse) => {
+            root.releaseTextFocusAt(mapToItem(null, mouse.x, mouse.y))
+            mouse.accepted = false
+        }
+    }
 }

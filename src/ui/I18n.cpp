@@ -79,11 +79,31 @@ QString I18n::resolveLanguage(const QString &pref, const QStringList &displayLan
     return kSource;
 }
 
+QLocale I18n::numberLocale(const QString &pref, const QString &language,
+                           const QLocale &system) {
+    if (pref == QLatin1String("system")) return system;
+    if (QLocale::languageToCode(system.language()) == language) return system;
+    return QLocale(language);
+}
+
 void I18n::apply() {
-    const QString next = resolveLanguage(m_prefs ? m_prefs->language() : QString(),
-                                         systemDisplayLanguages(), QLocale::system());
-    if (next == m_effective) return;
+    const QString pref = m_prefs ? m_prefs->language() : QString();
+    const QString next = resolveLanguage(pref, systemDisplayLanguages(), QLocale::system());
+    const QLocale nextLocale = numberLocale(pref, next, QLocale::system());
+    if (next == m_effective && nextLocale == m_locale) return;
+    const bool languageMoved = next != m_effective;
     m_effective = next;
+    m_locale = nextLocale;
+
+    // Numbers and dates in C++, in Qt.locale() and in %Ln. Before the
+    // retranslate below, which is what re-evaluates the QML that shows them.
+    QLocale::setDefault(m_locale);
+
+    if (!languageMoved) {
+        if (m_engine) m_engine->retranslate();
+        emit languageApplied();
+        return;
+    }
 
     QCoreApplication *app = QCoreApplication::instance();
     if (app) {
@@ -92,7 +112,7 @@ void I18n::apply() {
     }
     m_loaded = false;
 
-    // English has a catalogue too: plural sources are written "%n track(s)"
+    // English has a catalogue too: plural sources are written "%Ln track(s)"
     // and only a catalogue resolves the numerus forms. Every other string
     // falls through to the source text.
     if (m_appTranslator.load(QStringLiteral(":/i18n/tidal-wave_%1.qm").arg(next))) {

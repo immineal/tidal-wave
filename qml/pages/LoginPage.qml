@@ -15,6 +15,7 @@ Rectangle {
     }
 
     ColumnLayout {
+        id: pageColumn
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 420)
         spacing: 0
@@ -22,7 +23,7 @@ Rectangle {
         // Logo
         ColumnLayout {
             Layout.alignment: Qt.AlignHCenter
-            spacing: 12
+            spacing: Theme.space3
 
             AppMark {
                 Layout.alignment: Qt.AlignHCenter
@@ -34,20 +35,19 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 text: "Tidal Wave"
                 color: Theme.textPrimary
-                font.pixelSize: 28
+                font.pixelSize: Theme.fontDisplay
                 font.bold: true
-                font.letterSpacing: 3
             }
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Native Desktop Tidal Client")
+                text: qsTr("Native desktop client for Tidal")
                 color: Theme.textSec
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
             }
         }
 
-        Item { height: 48 }
+        Item { height: Theme.space12 }
 
         Rectangle {
             objectName: "loginAuthCard"
@@ -56,110 +56,85 @@ Rectangle {
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
-            height: auth.state === 0 ? (auth.hasSavedCredentials ? 140 : (errorMessage.length > 0 ? 260 : 220)) : auth.state === 1 ? 400 : 100
-            Behavior on height { NumberAnimation { duration: Theme.dur(200) } }
+            // As tall as what the state shows, so a long error or longer
+            // translations never clip. Implicit: the page's layout sizes it.
+            implicitHeight: Math.max(100, cardContent.implicitHeight + 64)
+            Behavior on implicitHeight { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
+
+            // The error's wrapped height, from a width the layouts don't set:
+            // a layout drops a height that changes while it lays out.
+            Text {
+                id: errorMeasure
+                visible: false
+                width: pageColumn.width - 64
+                text: errorMessage
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
+            }
 
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 32
-                spacing: 20
+                id: cardContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: Theme.space8
+                spacing: Theme.space5
 
                 // Restoring session state
                 ColumnLayout {
                     visible: auth.state === 0 && auth.hasSavedCredentials
                     Layout.alignment: Qt.AlignHCenter
-                    spacing: 16
+                    spacing: Theme.space4
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Restoring session…")
                         color: Theme.textSec
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontBody
                     }
 
-                    Row {
+                    BusyLine {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: 6
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                objectName: "loginPulseDot"
-                                required property int index
-                                width: 6
-                                height: 6
-                                radius: 3
-                                color: Theme.accent
-                                opacity: 0.3
-                                // Reduced motion runs the sequence once and
-                                // parks the dot at full opacity. Infinite loops
-                                // at zero duration would spin.
-                                SequentialAnimation on opacity {
-                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
-                                    running: auth.state === 0 && auth.hasSavedCredentials
-                                    PauseAnimation { duration: Theme.dur(index * 200) }
-                                    NumberAnimation { to: 1; duration: Theme.dur(400) }
-                                    NumberAnimation {
-                                        to: Theme.reduceMotion ? 1 : 0.3
-                                        duration: Theme.dur(400)
-                                    }
-                                }
-                            }
-                        }
+                        running: auth.state === 0 && auth.hasSavedCredentials
                     }
                 }
 
                 // Initial state
                 ColumnLayout {
                     visible: auth.state === 0 && !auth.hasSavedCredentials
-                    spacing: 16
+                    spacing: Theme.space4
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("Sign in with your Tidal account")
+                        text: qsTr("Log in with your Tidal account")
                         color: Theme.textSec
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontBody
                     }
 
-                    Rectangle {
+                    PillButton {
                         id: loginBtn
+                        objectName: "loginButton"
                         Layout.fillWidth: true
-                        height: 48
-                        radius: Theme.radiusButton
-                        color: Theme.accent
-                        border.width: activeFocus ? 2 : 0
-                        border.color: Theme.textPrimary
-                        scale: loginHov.hovered ? 0.98 : 1
-                        Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
-
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: auth.startDeviceFlow()
-                        Keys.onSpacePressed:  auth.startDeviceFlow()
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: qsTr("Log in with Tidal")
-                            color: Theme.accentInk
-                            font.pixelSize: 15
-                            font.bold: true
-                        }
-                        HoverHandler { id: loginHov; cursorShape: Qt.PointingHandCursor }
-                        TapHandler   { onTapped: auth.startDeviceFlow() }
+                        accent: true
+                        text: qsTr("Log in with Tidal")
+                        onClicked: auth.startDeviceFlow()
                     }
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Requires an active Tidal subscription")
                         color: Theme.textDim
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontMeta
                     }
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         Layout.fillWidth: true
+                        Layout.preferredHeight: errorMeasure.implicitHeight
                         visible: errorMessage.length > 0
                         text: errorMessage
-                        color: Theme.red
-                        font.pixelSize: 12
+                        color: Theme.redText
+                        font.pixelSize: Theme.fontMeta
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
                     }
@@ -168,13 +143,13 @@ Rectangle {
                 // Device flow pending
                 ColumnLayout {
                     visible: auth.state === 1
-                    spacing: 16
+                    spacing: Theme.space4
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Open your browser and go to:")
                         color: Theme.textSec
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontBody
                     }
 
                     Rectangle {
@@ -188,11 +163,14 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: app.openUrl(auth.verificationUrl)
                         Keys.onSpacePressed:  app.openUrl(auth.verificationUrl)
+                        Accessible.role: Accessible.Link
+                        Accessible.name: auth.verificationUrl || "tidal.com/link"
+                        Accessible.onPressAction: app.openUrl(auth.verificationUrl)
                         Text {
                             anchors.centerIn: parent
                             text: auth.verificationUrl || "tidal.com/link"
-                            color: Theme.accent
-                            font.pixelSize: 14
+                            color: Theme.accentText
+                            font.pixelSize: Theme.fontBody
                             font.bold: true
                         }
                         MouseArea {
@@ -206,77 +184,63 @@ Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Enter this code:")
                         color: Theme.textSec
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontBody
                     }
 
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
-                        width: 200
-                        height: 64
+                        // Sized off the code, so the border keeps clear of it
+                        // however wide the code and the font set it.
+                        Layout.preferredWidth: Math.max(200, Math.ceil(codeText.contentWidth) + 2 * Theme.space6)
+                        Layout.preferredHeight: Math.max(64, Math.ceil(codeText.contentHeight) + 2 * Theme.space3)
                         radius: Theme.radiusCard
                         color: Theme.surfaceHigh
                         border.color: Theme.accent
                         border.width: 1
-                        Text {
+                        // Selectable, so the code can be copied into the browser.
+                        TextEdit {
+                            id: codeText
+                            objectName: "loginDeviceCode"
                             anchors.centerIn: parent
                             text: auth.userCode || "…"
+                            readOnly: true
+                            selectByMouse: true
+                            selectionColor: Theme.textSelection
+                            selectedTextColor: Theme.textSelectionInk
                             color: Theme.textPrimary
-                            font.pixelSize: 28
+                            font.pixelSize: Theme.fontDisplay
                             font.bold: true
-                            font.letterSpacing: 6
                         }
                     }
 
-                    Row {
+                    BusyLine {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: 6
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                objectName: "loginPulseDot"
-                                required property int index
-                                width: 6
-                                height: 6
-                                radius: 3
-                                color: Theme.accent
-                                opacity: 0.3
-                                // Reduced motion runs the sequence once and
-                                // parks the dot at full opacity. Infinite loops
-                                // at zero duration would spin.
-                                SequentialAnimation on opacity {
-                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
-                                    running: auth.state === 1
-                                    PauseAnimation { duration: Theme.dur(index * 200) }
-                                    NumberAnimation { to: 1; duration: Theme.dur(400) }
-                                    NumberAnimation {
-                                        to: Theme.reduceMotion ? 1 : 0.3
-                                        duration: Theme.dur(400)
-                                    }
-                                }
-                            }
-                        }
+                        running: auth.state === 1
                     }
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Waiting for you to log in…")
                         color: Theme.textDim
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontMeta
                     }
 
                     Text {
                         id: cancelText
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Cancel")
-                        color: cancelText.activeFocus ? Theme.accent : Theme.textSec
-                        font.pixelSize: 13
+                        color: cancelText.activeFocus ? Theme.accentText : Theme.textSec
+                        font.pixelSize: Theme.fontMeta
                         font.underline: cancelText.activeFocus
                         activeFocusOnTab: true
                         Keys.onReturnPressed: auth.cancelDeviceFlow()
                         Keys.onSpacePressed:  auth.cancelDeviceFlow()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: cancelText.text
+                        Accessible.onPressAction: auth.cancelDeviceFlow()
                         MouseArea {
                             anchors.fill: parent
-                            anchors.margins: -6
+                            anchors.margins: -Theme.space2
                             cursorShape: Qt.PointingHandCursor
                             onClicked: auth.cancelDeviceFlow()
                         }
@@ -285,13 +249,13 @@ Rectangle {
             }
         }
 
-        Item { height: 32 }
+        Item { height: Theme.space8 }
 
         Text {
             Layout.alignment: Qt.AlignHCenter
             text: qsTr("Tidal Wave is not affiliated with TIDAL Music AS")
             color: Theme.textDim
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontMicro
         }
     }
 }

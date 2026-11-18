@@ -2,11 +2,9 @@ pragma Singleton
 import QtQuick
 import TidalWave
 
-// Every colour and corner radius in the app, as one binding layer over the
-// palette table in src/ui/ThemePalette.cpp. Nothing here holds a value of its
-// own: ThemePalette.current swaps wholesale when the theme, prefs.oledBlack or
-// prefs.tintedGreys changes, so every token repaints by itself and nothing
-// below has to branch.
+// Every design token in the app. Colours and radii bind to the palette table
+// in src/ui/ThemePalette.cpp, which swaps wholesale on a theme change, so they
+// repaint by themselves. Sizes, spacing and motion are plain values here.
 QtObject {
     readonly property var p: ThemePalette.current
     readonly property var r: ThemePalette.radius
@@ -18,7 +16,6 @@ QtObject {
     readonly property color bg:          p.bg
     readonly property color surface:     p.surface
     readonly property color surfaceHigh: p.surfaceHigh
-    readonly property color surfaceHov:  p.surfaceHov
     readonly property color border:      p.border
 
     // ── type ─────────────────────────────────────────────────────────────
@@ -31,6 +28,8 @@ QtObject {
     readonly property color accentDim: p.accentDim
     // Ink on a solid accent fill, white in every theme.
     readonly property color accentInk: p.accentInk
+    // The accent as text or an icon; accent itself is for fills.
+    readonly property color accentText: p.accentText
     // Three strengths of accent wash: accentSoft tints a playing row,
     // accentTint a hero gradient, accentWash a filled badge.
     readonly property color accentSoft: p.accentSoft
@@ -38,12 +37,20 @@ QtObject {
     readonly property color accentWash: p.accentWash
 
     // ── interaction ──────────────────────────────────────────────────────
-    // The hover wash. A white wash vanishes on a light ground, so each palette
-    // picks its own direction.
+    // The hover wash, for every hover in the app. A white wash vanishes on a
+    // light ground, so each palette picks its own direction.
     readonly property color hoverFill: p.hoverFill
+    // The opaque fill of the selected thing: the page you are on, the chosen
+    // row. Stronger than hoverFill, so hovering never looks like choosing.
+    readonly property color selectedFill: p.surfaceHov
+    // Selected text in every field, the accent fill with its ink. Left
+    // unset, a field takes the platform's highlight instead.
+    readonly property color textSelection:    p.accent
+    readonly property color textSelectionInk: p.accentInk
 
     // ── semantic ─────────────────────────────────────────────────────────
     readonly property color red:     p.red
+    readonly property color redText: p.redText
     readonly property color redSoft: p.redSoft
     readonly property color redInk:   p.redInk
     readonly property color green:   p.green
@@ -60,18 +67,57 @@ QtObject {
     readonly property color artInk:          p.artInk
     readonly property color artBorder:      p.artBorder
 
+    // ── font sizes ───────────────────────────────────────────────────────
+    // Six sizes, and every font.pixelSize in qml/ is one of them
+    // (tests/tst_design_tokens.cpp). Pick by role, not by look.
+    readonly property int fontDisplay: 28   // a page's or a hero's title
+    readonly property int fontTitle:   20   // a dialog's or a panel's title
+    readonly property int fontSection: 18   // a heading over a block of a page
+    readonly property int fontBody:    14   // titles in rows, labels, reading text
+    readonly property int fontMeta:    13   // second lines, counts, durations, notes
+    readonly property int fontMicro:   11   // overlines, captions, tiny print
+
     // ── corner radii ─────────────────────────────────────────────────────
-    // A scale: the rounder something is, the more it reads as a control
-    // floating above the surface.
-    readonly property int radiusChip:   r.chip     // pills, filter toggles
-    readonly property int radiusField:  r.field    // the sidebar search field
-    readonly property int radiusRow:    r.row      // nav rows, list rows
-    readonly property int radiusButton: r.button
+    // One radius per role: pick by what a thing is, not by the size you want.
+    // The rounder something is, the more it reads as a control floating above
+    // the surface. Chosen values (ThemePalette.cpp), do not change without asking.
+    readonly property int radiusChip:   r.chip     // pills, chips, toggles
+    readonly property int radiusField:  r.field    // search and text fields
+    readonly property int radiusRow:    r.row      // nav rows, list rows, hover fills
+    readonly property int radiusButton: r.button   // buttons, focus rings on links
     readonly property int radiusArt:    r.art      // covers, thumbnails
-    readonly property int radiusCard:   r.card
-    readonly property int radiusPopup:  r.popup    // dialogs, panels
-    readonly property int radiusBadge:  r.badge    // quality tag
+    readonly property int radiusCard:   r.card     // cards, the art box of a card
+    readonly property int radiusPopup:  r.popup    // dialogs, panels, menus, toasts
+    readonly property int radiusBadge:  r.badge    // the quality tag and friends
     readonly property int radiusMark:   r.mark     // the app icon tile
+
+    // ── spacing ──────────────────────────────────────────────────────────
+    // A 4 px scale, named by its multiple of 4, plus the half step for text
+    // stacked tight. Gaps, margins and paddings all come from here.
+    readonly property int spaceHalf: 2
+    readonly property int space1:    4
+    readonly property int space2:    8
+    readonly property int space3:    12
+    readonly property int space4:    16
+    readonly property int space5:    20
+    readonly property int space6:    24
+    readonly property int space8:    32
+    readonly property int space12:   48
+    readonly property int space16:   64
+
+    // ── icons ────────────────────────────────────────────────────────────
+    // The stroke of every drawn glyph, in VectorIcon's 24-unit space, so it
+    // scales with the icon.
+    readonly property real iconStroke: 1.8
+
+    // ── scroll bars ──────────────────────────────────────────────────────
+    // The shortest a handle gets, however long the list.
+    readonly property int scrollHandleMin: 40
+    // One line of a wheel notch; the system says how many lines a notch is.
+    readonly property int wheelLine: 20
+
+    // ── tool tips ────────────────────────────────────────────────────────
+    readonly property int tooltipDelay: 500
 
     // ── menus ────────────────────────────────────────────────────────────
     // Qt's Basic style gives a Menu's contentItem no implicitWidth, so every
@@ -81,6 +127,9 @@ QtObject {
     readonly property int menuMaxWidth: 420
     // Air left between a menu at full width and the window edge.
     readonly property int menuWindowMargin: 12
+    // The gap between a menu's edge and its entries, so an entry's rounded
+    // highlight sits inside the menu's rounder corners.
+    readonly property int menuPadding: space1
 
     function menuWidth(menu) {
         if (!menu) return menuMinWidth
@@ -101,6 +150,12 @@ QtObject {
         return Math.max(Math.min(menuMinWidth, maxW), Math.min(maxW, w))
     }
 
+    // Figures of one width, so a counting clock does not jiggle. font.features
+    // is Qt 6.6; on older Qt the proportional figures stay.
+    function tabularFigures(text) {
+        if (text && ("features" in text.font)) text.font.features = { "tnum": 1 }
+    }
+
     // ── motion ───────────────────────────────────────────────────────────
     // One switch for the whole app. `typeof` because this singleton is
     // reachable from hosts that install no `app` context property, and an
@@ -109,8 +164,36 @@ QtObject {
                                          && app !== null
                                          && app.reducedMotion === true
 
+    // Three speeds: a hover or a colour change, a slide or a fade, and the
+    // slow pulse of something waiting. A spinner turns once per two slow.
+    readonly property int motionFast:   100
+    readonly property int motionMedium: 200
+    readonly property int motionSlow:   400
+
     // Every `duration:` under qml/ goes through here. Reduced motion gives
     // zero, so a transition still starts and finishes. An infinite animation
     // also needs `loops: Theme.reduceMotion ? 1 : Animation.Infinite`.
     function dur(ms) { return reduceMotion ? 0 : ms }
+
+    // A length in ms as a clock reads it: m:ss, and h:mm:ss from an hour on.
+    // The seek bar and the track rows share it, so the two always agree.
+    function clock(ms) {
+        var t = Math.max(0, Math.floor((Number(ms) || 0) / 1000))
+        var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60
+        var ss = (s < 10 ? "0" : "") + s
+        if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m + ":" + ss
+        return m + ":" + ss
+    }
+
+    // A length in seconds as a sentence reads it, "1 hr 5 min" or "42 min",
+    // for the detail pages' totals. Whole strings, so a translation can
+    // reorder them; kept in AlbumPage's context, where they were translated.
+    function lengthText(seconds) {
+        var loc  = Qt.locale()
+        var hrs  = Math.floor(seconds / 3600)
+        var mins = Math.floor((seconds % 3600) / 60)
+        return hrs > 0
+            ? qsTranslate("AlbumPage", "%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
+            : qsTranslate("AlbumPage", "%1 min").arg(mins.toLocaleString(loc, 'f', 0))
+    }
 }

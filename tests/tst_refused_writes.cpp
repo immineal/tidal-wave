@@ -163,6 +163,9 @@ struct Rig {
     TidalBridge bridge{&client};
     QJSValue    keepAlive;
 
+    // No request out, and no list body still being parsed off the GUI thread.
+    bool settled() const { return api.idle() && client.listsParsingForTest() == 0; }
+
     Rig()
     {
         if (!tidal.listen(QHostAddress::LocalHost)) qFatal("no loopback server");
@@ -292,7 +295,7 @@ struct Rig {
             serverTakes(step);
             const Told told = slot();
             act(step, told.fn);
-            QTRY_VERIFY_WITH_TIMEOUT(told.calls() == 1 && api.idle(), 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(told.calls() == 1 && settled(), 5000);
             QVERIFY2(told.ok(), qPrintable(step));
         }
     }
@@ -524,7 +527,7 @@ private slots:
         QFETCH(bool, taken);
 
         Rig rig;
-        QTRY_VERIFY_WITH_TIMEOUT(rig.api.idle(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(rig.settled(), 5000);
         rig.prepare(action);
         if (QTest::currentTestFailed()) return;
         QCOMPARE(rig.shown(), before);
@@ -535,7 +538,7 @@ private slots:
         rig.said.clear();
         const Rig::Told told = rig.slot();
         rig.act(action, told.fn);
-        QTRY_VERIFY_WITH_TIMEOUT(told.calls() > 0 && rig.api.idle(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(told.calls() > 0 && rig.settled(), 5000);
         QCOMPARE(told.calls(), 1);
 
         if (taken) {

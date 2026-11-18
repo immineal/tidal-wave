@@ -69,13 +69,13 @@ Popup {
     // No height: the dialog is as tall as its content and the margins hold
     // it inside the window. A height bound to implicitHeight is a binding
     // loop, because a resize is what makes a layout publish that height.
-    margins: 32
+    margins: Theme.space8
     modal: true
     focus: true
     // No CloseOnPressOutside: there are three explicit answers and a click
     // beside the dialog is not one of them.
     closePolicy: Popup.CloseOnEscape
-    padding: 20
+    padding: Theme.space5
 
     Overlay.modal: Rectangle { color: Theme.scrim }
 
@@ -85,51 +85,13 @@ Popup {
         radius: Theme.radiusPopup
     }
 
-    // A flat button, local to this dialog. PillButton is the hero-page pill and
-    // is sized for that job; these are dialog-sized and need a focus ring.
-    component ActionButton: Item {
-        id: btn
-        property string label: ""
-        property bool   primary: false
-        signal activated()
-
-        implicitWidth:  Math.max(84, btnLabel.implicitWidth + 28)
-        implicitHeight: 34
-        activeFocusOnTab: true
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radiusButton
-            color: btn.primary ? (btnHover.hovered ? Theme.accentDim : Theme.accent)
-                               : (btnHover.hovered ? Theme.surfaceHov : Theme.surface)
-            border.width: btn.activeFocus ? 2 : (btn.primary ? 0 : 1)
-            border.color: btn.activeFocus ? Theme.accent : Theme.border
-        }
-
-        Text {
-            id: btnLabel
-            anchors.centerIn: parent
-            text: btn.label
-            color: btn.primary ? Theme.accentInk : Theme.textPrimary
-            font.pixelSize: 13
-            font.bold: btn.primary
-        }
-
-        HoverHandler { id: btnHover; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: btn.activated() }
-
-        Keys.onReturnPressed: btn.activated()
-        Keys.onEnterPressed:  btn.activated()
-        Keys.onSpacePressed:  btn.activated()
-    }
-
     contentItem: ColumnLayout {
-        spacing: 12
+        spacing: Theme.space3
 
         Text {
             text: qsTr("Update available")
             color: Theme.textPrimary
-            font.pixelSize: 17
+            font.pixelSize: Theme.fontTitle
             font.bold: true
             Layout.fillWidth: true
             elide: Text.ElideRight
@@ -142,7 +104,7 @@ Popup {
                       .arg(root.check ? root.check.latestVersion : "")
                       .arg(prefs.appVersion())
             color: Theme.textSec
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontMeta
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
@@ -152,7 +114,7 @@ Popup {
             // and not only in the privacy block.
             text: qsTr("This opens the release page in your browser. The app does not download or install anything.")
             color: Theme.textDim
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontMeta
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
@@ -161,25 +123,29 @@ Popup {
         // across 400px once they are German, and wrapping beats clipping.
         Flow {
             Layout.fillWidth: true
-            Layout.topMargin: 4
-            spacing: 8
+            Layout.topMargin: Theme.space1
+            spacing: Theme.space2
 
-            ActionButton {
+            PillButton {
                 id: openBtn
-                label: qsTr("Open release")
-                primary: true
+                compact: true
+                text: qsTr("Open release")
                 focus: true
-                onActivated: root.openRelease()
+                onClicked: root.openRelease()
             }
-            ActionButton {
+            PillButton {
                 id: laterBtn
-                label: qsTr("Later")
-                onActivated: root.postpone()
+                compact: true
+                accent: false
+                text: qsTr("Later")
+                onClicked: root.postpone()
             }
-            ActionButton {
+            PillButton {
                 id: skipBtn
-                label: qsTr("Skip this version")
-                onActivated: root.skipVersion()
+                compact: true
+                accent: false
+                text: qsTr("Skip this version")
+                onClicked: root.skipVersion()
             }
         }
     }

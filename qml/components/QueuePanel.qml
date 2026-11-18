@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Window
 import TidalWave
 
 // The queue overlay: a scrim across the page with the panel pinned to its
@@ -24,7 +25,7 @@ Item {
     // A Behavior does not run on a binding's first evaluation, so a panel that
     // starts open is open in its first frame.
     Behavior on openness {
-        NumberAnimation { duration: Theme.dur(150); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
     visible: open || openness > 0.001
 
@@ -44,21 +45,43 @@ Item {
     // its own bounds. 16 is the smallest size that stays inside the slack of
     // the layout guard in tests/qml/tst_layout_player.qml.
     readonly property int iconSize: 16
+    readonly property int gripSize: 24
+    readonly property int gripGlyph: 20
+
+    // Empties what the user lined up, and offers it back: the rows are
+    // copied first, and Undo puts them in front again in the same order.
+    function clearQueue() {
+        // Copied out: a list read off a property re-reads it on access, and
+        // would be empty by the time Undo runs.
+        var q = player.queueManual, saved = []
+        for (var i = 0; i < q.length; i++) saved.push(q[i])
+        if (saved.length === 0) return
+        player.clearManual()
+        Edits.recordLocal(qsTr("Queue cleared", "confirmation after emptying the play queue"),
+                          function () { player.playNext(saved) },
+                          qsTr("Queue put back", "after undoing a cleared queue"))
+    }
 
     // ── the model ────────────────────────────────────────────────────────
-    // One list and two boundaries, all gated on `visible` so a closed panel
-    // holds no copy of the queue.
-    readonly property var rows:        visible ? player.queueTracks : []
-    readonly property int playIndex:   visible ? player.queueIndex  : -1
-    readonly property int manualTotal: visible ? player.manualCount : 0
-    readonly property string contextName: visible ? player.contextName : ""
-    readonly property string contextType: visible ? player.contextType : ""
+    // A length and two boundaries, read one row at a time by the delegates
+    // in view: the whole queue as one JS list cost 80 ms for 6000 tracks.
+    // Live while `live`; held while hidden, so the rows stay built and still.
+    property bool live: false
+    property int totalCount: 0
+    property int playIndex: -1
+    property int manualTotal: 0
+    property string contextName: ""
+    property string contextType: ""
+    Binding on totalCount  { when: root.live; value: player.queueCount;  restoreMode: Binding.RestoreNone }
+    Binding on playIndex   { when: root.live; value: player.queueIndex;  restoreMode: Binding.RestoreNone }
+    Binding on manualTotal { when: root.live; value: player.manualCount; restoreMode: Binding.RestoreNone }
+    Binding on contextName { when: root.live; value: player.contextName; restoreMode: Binding.RestoreNone }
+    Binding on contextType { when: root.live; value: player.contextType; restoreMode: Binding.RestoreNone }
 
-    readonly property int  totalCount: rows.length
     readonly property bool hasCurrent: playIndex >= 0 && playIndex < totalCount
 
-    // Clamped against `rows` rather than trusted, because the two ints and the
-    // list arrive on three different signals and a frame caught between them
+    // Clamped against the length rather than trusted, because the three ints
+    // arrive on three different signals and a frame caught between them
     // must not index off the end.
     readonly property int playedCount:  Math.max(0, Math.min(playIndex, totalCount))
     readonly property int manualCount:  Math.max(0, Math.min(manualTotal,
@@ -81,7 +104,101 @@ Item {
     readonly property int afterManual:     manualAt + manualCount
     readonly property int contextHeaderAt: contextCount > 0 ? afterManual : -1
     readonly property int contextAt:       afterManual + (contextCount > 0 ? 1 : 0)
-    readonly property int rowCount:        contextAt + contextCount
+    // The same sum as contextAt + contextCount, in one binding of the
+    // player's ints: built from the chain above, it moved once per link as
+    // the panel opened, and each move rebuilt every row in view.
+    function rowsNow() {
+        var total = player.queueCount, at = player.queueIndex
+        var played = Math.max(0, Math.min(at, total))
+        var current = at >= 0 && at < total ? 1 : 0
+        var manual = Math.max(0, Math.min(player.manualCount, total - at - 1))
+        var context = Math.max(0, total - played - current - manual)
+        return (played > 0 ? played + 1 : 0) + 2 * current
+             + (manual > 0 ? manual + 1 : 0) + (context > 0 ? context + 1 : 0)
+    }
+    property int rowCount: 0
+    Binding on rowCount { when: root.live; value: root.rowsNow(); restoreMode: Binding.RestoreNone }
+
+    // What the rows read their track through. Bumped for each change to the
+    // queue while live, and once on opening for any change while hidden.
+    property int queueRev: 0
+    property bool _queueStale: false
+    Connections {
+        target: player
+        function onQueueChanged() { if (root.live) root.queueRev++; else root._queueStale = true }
+    }
+
+    // ── the keyboard ─────────────────────────────────────────────────────
+    // The list is one tab stop: the row last walked to, else the playing one.
+    property int keyRow: -1
+    function isRow(i) { return i >= 0 && i < rowCount && kindOf(i).lastIndexOf("Header") < 0 }
+    readonly property int tabRow: isRow(keyRow) ? keyRow
+                                : hasCurrent ? currentAt
+                                : isRow(0) ? 0 : (isRow(1) ? 1 : -1)
+    // Up and Down step over the headings; Home and End go to the ends.
+    function focusRow(from, step) {
+        for (var i = from + step; i >= 0 && i < rowCount; i += step) {
+            if (!isRow(i)) continue
+            keyRow = i
+            list.positionViewAtIndex(i, ListView.Contain)
+            var it = list.itemAtIndex(i)
+            if (it) it.forceActiveFocus(Qt.TabFocusReason)
+            return true
+        }
+        return false
+    }
+    // Where the keyboard goes when the panel opens.
+    function takeFocus() {
+        var i = tabRow
+        if (i >= 0) {
+            list.positionViewAtIndex(i, ListView.Contain)
+            var it = list.itemAtIndex(i)
+            if (it) { it.forceActiveFocus(Qt.TabFocusReason); return }
+        }
+        closeBtn.forceActiveFocus(Qt.TabFocusReason)
+    }
+
+    // Tab goes round inside the open panel. Qt moves focus before any parent
+    // sees the key, so a stop outside is caught here and sent to the far end.
+    property Item _lastInside: null
+    function holds(item) {
+        for (var p = item; p; p = p.parent) if (p === panel) return true
+        return false
+    }
+    function edgeStop(forward) {
+        var first = panel.nextItemInFocusChain(true)
+        if (!forward) {
+            var last = first
+            for (var n = 0, it = first; n < 200 && it && holds(it); ++n) {
+                last = it
+                it = it.nextItemInFocusChain(true)
+                if (it === first) break
+            }
+            return last
+        }
+        return first
+    }
+    // Through the window object: tst_frame_gating bans the text "Window.active".
+    readonly property Item keyboardItem: Window.window ? Window.window.activeFocusItem : null
+    onKeyboardItemChanged: {
+        var f = keyboardItem
+        if (!f || !open) return
+        if (holds(f)) { _lastInside = f; return }
+        // A menu or dialog the panel opened lives in the overlay.
+        for (var p = f; p; p = p.parent) if (p === Overlay.overlay) return
+        if (!_lastInside) return
+        var back = _lastInside.nextItemInFocusChain(false) === f
+        var target = edgeStop(back ? false : true)
+        _lastInside = null
+        if (!target || !holds(target)) return
+        target.forceActiveFocus(Qt.TabFocusReason)
+        // Qt 6.4 finishes the Tab's own move after this handler and so undoes
+        // the line above; once the key is through, the move is made again.
+        Qt.callLater(function () {
+            if (open && target.visible && !holds(keyboardItem)) target.forceActiveFocus(Qt.TabFocusReason)
+        })
+    }
+    onOpenChanged: if (!open) _lastInside = null
 
     function kindOf(i) {
         if (i === playedHeaderAt)  return "playedHeader"
@@ -118,13 +235,16 @@ Item {
 
     function trackAt(kind, slot) {
         var q = queueIndexOf(kind, slot)
-        return (q >= 0 && q < rows.length) ? rows[q] : null
+        // queueRev is read for its notifier, so a row whose slot now holds
+        // another track reads again.
+        return (root.queueRev >= 0 && q >= 0 && q < root.totalCount) ? player.queueTrackAt(q) : null
     }
 
     function headerLabelOf(kind) {
         switch (kind) {
-        case "playedHeader":  return qsTr("Played")
-        case "nowHeader":     return qsTr("Now Playing")
+        // Rows behind the cursor: played, or jumped over to get here.
+        case "playedHeader":  return qsTr("Earlier in queue")
+        case "nowHeader":     return qsTr("Now playing")
         case "manualHeader":  return qsTr("Next in queue")
         case "contextHeader": return contextHeading
         }
@@ -132,10 +252,13 @@ Item {
     }
 
     // Names the source when it has a name, as an album, a playlist or a mix
-    // does. A radio or a one-off play has nothing to name.
+    // does. A radio or a one-off play has nothing to name, and a search is
+    // named as one.
     readonly property string contextHeading:
-        contextName.length > 0 ? qsTr("Next from: %1").arg(contextName)
-                               : qsTr("Up Next")
+        contextName.length === 0   ? qsTr("Up next")
+        : contextType === "search" ? qsTr("Next from: search “%1”",
+                                          "the queue was started from the search results").arg(contextName)
+                                   : qsTr("Next from: %1").arg(contextName)
 
     function contextGlyph(type) {
         switch (type) {
@@ -153,6 +276,8 @@ Item {
     // never has to know its position in the flat queue.
     function activate(kind, slot) {
         switch (kind) {
+        // The current track pauses or resumes, and never starts over.
+        case "current": player.playPause();         break
         case "played":  player.jumpToPlayed(slot);  break
         case "manual":  player.jumpToManual(slot);  break
         case "context": player.jumpToContext(slot); break
@@ -197,56 +322,386 @@ Item {
     function revealCurrent() {
         if (!visible || !hasCurrent || currentAt < 0 || currentAt >= list.count) return
         list.positionViewAtIndex(currentAt, ListView.Center)
+        // Qt 6.5 builds a far row only after the call, which then leaves it at
+        // the top: build it now and centre it again.
+        if (!list.itemAtIndex(currentAt)) {
+            list.forceLayout()
+            list.positionViewAtIndex(currentAt, ListView.Center)
+        }
         scheduleCurrentPosition()
     }
 
-    // On open the rows do not exist yet, so the scroll waits for them. Only on
-    // open: following every advance would yank the view back from wherever the
-    // user was reading, which is what the jump pill is for.
-    onVisibleChanged: if (visible) Qt.callLater(revealCurrent)
+    // Only on open: following every advance would yank the view back from
+    // wherever the user was reading, which is what the jump pill is for. The
+    // first rows land while the list has no height, so they are built once,
+    // around the playing one, rather than at the top first.
+    function goLive() {
+        var parked = rowCount === 0 && rowsNow() > 0
+        // A new count moves every row, so the one walked to is gone.
+        if (rowsNow() !== rowCount) keyRow = -1
+        list.parked = parked
+        live = true
+        if (_queueStale) { _queueStale = false; queueRev++ }
+        revealCurrent()
+        if (parked) {
+            list.parked = false
+            revealCurrent()
+        }
+        // Again after the host has handed the panel the keyboard, which
+        // scrolls to the row it focuses.
+        Qt.callLater(revealCurrent)
+    }
+    onVisibleChanged: if (visible) goLive(); else live = false
+    Component.onCompleted: if (visible) goLive()
 
-    // ── dragging inside the manual queue ─────────────────────────────────
-    // Same shape as the sidebar's pinned block (SideBar.qml): the live state
-    // sits here, because the drop indicator belongs to the list.
+    // ── dragging what is still to come ───────────────────────────────────
+    // A queued row or one of the context's, by its grip or its body, to any
+    // gap in either section; dropped in the other section it joins that one.
+    // The row stays put and TrackDrag's preview travels, as in a playlist.
+    property string dragKind: ""
     property int  dragFrom:   -1
+    property int  dragFlat:   -1
+    // Content y of the dragged row, measured off the delegate at press
+    // time, because the view only estimates positions.
+    property real dragRowY:   0
+    // The pointer in the list's own coordinates, for the edge scroll.
+    property real dragViewX:  0
+    property real dragViewY:  0
+    // Where it lands: a section, a gap in it, and the row's slot after the move.
+    property string dropKind: ""
+    property int  dropGap:    -1
     property int  dragTo:     -1
-    property real dragOffset: 0
-    // Content y of the first manual row, measured off the dragged delegate
-    // at press time, because the view only estimates positions.
-    property real dragTopY:   0
-    // Whether the pointer is still inside the manual queue. A drag that ends
-    // anywhere else is abandoned, not clamped: a queued track must not land
-    // in the history or in the album by a slip of the hand.
+    // Off the queue, over the history or the playing row, a drop is abandoned,
+    // not clamped: a slip of the hand must not be an edit.
     property bool dropValid:  false
     readonly property bool dragging: dragFrom >= 0
+    property int _currentBefore: -1
 
-    function manualSlotAt(from, offset) {
-        return Math.max(0, Math.min(manualCount - 1,
-                                    from + Math.round(offset / rowHeight)))
+    readonly property int upcomingCount: manualCount + contextCount
+
+    // Content y of the top of flat row i, worked out from the dragged row:
+    // every track row is rowHeight tall and every heading headerHeight.
+    function flatY(i) { return flatYFrom(dragFlat, dragRowY, i) }
+    // The same from any built row: `fromY` is flat row `from`'s content y.
+    function flatYFrom(from, fromY, i) {
+        var heads = [playedHeaderAt, nowHeaderAt, manualHeaderAt, contextHeaderAt]
+        var a = Math.min(i, from), b = Math.max(i, from), between = 0
+        for (var k = 0; k < heads.length; ++k)
+            if (heads[k] >= a && heads[k] < b) between++
+        var d = (b - a) * rowHeight - between * (rowHeight - headerHeight)
+        return fromY + (i >= from ? d : -d)
     }
 
-    function beginDrag(slot, rowY) {
+    function beginDrag(kind, slot, flat, rowY) {
+        dragKind   = kind
         dragFrom   = slot
-        dragTo     = slot
-        dragOffset = 0
-        dragTopY   = rowY - slot * rowHeight
-        dropValid  = true
+        dragFlat   = flat
+        dragRowY   = rowY
+        // The current item outlives a scroll, so the dragged row keeps its
+        // delegate, and with it the pointer grab, however far the list moves.
+        _currentBefore = list.currentIndex
+        list.currentIndex = flat
+        aimDrop(dragRowY + rowHeight / 2, true)
     }
 
-    function cancelDrag() {
+    // Aims the drop at the gap nearest `centre`, a content y.
+    function aimDrop(centre, inside) {
+        var kind = "", gap = -1
+        var manualTop = manualHeaderAt >= 0 ? flatY(manualHeaderAt) : -1
+        var contextTop = contextHeaderAt >= 0 ? flatY(contextHeaderAt) : -1
+        var split = contextTop >= 0 ? contextTop + headerHeight / 2 : Infinity
+        if (inside && manualTop >= 0 && centre >= manualTop && centre < split) {
+            kind = "manual"
+            gap = Math.floor((centre - flatY(manualAt)) / rowHeight + 0.5)
+            gap = Math.max(0, Math.min(manualCount, gap))
+        } else if (inside && contextTop >= 0 && centre >= Math.min(split, contextTop)
+                   && (manualTop < 0 || centre >= split)) {
+            kind = "context"
+            gap = Math.floor((centre - flatY(contextAt)) / rowHeight + 0.5)
+            gap = Math.max(0, Math.min(contextCount, gap))
+        }
+        dropKind  = kind
+        dropGap   = gap
+        dropValid = kind !== ""
+        dragTo    = !dropValid ? -1 : (kind === dragKind && gap > dragFrom ? gap - 1 : gap)
+    }
+
+    // The pointer moved, or the list moved under it. Off the list, over the
+    // heading or the player bar, nothing is aimed at.
+    function moveDrag(viewX, viewY) {
+        if (!dragging) return
+        dragViewX = viewX
+        dragViewY = viewY
+        aimDrop(list.contentY + viewY,
+                viewX >= 0 && viewX <= list.width && viewY >= 0 && viewY <= list.height)
+    }
+
+    function resetDrag() {
+        if (dragging && list.currentIndex === dragFlat && _currentBefore < list.count)
+            list.currentIndex = _currentBefore
+        dragKind   = ""
         dragFrom   = -1
+        dragFlat   = -1
+        dropKind   = ""
+        dropGap    = -1
         dragTo     = -1
-        dragOffset = 0
         dropValid  = false
     }
+    // Calls the move off, the preview with it.
+    function cancelDrag() {
+        resetDrag()
+        if (TrackDrag.active && TrackDrag.origin === "queue") TrackDrag.cancel()
+    }
 
+    // Lands the move where the line is; the queue's DropArea calls it.
     function endDrag() {
-        var from = dragFrom
-        var to   = dragTo
-        var ok   = dropValid
-        cancelDrag()
-        if (!ok || from < 0 || to < 0 || from === to) return
-        player.moveManual(from, to)
+        var kind = dragKind, from = dragFrom, toKind = dropKind, to = dragTo, ok = dropValid
+        resetDrag()
+        if (!ok || from < 0 || to < 0 || (kind === toKind && from === to)) return
+        if (kind === "manual" && toKind === "manual") player.moveManual(from, to)
+        else player.moveQueueRow(kind, from, toKind, to)
+    }
+
+    // ── tracks carried in from a page ────────────────────────────────────
+    // A TrackDrag over the list: a gap in what is to come, as for a row
+    // dragged inside it, and below the playing row when nothing is queued.
+    property string carryKind: ""
+    property int  carryGap:   -1
+    property real carryLineY: 0
+    property real carryViewX: 0
+    property real carryViewY: 0
+    readonly property bool carrying: carryKind !== ""
+
+    function aimCarry(viewX, viewY) {
+        carryViewX = viewX
+        carryViewY = viewY
+        var kind = "", gap = -1, lineY = 0
+        var cy = list.contentY + viewY
+        var it = list.itemAt(Math.max(0, Math.min(list.width - 1, viewX)), cy)
+        if (!it && rowCount > 0) {
+            var last = list.itemAtIndex(rowCount - 1)
+            if (last && cy >= last.y + last.height) it = last
+        }
+        if (!it) {
+            // Nothing in the queue: the tracks start it.
+            if (rowCount === 0) { kind = "manual"; gap = 0 }
+        } else {
+            var fy = function (i) { return root.flatYFrom(it.rowIndex, it.y, i) }
+            var manualTop = manualHeaderAt >= 0 ? fy(manualHeaderAt) : -1
+            var contextTop = contextHeaderAt >= 0 ? fy(contextHeaderAt) : -1
+            var split = contextTop >= 0 ? contextTop + headerHeight / 2 : Infinity
+            if (manualTop >= 0 && cy >= manualTop && cy < split) {
+                kind = "manual"
+                gap = Math.max(0, Math.min(manualCount,
+                                           Math.floor((cy - fy(manualAt)) / rowHeight + 0.5)))
+                lineY = fy(manualAt) + gap * rowHeight
+            } else if (contextTop >= 0 && cy >= Math.min(split, contextTop)
+                       && (manualTop < 0 || cy >= split)) {
+                kind = "context"
+                gap = Math.max(0, Math.min(contextCount,
+                                           Math.floor((cy - fy(contextAt)) / rowHeight + 0.5)))
+                lineY = fy(contextAt) + gap * rowHeight
+            } else if (hasCurrent && cy >= fy(currentAt) + rowHeight / 2) {
+                // The playing row's lower half: next, ahead of anything queued.
+                kind = "manual"
+                gap = 0
+                lineY = manualTop >= 0 ? fy(manualAt) : fy(currentAt) + rowHeight
+            }
+        }
+        carryKind = kind
+        carryGap = gap
+        carryLineY = lineY
+    }
+    function clearCarry() {
+        carryKind = ""
+        carryGap = -1
+    }
+    function dropCarried(viewX, viewY) {
+        aimCarry(viewX, viewY)
+        var kind = carryKind, gap = carryGap, tracks = TrackDrag.tracks
+        clearCarry()
+        if (kind === "" || tracks.length === 0) return false
+        player.insertQueueRows(tracks, kind, gap)
+        Toasts.show(qsTranslate("TrackRow", "%Ln track(s) added to queue", "queue confirmation",
+                                tracks.length))
+        return true
+    }
+
+    // A track ending or the queue changing under a drag moves the rows it
+    // was aimed at; the drag is dropped rather than landing a row off by one.
+    onPlayIndexChanged: if (dragging) cancelDrag()
+    Connections {
+        target: player
+        function onQueueChanged() { if (root.dragging) root.cancelDrag() }
+    }
+
+    // Held near the top or bottom edge, the list scrolls under the row,
+    // faster the closer the pointer is to the edge.
+    readonly property int edgeBand: 48
+    Timer {
+        id: edgeScroll
+        interval: 16
+        repeat: true
+        running: root.dragging || root.carrying
+        onTriggered: {
+            var y = root.dragging ? root.dragViewY : root.carryViewY, step = 0
+            if (y < root.edgeBand) step = -Math.ceil((root.edgeBand - y) / 4)
+            else if (y > list.height - root.edgeBand)
+                step = Math.ceil((y - (list.height - root.edgeBand)) / 4)
+            if (step === 0) return
+            var top = list.originY
+            var end = top + Math.max(0, list.contentHeight - list.height)
+            var to = Math.max(top, Math.min(end, list.contentY + step))
+            if (to === list.contentY) return
+            list.contentY = to
+            if (root.dragging) root.moveDrag(root.dragViewX, root.dragViewY)
+            else root.aimCarry(root.carryViewX, root.carryViewY)
+        }
+    }
+
+    // ── the row menu ─────────────────────────────────────────────────────
+    // One for the panel, aimed at a row as it opens. What Spotify's queue row
+    // offers, in the order the track rows' menu uses.
+    readonly property alias rowMenu: rowMenu
+
+    function openRowMenu(entry, fromKeyboard) {
+        if (!entry || entry.isHeader || !entry.track) return
+        rowMenu.kind  = entry.kind
+        rowMenu.slot  = entry.slot
+        rowMenu.flat  = entry.rowIndex
+        rowMenu.track = entry.track
+        if (fromKeyboard) rowMenu.popup(entry, 16, entry.height)
+        else rowMenu.popup()
+    }
+
+    // A page the menu opens is shown, so the queue gets out of its way.
+    function leaveFor(page, params) {
+        var w = Window.window
+        if (!w || typeof w.navigate !== "function") return
+        w.navigate(page, params)
+        root.dismissed()
+    }
+
+    MenuBase {
+        id: rowMenu
+        objectName: "queueRowMenu"
+
+        property string kind: ""
+        property int  slot: -1
+        property int  flat: -1
+        property var  track: null
+        readonly property bool upcoming: kind === "manual" || kind === "context"
+
+        readonly property real albumId: track && Number(track.albumId) > 0 ? Number(track.albumId) : 0
+        // Every credit with a usable id, as TrackRow lists them.
+        readonly property var credits: {
+            var out = [], list = track && track.artistList ? track.artistList : []
+            for (var i = 0; i < list.length; i++) {
+                var id = Number(list[i].id)
+                if (id > 0) out.push({ id: id, name: String(list[i].name) })
+            }
+            var lead = track ? Number(track.artistId) : 0
+            if (out.length === 0 && lead > 0)
+                out.push({ id: lead, name: typeof track.artists === "string" ? track.artists : "" })
+            return out
+        }
+
+        readonly property alias playNextItem:      menuPlayNext
+        readonly property alias addToPlaylistItem: menuAddToPlaylist
+        readonly property alias goToAlbumItem:     menuGoToAlbum
+        readonly property alias removeItem:        menuRemove
+
+        onClosed: flat = -1
+
+        // A row already coming up moves to the front; one already played is
+        // queued again, as a track row's Play next does.
+        function playNext() {
+            if (kind === "manual") { if (slot > 0) player.moveManual(slot, 0) }
+            else if (kind === "context") player.moveQueueRow("context", slot, "manual", 0)
+            else if (track) {
+                player.playNext([track])
+                Toasts.show(qsTranslate("ContextMenu", "%Ln track(s) added to play next",
+                                        "queue confirmation", 1))
+            }
+        }
+
+        function remove() {
+            if (kind === "manual") player.removeManual(slot)
+            else if (kind === "context") player.removeFromQueue(root.queueIndexOf("context", slot))
+        }
+
+        // The row that opens the artists submenu, built from this delegate.
+        delegate: ContextMenu.Entry {
+            id: artistSubRow
+            iconName: "artist"
+            visible: rowMenu.credits.length > 1
+            height: visible ? implicitHeight : 0
+            rightPadding: Theme.space3 + Theme.space5
+            arrow: VectorIcon {
+                visible: artistSubRow.subMenu
+                x: artistSubRow.width - width - 12
+                y: (artistSubRow.height - height) / 2
+                width: 14; height: 14
+                name: "chevron-right"
+                color: artistSubRow.ink
+            }
+        }
+
+        ContextMenu.Entry {
+            id: menuPlayNext
+            visible: rowMenu.kind !== "current"
+            height: visible ? implicitHeight : 0
+            text: qsTranslate("TrackRow", "Play next", "verb, play this right after the current track")
+            iconName: "next"
+            onTriggered: rowMenu.playNext()
+        }
+        ContextMenu.Entry {
+            id: menuAddToPlaylist
+            text: qsTranslate("TrackRow", "Add to playlist")
+            iconName: "plus"
+            enabled: rowMenu.track !== null && Number(rowMenu.track.id) > 0
+            onTriggered: Edits.pickPlaylist([rowMenu.track])
+        }
+        ContextMenu.Separator { }
+        ContextMenu.Entry {
+            id: menuGoToAlbum
+            text: qsTranslate("TrackRow", "Go to album")
+            iconName: "album"
+            enabled: rowMenu.albumId > 0
+            onTriggered: root.leaveFor("album", { albumId: rowMenu.albumId })
+        }
+        ContextMenu.Entry {
+            text: qsTranslate("TrackRow", "Go to artist")
+            iconName: "artist"
+            visible: rowMenu.credits.length <= 1
+            height: visible ? implicitHeight : 0
+            enabled: rowMenu.credits.length === 1
+            onTriggered: if (rowMenu.credits.length === 1)
+                             root.leaveFor("artist", { artistId: rowMenu.credits[0].id })
+        }
+        MenuBase {
+            id: artistSubMenu
+            title: qsTranslate("TrackRow", "Go to artist")
+            Instantiator {
+                model: rowMenu.credits
+                delegate: ContextMenu.Entry {
+                    text: modelData.name
+                    onTriggered: root.leaveFor("artist", { artistId: modelData.id })
+                }
+                onObjectAdded: (index, object) => artistSubMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
+            }
+        }
+        ContextMenu.Separator { shown: rowMenu.upcoming }
+        ContextMenu.Entry {
+            id: menuRemove
+            visible: rowMenu.upcoming
+            height: visible ? implicitHeight : 0
+            text: qsTr("Remove from queue")
+            danger: true
+            iconName: "trash"
+            onTriggered: rowMenu.remove()
+        }
     }
 
     Rectangle {
@@ -264,6 +719,13 @@ Item {
         acceptedButtons: Qt.AllButtons
         onClicked: root.dismissed()
         onWheel: (wheel) => wheel.accepted = true
+    }
+    // And any carried track: the page behind takes no drop while it is dimmed.
+    DropArea {
+        anchors.fill: parent
+        enabled: root.open
+        keys: TrackDrag.keys
+        onDropped: (drop) => { drop.accepted = false }
     }
 
     Rectangle {
@@ -298,31 +760,80 @@ Item {
                 color: "transparent"
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+                    anchors.leftMargin: Theme.space4
+                    anchors.rightMargin: Theme.space4
+                    Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
                     Item { Layout.fillWidth: true }
-                    Text { text: qsTr("%n track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: 12 }
+                    Text { text: qsTr("%Ln track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
                     Text {
                         visible: player.shuffle
-                        text: qsTr("· Shuffled")
-                        color: Theme.accent; font.pixelSize: 12
+                        text: "· " + qsTr("Shuffled", "the queue is in shuffled order")
+                        color: Theme.accentText; font.pixelSize: Theme.fontMeta
                     }
-                    Item { width: 8 }
+                    Item { width: Theme.space2 }
                     // Clears the manual queue and only that: the history and
-                    // the album are not the user's list.
-                    Text {
+                    // the album are not the user's list. The hit area is 32
+                    // tall around the 12px word.
+                    Item {
+                        id: clearBtn
                         objectName: "queueClear"
-                        text: qsTr("Clear", "verb, empties the play queue")
-                        color: clearHov.hovered ? Theme.textPrimary : Theme.textSec
-                        font.pixelSize: 12
                         visible: root.manualCount > 0
+                        implicitWidth: Math.max(32, clearText.implicitWidth + 12)
+                        implicitHeight: 32
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: root.clearQueue()
+                        Keys.onSpacePressed:  root.clearQueue()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Clear queue", "button, empties the play queue")
+                        Accessible.onPressAction: root.clearQueue()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radiusButton
+                            color: clearHov.hovered ? Theme.hoverFill : "transparent"
+                            border.width: clearBtn.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
+                        Text {
+                            id: clearText
+                            anchors.centerIn: parent
+                            text: qsTr("Clear", "verb, empties the play queue")
+                            color: clearHov.hovered || clearBtn.activeFocus ? Theme.textPrimary : Theme.textSec
+                            font.pixelSize: Theme.fontMeta
+                        }
                         HoverHandler { id: clearHov }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: player.clearManual()
+                            onClicked: root.clearQueue()
                         }
+                    }
+                    // The way out besides Escape and a click beside the panel.
+                    Item {
+                        id: closeBtn
+                        objectName: "queueClose"
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: root.dismissed()
+                        Keys.onSpacePressed:  root.dismissed()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Close queue", "button, hides the play queue")
+                        Accessible.onPressAction: root.dismissed()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radiusButton
+                            color: closeHov.hovered ? Theme.hoverFill : "transparent"
+                            border.width: closeBtn.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            name: "x"
+                            width: 14; height: 14
+                            color: closeHov.hovered || closeBtn.activeFocus ? Theme.textPrimary : Theme.textSec
+                        }
+                        HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.dismissed() }
                     }
                 }
             }
@@ -340,15 +851,35 @@ Item {
                 ListView {
                     id: list
                     objectName: "queuePanelList"
-                    anchors.fill: parent
+                    // See onVisibleChanged.
+                    property bool parked: false
+                    width: parent.width
+                    height: parked ? 0 : parent.height
                     clip: true
                     // The model is the row count, not the rows: the delegate
                     // reads its own entry out of the section arrays, so a
-                    // 5000 track queue is never copied into one JS list.
-                    model: root.rowCount
+                    // 5000 track queue is never copied into one JS list. A
+                    // new count adds or takes rows at the end; those in view stay.
+                    model: CountModel { count: root.rowCount }
                     cacheBuffer: 240
+                    // Rows scrolled out of view become the ones scrolled in.
+                    reuseItems: true
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    // No drag to scroll: a press on a row's title or artist
+                    // would otherwise hand the drag to the list. The wheel and
+                    // the scroll bar scroll; the grip moves rows.
+                    interactive: false
+                    keyNavigationEnabled: true
+                    WheelHandler {
+                        target: null
+                        onWheel: (event) => {
+                            var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y
+                            var top = list.originY
+                            var end = top + Math.max(0, list.contentHeight - list.height)
+                            list.contentY = Math.max(top, Math.min(end, list.contentY - dy))
+                        }
+                    }
 
                     delegate: QueueEntry {
                         required property int index
@@ -356,21 +887,26 @@ Item {
                         width: ListView.view ? ListView.view.width : 0
                     }
 
-                    // Where the dragged row will land. A child of the list is
-                    // parented to the content item, so this is positioned in
-                    // content coordinates however far the list is scrolled.
+                    // Where the dragged row will land, in content coordinates
+                    // however far the list is scrolled. A ListView keeps a
+                    // declared child as its own, so the parent is said here.
                     Rectangle {
                         objectName: "queueDropIndicator"
-                        visible: root.dragging && root.dropValid
+                        parent: list.contentItem
+                        // Not over the row's own place, where a drop moves nothing.
+                        visible: (root.dragging && root.dropValid
+                                  && !(root.dropKind === root.dragKind && root.dragTo === root.dragFrom))
+                                 || root.carrying
                         x: 8
                         width: Math.max(0, list.width - 16)
                         height: 2
-                        radius: 1
+                        radius: height / 2
                         z: 3
                         color: Theme.accent
-                        y: root.dragTopY
-                           + (root.dragTo > root.dragFrom ? root.dragTo + 1 : root.dragTo)
-                             * root.rowHeight - 1
+                        y: root.carrying ? root.carryLineY - 1
+                           : !root.dropValid ? 0
+                           : root.flatY((root.dropKind === "manual" ? root.manualAt : root.contextAt)
+                                        + root.dropGap) - 1
                     }
 
                     // Everything that moves the current track in or out of the
@@ -379,6 +915,30 @@ Item {
                     onContentHeightChanged: root.scheduleCurrentPosition()
                     onCountChanged:         root.scheduleCurrentPosition()
                     onHeightChanged:        root.scheduleCurrentPosition()
+                }
+
+                // Tracks carried in from a page land at the line; a row of
+                // the queue's own is aimed by its MouseArea and moves there.
+                DropArea {
+                    objectName: "queueTrackDrop"
+                    anchors.fill: list
+                    keys: TrackDrag.keys
+                    readonly property bool ownRow: TrackDrag.origin === "queue"
+                    onEntered: (drag) => { if (!ownRow) root.aimCarry(drag.x, drag.y) }
+                    onPositionChanged: (drag) => { if (!ownRow) root.aimCarry(drag.x, drag.y) }
+                    onExited: root.clearCarry()
+                    onDropped: (drop) => {
+                        if (root.dragging) {
+                            root.moveDrag(drop.x, drop.y)
+                            if (!root.dropValid) { drop.accepted = false; return }
+                            drop.accept(Qt.MoveAction)
+                            root.endDrag()
+                        } else if (root.dropCarried(drop.x, drop.y)) {
+                            drop.accept(Qt.CopyAction)
+                        } else {
+                            drop.accepted = false
+                        }
+                    }
                 }
 
                 // Outside the list: a child of a ListView is parented to its
@@ -392,7 +952,7 @@ Item {
                     wrapMode: Text.WordWrap
                     text: qsTr("Nothing queued yet")
                     color: Theme.textDim
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontMeta
                 }
 
                 // Shown when the current track is off screen, on the edge it
@@ -402,13 +962,13 @@ Item {
                     objectName: "queueJumpToCurrent"
                     visible: opacity > 0
                     opacity: (root.hasCurrent && !root.currentOnScreen) ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Theme.dur(140) } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
 
                     anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top:    root.currentAbove ? parent.top : undefined
-                    anchors.bottom: root.currentAbove ? undefined : parent.bottom
-                    anchors.topMargin: 10
-                    anchors.bottomMargin: 10
+                    // A y, not a top and a bottom anchor swapped by binding:
+                    // for a moment both held, and the pill kept the stretched
+                    // height over the rows, taking their clicks.
+                    y: root.currentAbove ? Theme.space3 : parent.height - height - Theme.space3
 
                     width: jumpRow.implicitWidth + 24
                     height: 28
@@ -418,7 +978,7 @@ Item {
                     RowLayout {
                         id: jumpRow
                         anchors.centerIn: parent
-                        spacing: 4
+                        spacing: Theme.space1
                         VectorIcon {
                             name: "chevron-left"
                             // The glyph points left; a quarter turn clockwise
@@ -426,12 +986,11 @@ Item {
                             rotation: root.currentAbove ? 90 : -90
                             color: Theme.accentInk
                             width: root.iconSize; height: root.iconSize
-                            strokeWidth: 2
                         }
                         Text {
                             text: qsTr("Jump to current track")
                             color: Theme.accentInk
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontMeta
                         }
                     }
 
@@ -463,16 +1022,38 @@ Item {
         readonly property bool isCurrent: kind === "current"
         readonly property bool isPlayed:  kind === "played"
         readonly property bool isManual:  kind === "manual"
-        // The current row is where you already are, so there is nowhere for a
-        // click on it to go.
-        readonly property bool actionable: !isHeader && !isCurrent
-        readonly property bool draggable:  isManual && root.manualCount > 1
-        readonly property bool dragging:   isManual && root.dragFrom === slot
+        readonly property bool actionable: !isHeader
+        readonly property bool upcoming:   isManual || kind === "context"
+        readonly property bool menuOpen:   rowMenu.visible && rowMenu.flat === rowIndex
+        readonly property bool draggable:  upcoming && root.upcomingCount > 1
+        readonly property bool dragging:   root.dragging && root.dragFlat === rowIndex
+
+        // Starts a drag on this row from a press at (x, y) of `area`; the
+        // preview is TrackDrag's, and any end but the queue's drop is no move.
+        function startDrag(area, x, y) {
+            if (!TrackDrag.begin(entry, [track], area.mapToItem(null, x, y),
+                                 function () { if (root.dragging) root.cancelDrag() }, "queue"))
+                return
+            root.beginDrag(kind, slot, rowIndex, entry.y)
+            followDrag(area, x, y)
+        }
+        function followDrag(area, x, y) {
+            var p = area.mapToItem(list, x, y)
+            root.moveDrag(p.x, p.y)
+            TrackDrag.move(area.mapToItem(null, x, y))
+        }
+        function dropDrag(area, x, y) {
+            followDrag(area, x, y)
+            if (!TrackDrag.drop() && root.dragging) root.cancelDrag()
+        }
+        // Past the start-drag distance a press carries the row.
+        function travelled(pressAt, mouse) {
+            return Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
+                || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance
+        }
 
         objectName: "queueEntry"
         height: isHeader ? root.headerHeight : root.rowHeight
-        // The row being dragged travels over its neighbours, not under them.
-        z: dragging ? 2 : 0
 
         readonly property string headerText: isHeader ? root.headerLabelOf(kind) : ""
 
@@ -500,9 +1081,29 @@ Item {
             return isFinite(n) ? n : 0
         }
 
-        activeFocusOnTab: actionable
+        activeFocusOnTab: activeFocus || (actionable && rowIndex === root.tabRow)
+        onActiveFocusChanged: if (activeFocus && actionable) root.keyRow = rowIndex
+        // Space stays play/pause for the window, as on a track row.
+        readonly property bool leavesSpaceToPlayer: true
         Keys.onReturnPressed: root.activate(kind, slot)
-        Keys.onSpacePressed:  root.activate(kind, slot)
+        Keys.onEnterPressed:  root.activate(kind, slot)
+        Keys.onUpPressed:     root.focusRow(rowIndex, -1)
+        Keys.onDownPressed:   root.focusRow(rowIndex, 1)
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Home) root.focusRow(-1, 1)
+            else if (event.key === Qt.Key_End) root.focusRow(root.rowCount, -1)
+            else if (event.key === Qt.Key_Menu
+                     || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                root.openRowMenu(entry, true)
+            } else return
+            event.accepted = true
+        }
+        Accessible.role: isHeader ? Accessible.StaticText : Accessible.ListItem
+        Accessible.name: isHeader ? headerText
+                                  : qsTranslate("TrackRow", "%1, %2",
+                                                "track row for a screen reader: title, artists")
+                                        .arg(titleText).arg(artistsText)
+        Accessible.onPressAction: if (actionable) root.activate(kind, slot)
 
         // ── the section heading ──────────────────────────────────────────
         Item {
@@ -513,27 +1114,26 @@ Item {
                 id: headerIcon
                 visible: entry.kind === "contextHeader"
                 anchors.left: parent.left
-                anchors.leftMargin: 14
+                anchors.leftMargin: Theme.space4
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: 1
                 name: root.contextGlyph(root.contextType)
                 width: root.iconSize; height: root.iconSize
-                strokeWidth: 1.5
                 color: Theme.textDim
             }
 
             Text {
                 anchors.left: headerIcon.visible ? headerIcon.right : parent.left
-                anchors.leftMargin: headerIcon.visible ? 6 : 14
+                anchors.leftMargin: headerIcon.visible ? Theme.space2 : Theme.space4
                 anchors.right: parent.right
-                anchors.rightMargin: 14
+                anchors.rightMargin: Theme.space4
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: 1
                 text: entry.headerText
                 // The manual queue is the one the user built, so it is the one
                 // the eye should land on; the rest are captions.
-                color: entry.kind === "manualHeader" ? Theme.accent : Theme.textDim
-                font.pixelSize: 11
+                color: entry.kind === "manualHeader" ? Theme.accentText : Theme.textDim
+                font.pixelSize: Theme.fontMicro
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -542,8 +1142,8 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
+                anchors.leftMargin: Theme.space4
+                anchors.rightMargin: Theme.space4
                 height: 1
                 // Not above the first heading: there is nothing up there to
                 // be separated from.
@@ -555,35 +1155,58 @@ Item {
         // ── a track ──────────────────────────────────────────────────────
         Rectangle {
             id: rowBg
+            objectName: "queueRowGround"
             anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            anchors.topMargin: 2
-            anchors.bottomMargin: 2
+            anchors.leftMargin: Theme.space2
+            anchors.rightMargin: Theme.space2
+            anchors.topMargin: Theme.spaceHalf
+            anchors.bottomMargin: Theme.spaceHalf
             visible: !entry.isHeader
             radius: Theme.radiusRow
-            color: entry.isCurrent ? Theme.accentSoft
-                 : (entry.dragging || qHov.hovered) ? Theme.surfaceHov
+            // The row being carried stays in its place, marked; the preview travels.
+            color: entry.dragging ? Theme.surfaceHigh
+                 : entry.isCurrent ? Theme.accentSoft
+                 : (qHov.hovered || entry.menuOpen) ? Theme.hoverFill
                  : "transparent"
             border.width: (entry.activeFocus || entry.dragging) ? 2 : 0
             border.color: Theme.accent
             // History reads as history. The whole row dims, not just the
             // text, so the section is obvious at a glance from the artwork.
             opacity: entry.isPlayed ? 0.55 : 1
-            // The lift. A transform rather than a y offset, because the row's
-            // y belongs to the ListView.
-            transform: Translate { y: entry.dragging ? root.dragOffset : 0 }
 
             // Declared before the content, so the grip and the remove button
             // in front of it still get their own clicks.
             MouseArea {
+                id: rowArea
                 anchors.fill: parent
                 enabled: !entry.isHeader
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
-                cursorShape: entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                cursorShape: entry.dragging ? Qt.ClosedHandCursor
+                           : entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                // A drag on a row is not a scroll: it moves the row, and the
+                // wheel scrolls. A press that travelled is not a click either.
+                preventStealing: true
+                property point pressAt
+                property bool travelled: false
+                onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
+                onPositionChanged: function (mouse) {
+                    if (entry.dragging) { entry.followDrag(rowArea, mouse.x, mouse.y); return }
+                    if (entry.travelled(pressAt, mouse)) travelled = true
+                    // The body drags as the grip does, as in Spotify and Tidal.
+                    if (travelled && entry.draggable && !root.dragging
+                            && (mouse.buttons & Qt.LeftButton)) {
+                        entry.startDrag(rowArea, pressAt.x, pressAt.y)
+                        entry.followDrag(rowArea, mouse.x, mouse.y)
+                    }
+                }
+                onReleased: function (mouse) {
+                    if (entry.dragging) entry.dropDrag(rowArea, mouse.x, mouse.y)
+                }
+                onCanceled: if (entry.dragging) root.cancelDrag()
                 onClicked: function (mouse) {
+                    if (travelled) return
                     if (mouse.button === Qt.RightButton) {
-                        if (entry.isManual) rowMenu.popup()
+                        root.openRowMenu(entry, false)
                         return
                     }
                     if (entry.actionable) root.activate(entry.kind, entry.slot)
@@ -592,33 +1215,35 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 4
-                anchors.rightMargin: 8
-                spacing: 8
+                anchors.leftMargin: Theme.space1
+                anchors.rightMargin: Theme.space2
+                spacing: Theme.space2
 
                 // The grip's column is reserved on every track row, so the
                 // artwork keeps one straight edge across section boundaries.
                 Item {
-                    Layout.preferredWidth: 16
+                    Layout.preferredWidth: root.gripSize
                     Layout.fillHeight: true
 
+                    // Full strength at rest: a faint grip read as decoration.
                     VectorIcon {
+                        objectName: "queueDragGrip"
                         anchors.centerIn: parent
                         visible: entry.draggable
                         name: "grip"
-                        width: root.iconSize; height: root.iconSize
-                        strokeWidth: 1.5
-                        color: entry.dragging ? Theme.accent : Theme.textDim
-                        opacity: qHov.hovered || entry.dragging ? 1 : 0.45
+                        width: root.gripGlyph; height: root.gripGlyph
+                        color: entry.dragging ? Theme.accentText
+                             : qHov.hovered ? Theme.textPrimary : Theme.textSec
                     }
 
                     MouseArea {
+                        id: gripArea
                         objectName: "queueDragArea"
                         anchors.fill: parent
-                        // A deliberate bleed, so a 16px-wide grip is not a
-                        // 16px-wide target. 4 is what the layout guard in
+                        // A deliberate bleed, so the grip's target is wider
+                        // than its column. 4 is what the layout guard in
                         // tests/qml/tst_layout_player.qml allows for overhang.
-                        anchors.margins: -4
+                        anchors.margins: -Theme.space1
                         visible: entry.draggable
                         enabled: entry.draggable
                         cursorShape: entry.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
@@ -626,62 +1251,40 @@ Item {
                         // and takes the grab away mid-reorder.
                         preventStealing: true
 
-                        // Where the press landed, in the list's content
-                        // coordinates, which do not move when the list scrolls.
-                        property real pressY: 0
-
-                        onPressed: function (mouse) {
-                            pressY = mapToItem(list.contentItem, mouse.x, mouse.y).y
-                            root.beginDrag(entry.slot, entry.y)
-                        }
+                        property point pressAt
+                        onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y) }
                         onPositionChanged: function (mouse) {
-                            if (!entry.dragging) return
-                            // The event arrives in the handle's own moving
-                            // coordinates; mapToItem puts the pointer back into
-                            // the list's content space.
-                            var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                            root.dragOffset = p.y - pressY
-                            root.dragTo     = root.manualSlotAt(entry.slot, root.dragOffset)
-                            // Confined to the manual queue, in both directions:
-                            // the history above it, the context below it, and
-                            // the page beside it.
-                            root.dropValid = p.y >= root.dragTopY
-                                && p.y < root.dragTopY + root.manualCount * root.rowHeight
-                                && p.x >= 0 && p.x <= list.width
+                            if (entry.dragging) entry.followDrag(gripArea, mouse.x, mouse.y)
+                            else if (!root.dragging && entry.travelled(pressAt, mouse)) {
+                                entry.startDrag(gripArea, pressAt.x, pressAt.y)
+                                entry.followDrag(gripArea, mouse.x, mouse.y)
+                            }
                         }
-                        onReleased: root.endDrag()
-                        onCanceled: root.cancelDrag()
+                        onReleased: function (mouse) {
+                            if (entry.dragging) entry.dropDrag(gripArea, mouse.x, mouse.y)
+                        }
+                        onCanceled: if (entry.dragging) root.cancelDrag()
                     }
                 }
 
-                Rectangle {
+                // 36px box, doubled for a 2x screen.
+                CoverArt {
                     Layout.preferredWidth: 36
                     Layout.preferredHeight: 36
-                    radius: Theme.radiusArt
-                    color: Theme.surfaceHigh
-                    clip: true
-                    Image {
-                        objectName: "queueRowCover"
-                        anchors.fill: parent
-                        source: entry.coverText ? "image://tidal/" + entry.coverText : ""
-                        // 36px box, doubled for a 2x screen. Both dimensions;
-                        // see TrackRow's cover for why one is a trap.
-                        sourceSize: Qt.size(72, 72)
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                    }
+                    imageName: "queueRowCover"
+                    source: entry.coverText || ""
+                    decodeSize: Qt.size(72, 72)
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 2
+                    spacing: Theme.spaceHalf
                     // A truncated payload must still read as a row.
                     Text {
                         Layout.fillWidth: true
                         text: entry.titleText
-                        color: entry.isCurrent ? Theme.accent : Theme.textPrimary
-                        font.pixelSize: 13
+                        color: entry.isCurrent ? Theme.accentText : Theme.textPrimary
+                        font.pixelSize: Theme.fontMeta
                         font.bold: entry.isCurrent
                         elide: Text.ElideRight
                     }
@@ -690,8 +1293,9 @@ Item {
                     // left click and the rest of the line jumps to the track.
                     ArtistLinks {
                         Layout.fillWidth: true
+                        tabStops: false
                         namePrefix: "queue"
-                        fontPixelSize: 11
+                        fontPixelSize: Theme.fontMicro
                         artistList: entry.artistList
                         joinedText: entry.artistsText
                         fallbackArtistId: entry.leadArtistId
@@ -726,7 +1330,6 @@ Item {
                             name: "x"
                             color: removeHov.hovered ? Theme.textPrimary : Theme.textSec
                             width: root.iconSize; height: root.iconSize
-                            strokeWidth: 1.8
                         }
                         HoverHandler { id: removeHov }
                         MouseArea {
@@ -739,33 +1342,6 @@ Item {
             }
 
             HoverHandler { id: qHov }
-
-            Menu {
-                id: rowMenu
-                // So a test can reach a per-delegate menu, which is not in
-                // any item's children: a Popup is a QObject, not an Item.
-                objectName: "queueRowMenu"
-                // The same arrival as every other menu in the app; see
-                // ContextMenu.qml for why it is opacity and nothing else.
-                enter: ContextMenu.OpenFade { }
-                exit:  ContextMenu.CloseFade { }
-                // Insets reset, not inherited; see ContextMenu.qml.
-                leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-
-                // Assigned where it exists (Qt 6.8); see ContextMenu.qml.
-                Component.onCompleted: {
-                    if (this.popupType !== undefined) this.popupType = Popup.Item
-                }
-                implicitWidth: Theme.menuWidth(this)
-                overlap: 0
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
-                ContextMenu.Entry {
-                    text: qsTr("Remove from queue")
-                    danger: true
-                    iconName: "trash"
-                    onTriggered: player.removeManual(entry.slot)
-                }
-            }
         }
     }
 }

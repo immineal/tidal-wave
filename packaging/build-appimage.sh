@@ -102,7 +102,8 @@ echo "=== the entry, as integration tools copy it ==="
 # Gear Lever names the entry after a hash of the file.
 ENTRY="$APPDIR/usr/share/applications/io.github.immineal.TidalWave.desktop"
 sed -i '/^#/d' "$ENTRY"
-echo "X-AppImage-Version=$TW_VERSION" >> "$ENTRY"
+# Into the main group: appended, it would land in the last action's group.
+sed -i "/^\[Desktop Entry\]/a X-AppImage-Version=$TW_VERSION" "$ENTRY"
 # The copy gets a file name of the tool's choosing, so a shell can match the
 # window through StartupWMClass alone. On Wayland it compares the app id, and
 # AppRun gives the X11 window the same name.

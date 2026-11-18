@@ -6,12 +6,17 @@
 #include "api/Auth.h"
 #include "api/TidalClient.h"
 #include "api/TidalBridge.h"
+#include "api/LyricsFinder.h"
+#include "lyricsync/AutoSync.h"
 #include "player/Player.h"
 #include "player/Downloader.h"
 #include "mpris/MprisPlayer.h"
 #include "ui/ImageProvider.h"
 #include <QSystemTrayIcon>
+#include <QElapsedTimer>
 #include <QIcon>
+#include <QLockFile>
+#include <memory>
 
 class QQmlApplicationEngine;
 class QQmlEngine;
@@ -23,6 +28,14 @@ class UpdateCheck;
 class PinStore;
 class LibraryIndex;
 class SignalWatcher;
+class TrayMenu;
+class RemoteControl;
+class TrackNotifier;
+class Scrobbler;
+class ScrobbleSink;
+
+class QWindow;
+class MediaSession;
 
 class Application : public QObject {
     Q_OBJECT
@@ -38,6 +51,11 @@ public:
     bool reducedMotion() const { return m_reducedMotion; }
     Q_INVOKABLE void quit();
     Q_INVOKABLE void openUrl(const QString &url);
+    // A Tidal link dropped on the window or pasted into Search.
+    Q_INVOKABLE bool isTidalLink(const QString &text) const;
+    Q_INVOKABLE void openLink(const QString &text);
+    // The page the last run left, read once at start; the window opens it.
+    Q_INVOKABLE QString startPage() const { return m_startPage; }
 
     // Makes SIGTERM, SIGINT and SIGHUP quit the ordinary way, so ~Player runs.
     // Call once, after the QApplication exists. False means the handlers
@@ -66,6 +84,28 @@ public:
     static bool isAudioServerStartupNoise(const QString &msg);
     // Whether a log line is the FFmpeg media backend announcing itself.
     static bool isMediaBackendStartupNoise(const QString &msg);
+
+    // What a session that ended leaves behind: no playback, no queue, no
+    // account in the client (the bridge's favourites go with it), the pins
+    // and the library. `forget`, an explicit log out, also writes the emptied
+    // queue under the account and disconnects `scrobbling`. Public and static
+    // for tst_sign_out.
+    static void endAccountSession(TidalClient *client, Player *player, PinStore *pins,
+                                  LibraryIndex *library, bool forget,
+                                  const QList<ScrobbleSink *> &scrobbling = {});
+
+    // Deletes the audio and artwork temp files earlier runs left in `dir`:
+    // this user's, named as this app names them. The caller holds the temp
+    // lock, so no running instance has any of them open. Returns the count.
+    static int sweepStaleTempFiles(const QString &dir);
+    // The lock every instance holds on its temp directory while it runs.
+    static QString tempLockPath(const QString &dir);
+
+    // Where a saved window goes on the screens there are now: kept where it
+    // fits, moved onto the screen it overlaps most (or the first) where it
+    // does not, and shrunk to that screen. Invalid when nothing was saved.
+    static QRect placeWindow(const QRect &saved, const QList<QRect> &screens,
+                             const QSize &fallback);
 
     // ── High-DPI scaling ─────────────────────────────────────────────────
     // Qt derives its scale factor from the logical DPI, which is 96 where the
@@ -149,6 +189,10 @@ public:
     // the scale factor once, while the QApplication is built.
     static void applyScaleFactor();
 
+    // Turns Qt's incremental QML garbage collector off unless
+    // QV4_GC_TIMELIMIT holds a value. Call from main() before any QML engine.
+    static void useWholeHeapQmlCollector();
+
     // The UI font stack, most specific first, without families that are not
     // installed: the first missing name makes Qt build its alias table on
     // every launch. Needs a QGuiApplication.
@@ -165,6 +209,9 @@ public:
 
 signals:
     void reallyQuitChanged();
+    // A Tidal link from the command line or the desktop, as RemoteControl
+    // passes it on: "album", "artist", "playlist" or "mix", and the id.
+    void openRequested(const QString &kind, const QString &id);
     void reducedMotionChanged();
 
 protected:
@@ -182,6 +229,12 @@ private:
     // Called at startup when a tray exists, and again from the D-Bus watcher
     // if one turns up later.
     void createTrayIcon(const QIcon &icon);
+    // Relabels the tray menu after the window or the player changed.
+    void refreshTray();
+    void setUpTrackNotifier();
+    void checkFavorites(qint64 minGapMs);
+    // Keeps the window's size, place and maximised state in Prefs.
+    void trackWindowState(QWindow *window, const QRect &restored);
 
     Prefs       *m_prefs  = nullptr;
     I18n        *m_i18n   = nullptr;
@@ -190,16 +243,29 @@ private:
     Auth        *m_auth   = nullptr;
     TidalClient *m_client = nullptr;
     TidalBridge *m_bridge = nullptr;
+    LyricsFinder *m_lyricsFinder = nullptr;
+    lyricsync::AutoSync *m_autoSync = nullptr;
     Player      *m_player = nullptr;
     Downloader  *m_downloader = nullptr;
     CastManager *m_cast   = nullptr;
     PinStore    *m_pins   = nullptr;
     LibraryIndex *m_library = nullptr;
     MprisManager*m_mpris  = nullptr;
+    // Windows' and macOS's media controls; null on Linux, where MPRIS is.
+    MediaSession *m_mediaSession = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
+    TrayMenu    *m_trayMenu = nullptr;
+    RemoteControl *m_remote = nullptr;
+    TrackNotifier *m_notifier = nullptr;
+    Scrobbler   *m_scrobbler = nullptr;
+    ScrobbleSink *m_listenBrainz = nullptr;
+    ScrobbleSink *m_lastFm = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
+    QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;
+    std::unique_ptr<QLockFile> m_tempLock;
 
+    QString      m_startPage;
     bool         m_reallyQuit = false;
     bool         m_reducedMotion = false;
 };

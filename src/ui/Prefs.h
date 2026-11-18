@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QQmlEngine>
+#include <QRect>
 #include <QSettings>
 #include <QString>
 
@@ -39,12 +40,35 @@ class Prefs : public QObject {
     // The close button ends the process and does not hide to the tray. With
     // no tray icon a close quits whatever this says.
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
+    // A desktop notification when a new track starts. Off by default.
+    Q_PROPERTY(bool trackNotifications READ trackNotifications WRITE setTrackNotifications NOTIFY trackNotificationsChanged)
     // The fullscreen Now Playing page tops its gradient with a colour from
     // the cover art. The colour is clamped for legibility; see CoverColor.h.
     Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
     // The now-playing bars show a coarse spectrum of the audio. Needs Qt 6.8
     // (QAudioBufferOutput); below that the switch does nothing.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
+    // Ask lrclib.net for synced lyrics when Tidal has none. On by default; it
+    // sends the track's artist, title, album and length.
+    Q_PROPERTY(bool lyricsLrclib READ lyricsLrclib WRITE setLyricsLrclib NOTIFY lyricsLrclibChanged)
+    // Also ask NetEase, KuGou and Genius. Opt in.
+    Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
+    // Time plain lyrics against the track's audio, on this machine. On by default.
+    Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
+    // "system", "on" or "off": whether to follow the desktop's reduce-motion
+    // setting or override it. See ReducedMotion::resolve().
+    Q_PROPERTY(QString reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
+    // Tidal's ReplayGain applied to each track. On by default.
+    Q_PROPERTY(bool normalizeLoudness READ normalizeLoudness WRITE setNormalizeLoudness NOTIFY normalizeLoudnessChanged)
+    // The track radio of the last track goes on where the queue ends. On by default.
+    Q_PROPERTY(bool autoplay READ autoplay WRITE setAutoplay NOTIFY autoplayChanged)
+    // Crossfade at a track change, off by default, over crossfadeSeconds.
+    Q_PROPERTY(bool crossfade READ crossfade WRITE setCrossfade NOTIFY crossfadeChanged)
+    Q_PROPERTY(int crossfadeSeconds READ crossfadeSeconds WRITE setCrossfadeSeconds NOTIFY crossfadeSecondsChanged)
+    // The crossfade rides on the gapless change, which needs Qt 6.5.
+    Q_PROPERTY(bool crossfadeAvailable READ crossfadeAvailable CONSTANT)
+    // The page the window last showed, as JSON {page, params}; "" for Home.
+    Q_PROPERTY(QString lastPage READ lastPage WRITE setLastPage NOTIFY lastPageChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -57,6 +81,8 @@ public:
     static constexpr int railBreakpoint  = 820;
     // Width of that rail.
     static constexpr int railWidth       = 68;
+    static constexpr int minCrossfadeSeconds = 1;
+    static constexpr int maxCrossfadeSeconds = 12;
 
     QString theme() const        { return m_theme; }
     bool    oledBlack() const    { return m_oledBlack; }
@@ -67,8 +93,18 @@ public:
     bool    softwareRendering() const { return m_softwareRendering; }
     double  uiScale() const { return m_uiScale; }
     bool    quitOnClose() const       { return m_quitOnClose; }
+    bool    trackNotifications() const { return m_trackNotifications; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
+    bool    lyricsLrclib() const      { return m_lyricsLrclib; }
+    bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
+    bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
+    QString reducedMotion() const     { return m_reducedMotion; }
+    bool    normalizeLoudness() const { return m_normalizeLoudness; }
+    bool    autoplay() const          { return m_autoplay; }
+    bool    crossfade() const         { return m_crossfade; }
+    int     crossfadeSeconds() const  { return m_crossfadeSeconds; }
+    bool    crossfadeAvailable() const { return QT_VERSION >= QT_VERSION_CHECK(6, 5, 0); }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -79,8 +115,26 @@ public:
     void setSoftwareRendering(bool v);
     void setUiScale(double v);
     void setQuitOnClose(bool v);
+    void setTrackNotifications(bool v);
     void setCoverGradient(bool v);
     void setSpectrumBars(bool v);
+    void setLyricsLrclib(bool v);
+    void setLyricsOtherSites(bool v);
+    void setLyricsAutoSync(bool v);
+    void setReducedMotion(const QString &v);
+    void setNormalizeLoudness(bool v);
+    void setAutoplay(bool v);
+    void setCrossfade(bool v);
+    void setCrossfadeSeconds(int v);
+
+    // The window as it was left. The geometry is the unmaximised one, and
+    // invalid until a window has been shown.
+    QRect   windowGeometry() const;
+    void    setWindowGeometry(const QRect &r);
+    bool    windowMaximized() const;
+    void    setWindowMaximized(bool v);
+    QString lastPage() const { return m_lastPage; }
+    void    setLastPage(const QString &v);
 
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -100,11 +154,22 @@ signals:
     void softwareRenderingChanged();
     void uiScaleChanged();
     void quitOnCloseChanged();
+    void trackNotificationsChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
+    void lyricsLrclibChanged();
+    void lyricsOtherSitesChanged();
+    void lyricsAutoSyncChanged();
+    void reducedMotionChanged();
+    void normalizeLoudnessChanged();
+    void autoplayChanged();
+    void crossfadeChanged();
+    void crossfadeSecondsChanged();
+    void lastPageChanged();
 
 private:
     QSettings m_settings;
+    QString   m_lastPage;
     QString   m_theme;
     bool      m_oledBlack;
     bool      m_tintedGreys;
@@ -114,6 +179,15 @@ private:
     bool      m_softwareRendering;
     double    m_uiScale;
     bool      m_quitOnClose;
+    bool      m_trackNotifications;
     bool      m_coverGradient;
     bool      m_spectrumBars;
+    bool      m_lyricsLrclib;
+    bool      m_lyricsOtherSites;
+    bool      m_lyricsAutoSync;
+    QString   m_reducedMotion;
+    bool      m_normalizeLoudness;
+    bool      m_autoplay;
+    bool      m_crossfade;
+    int       m_crossfadeSeconds;
 };

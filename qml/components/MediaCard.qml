@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Window
 import TidalWave
 
 Item {
@@ -27,7 +29,28 @@ Item {
     // Set by a host whose subtitle is a translated label for another kind.
     property var storedSubtitle: undefined
 
-    readonly property alias pinMenu: cardMenu
+    // Built the first time it is asked for: its entries outweigh the card,
+    // and a page of cards seldom opens one. ensureMenu() builds it unopened.
+    readonly property alias pinMenu: menuLoader.item
+    function ensureMenu() { menuLoader.active = true; return menuLoader.item }
+
+    // An album's credits, [{id, name}] as TidalBridge hands them over. With
+    // a usable id among them the second line links each artist and the menu
+    // has Go to artist; other kinds ignore it.
+    property var artistList: []
+    readonly property var artistCredits: {
+        var out = []
+        if (mediaType !== "album" || !artistList) return out
+        for (var i = 0; i < artistList.length; i++) {
+            var id = Number(artistList[i].id)
+            if (id > 0) out.push({ id: id, name: String(artistList[i].name) })
+        }
+        return out
+    }
+    function openArtist(artistId) {
+        if (artistId > 0 && Window.window)
+            Window.window.navigate("artist", { artistId: artistId })
+    }
 
     // The destructive entry on the tile's own menu, if the host offers one.
     // Empty on most pages. See ContextMenu.removeLabel.
@@ -62,9 +85,9 @@ Item {
 
     // The gaps the card is built from, so its height below and the art box's
     // position stay one piece of arithmetic.
-    readonly property int artGap:    8   // art to title
-    readonly property int lineGap:   2   // title to subtitle
-    readonly property int bottomPad: 8
+    readonly property int artGap:    Theme.space2   // art to title
+    readonly property int lineGap:   Theme.spaceHalf   // title to subtitle
+    readonly property int bottomPad: Theme.space2
 
     width: cardSize
     // Spelled out, not measured from a ColumnLayout: a layout caches a child's
@@ -75,9 +98,32 @@ Item {
     signal clicked()
     signal playClicked()
 
-    activeFocusOnTab: true
+    // The keyboard is on the card or on its play button.
+    readonly property bool keyboardOn: root.activeFocus || playButton.activeFocus
+
+    // A host list sets this so its cards are one tab stop between them
+    // (the current card); the arrows are the list's.
+    property bool tabStop: true
+    activeFocusOnTab: tabStop || activeFocus
     Keys.onReturnPressed: root.clicked()
     Keys.onSpacePressed:  root.clicked()
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Menu
+                || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+            root.openMenu(16, root.cardSize)
+            event.accepted = true
+        }
+    }
+    function openMenu(x, y) {
+        ensureMenu().showPin(x, y, root.pinKind, root.itemId,
+                             root.title, root.pinSubtitle, root.coverUrl)
+    }
+    Accessible.role: Accessible.Button
+    Accessible.name: root.subtitle.length > 0
+                     ? qsTr("%1, %2", "card for a screen reader: title, subtitle")
+                           .arg(root.title).arg(root.subtitle)
+                     : root.title
+    Accessible.onPressAction: root.clicked()
 
     Rectangle {
         id: imgRect
@@ -104,12 +150,34 @@ Item {
             smooth: true
             mipmap: true
             opacity: status === Image.Ready ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
+            Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
+        }
+
+        VectorIcon {
+            visible: root.coverUrl.length === 0 || img.status === Image.Error
+            anchors.centerIn: parent
+            name: root.placeholderGlyph
+            color: Theme.textDim
+            width: 48
+            height: 48
+        }
+
+        // The hover dim, over the whole cover and in its shape: a loaded cover
+        // is drawn square (the clip is the box, not the rounding), so it is
+        // square then. A wash over art is the same in every theme.
+        Rectangle {
+            id: scrim
+            objectName: "cardScrim"
+            anchors.fill: parent
+            radius: !root.roundArt && img.status === Image.Ready ? 0 : parent.radius
+            color: hov.hovered || root.keyboardOn ? Theme.artScrim : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
         }
 
         // Qt clips to an item's bounding box, never to its rounded outline, so
         // this ring paints the four corners of a round tile out in the ground
         // colour. A band of (sqrt(2)-1)/2 = 0.2072 of the side covers them.
+        // Over the dim, so the dim ends where the disc does.
         Rectangle {
             id: artCorners
             objectName: "cardArtCorners"
@@ -125,57 +193,49 @@ Item {
             antialiasing: true
         }
 
-        VectorIcon {
-            visible: root.coverUrl.length === 0 || img.status === Image.Error
+        // A plain play glyph in the middle of the cover: it plays, the rest
+        // of the cover opens the page.
+        Item {
+            id: playButton
+            objectName: "cardPlayButton"
+            visible: hov.hovered || root.keyboardOn
+            // Next after its card in the tab order, and only while the
+            // keyboard is on that card: the list stays one stop.
+            activeFocusOnTab: root.tabStop || activeFocus
+            Keys.onReturnPressed: root.playClicked()
+            Keys.onSpacePressed:  root.playClicked()
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTranslate("PlayerBar", "Play")
+            Accessible.onPressAction: root.playClicked()
+            width: 56
+            height: 56
             anchors.centerIn: parent
-            name: root.placeholderGlyph
-            color: Theme.textDim
-            width: 48
-            height: 48
-            strokeWidth: 1.5
-        }
 
-        Rectangle {
-            id: scrim
-            objectName: "cardScrim"
-            anchors.fill: parent
-            radius: parent.radius
-            // Dims the art so the play button reads; a wash over cover art
-            // cannot follow the ground, so it is the same in every theme.
-            color: hov.hovered ? Theme.artScrim : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.dur(150) } }
-
-            Rectangle {
-                id: playButton
-                objectName: "cardPlayButton"
-                visible: hov.hovered
-                width: 44
-                height: 44
-                radius: 22
-                // A square card has a corner to tuck the button into. On a
-                // disc that corner is off the art, so the button is centred.
-                anchors.centerIn: root.roundArt ? parent : undefined
-                anchors.bottom:   root.roundArt ? undefined : parent.bottom
-                anchors.right:    root.roundArt ? undefined : parent.right
-                anchors.margins:  root.roundArt ? 0 : 12
-                color: Theme.accent
-
-                VectorIcon {
-                    anchors.centerIn: parent
-                    name: "play"
-                    color: Theme.accentInk
-                    width: 18
-                    height: 18
-                    // The triangle's centre of area sits left of its box's
-                    // centre, so the mark is nudged to look centred.
-                    anchors.horizontalCenterOffset: 1
-                }
-
-                scale: playHov.hovered ? 1.05 : 1
-                Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
-                HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
-                TapHandler   { onTapped: root.playClicked() }
+            VectorIcon {
+                anchors.centerIn: parent
+                // The triangle's centre of area sits left of its box's
+                // centre, so the mark is nudged to look centred.
+                anchors.horizontalCenterOffset: 2
+                name: "play"
+                color: Theme.artInk
+                width: 36
+                height: 36
             }
+            // Only for the keyboard: a ring, never a fill.
+            Rectangle {
+                anchors.fill: parent
+                visible: playButton.activeFocus
+                color: "transparent"
+                radius: width / 2
+                border.width: 2
+                border.color: Theme.artInk
+            }
+
+            HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler   { onTapped: root.playClicked() }
+            ToolTip.visible: playHov.hovered
+            ToolTip.text: Accessible.name
+            ToolTip.delay: Theme.tooltipDelay
         }
 
         // Over everything, and on the tile's own radius, so it traces the
@@ -192,7 +252,15 @@ Item {
         }
 
         HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: root.clicked() }
+        // Both tap handlers see a tap on the glyph; that one only plays.
+        TapHandler {
+            onTapped: function (eventPoint) {
+                if (playButton.visible && playButton.contains(
+                        playButton.mapFromItem(playButton.parent, eventPoint.position)))
+                    return
+                root.clicked()
+            }
+        }
     }
 
     Text {
@@ -203,7 +271,7 @@ Item {
         width: root.cardSize
         text: root.title
         color: Theme.textPrimary
-        font.pixelSize: 14
+        font.pixelSize: Theme.fontBody
         font.bold: true
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
@@ -217,9 +285,38 @@ Item {
         width: root.cardSize
         text: root.subtitle
         color: Theme.textSec
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontMeta
+        // A line a little too long shrinks to fit, down to the micro size,
+        // and is cut below that. The height stays the 13 px line's.
+        fontSizeMode: Text.HorizontalFit
+        minimumPixelSize: Theme.fontMicro
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
+        // Under the links, still laid out: they take its fitted size.
+        opacity: links.status === Loader.Ready ? 0 : 1
+    }
+
+    // The links are built on the card's first hover: they cost more objects
+    // than the card, and a page of cards is seldom pointed at. They look like
+    // the plain line until a name is under the pointer.
+    property bool linksWanted: false
+    HoverHandler {
+        enabled: root.artistCredits.length > 0 && !root.linksWanted
+        onHoveredChanged: if (hovered) root.linksWanted = true
+    }
+    Loader {
+        id: links
+        active: root.linksWanted && root.artistCredits.length > 0
+        anchors.left: subText.left
+        anchors.top: subText.top
+        width: subText.width
+        sourceComponent: ArtistLinks {
+            namePrefix: "card"
+            // The row of cards is one tab stop; the menu has Go to artist.
+            tabStops: false
+            fontPixelSize: subText.fontInfo.pixelSize
+            artistList: root.artistCredits
+        }
     }
 
     // Right button only, so the cover's tap and hover handlers underneath
@@ -230,19 +327,23 @@ Item {
         acceptedButtons: Qt.RightButton
         onClicked: function (mouse) {
             var p = mapToItem(root, mouse.x, mouse.y)
-            cardMenu.showPin(p.x, p.y, root.pinKind, root.itemId,
-                             root.title, root.pinSubtitle, root.coverUrl)
+            root.openMenu(p.x, p.y)
         }
     }
 
-    ContextMenu {
-        id: cardMenu
-        objectName: "cardPinMenu"
-        trackSource: root.canQueue ? root.fetchTracks : null
-        // The tile has room above it on every page that shows one, and the
-        // confirmation belongs next to the thing it is about.
-        confirmAnchor: root
-        removeLabel: root.removeLabel
-        onRemoveRequested: root.removeRequested()
+    Loader {
+        id: menuLoader
+        active: false
+        // Parented to the card, as it was when declared here, rather than to
+        // this zero-sized Loader.
+        sourceComponent: ContextMenu {
+            parent: root
+            objectName: "cardPinMenu"
+            trackSource: root.canQueue ? root.fetchTracks : null
+            artistCredits: root.artistCredits
+            onArtistRequested: (artistId) => root.openArtist(artistId)
+            removeLabel: root.removeLabel
+            onRemoveRequested: root.removeRequested()
+        }
     }
 }

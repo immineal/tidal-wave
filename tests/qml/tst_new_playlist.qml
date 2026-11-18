@@ -128,6 +128,8 @@ TestCase {
         return out
     }
 
+    SignalSpy { id: navSpy; signalName: "navigate" }
+
     Component { id: dialogC;     NewPlaylistDialog { } }
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
     Component { id: trackRowC;   TrackRow { } }
@@ -531,6 +533,8 @@ TestCase {
         compare(rowIds(sb).join(","), "p-pin,a-pin,a1,p-old",
                 "the fixture is not the list this test is about")
         var refreshesBefore = library.refreshCountForTest()
+        navSpy.target = sb
+        navSpy.clear()
 
         mouseClick(findByName(sb, "sidebarNewPlaylist"))
         var dlg = sb.playlistDialog
@@ -558,6 +562,12 @@ TestCase {
                 "the sidebar re-paged the whole library to show one new row")
         compare(bridge.userPlaylistFetchCountForTest(), 0,
                 "the sidebar re-fetched the account's playlists to show one new row")
+
+        // And it opens, as it does from the picker.
+        compare(navSpy.count, 1, "the new playlist did not open")
+        compare(navSpy.signalArguments[0][0], "playlist")
+        compare(navSpy.signalArguments[0][1].playlistUuid, "uuid-created-1",
+                "another playlist opened")
     }
 
     // ── entry point 2: the Collection page's Playlists tab ───────────────
@@ -609,7 +619,7 @@ TestCase {
     function test_making_one_from_the_collection_shows_it_in_the_grid() {
         bridge.setUserPlaylistsForTest(makePlaylists(2))
         var c = makeCollection(1000, 3)
-        compare(c.page.filteredPlaylists.length, 2, "the fixture did not load")
+        compare(c.page.playlistRows.count, 2, "the fixture did not load")
 
         mouseClick(findByName(c.page, "collectionNewPlaylistButton"))
         var dlg = c.page.playlistDialog
@@ -622,15 +632,18 @@ TestCase {
                   "the dialog stayed up after a successful create")
         settle(c.host.contentItem)
 
-        compare(c.page.filteredPlaylists.length, 3,
+        compare(c.page.playlistRows.count, 3,
                 "the new playlist never reached the grid; it holds "
                 + playlistTitles().join(", "))
-        compare(c.page.filteredPlaylists[2].title, "Zugfahrt",
+        compare(c.page.playlistRows.get(2).title, "Zugfahrt",
                 "the grid gained a row, but not the playlist that was made")
-        // The page stays where it is: no tab change and no navigation.
+        // Then the new playlist opens, as it does from the picker.
         compare(c.page.activeTab, 3, "creating a playlist moved the tab")
-        compare(c.host.lastNavigation, null,
-                "creating a playlist navigated away from the collection")
+        verify(c.host.lastNavigation, "the new playlist did not open")
+        compare(c.host.lastNavigation.page, "playlist")
+        compare(c.host.lastNavigation.params.playlistUuid, "uuid-created-1",
+                "another playlist opened")
+        compare(c.host.lastNavigation.params.playlistTitle, "Zugfahrt")
     }
 
     // ── entry point 3: the track menu's "Add to playlist" picker ─────────

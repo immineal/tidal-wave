@@ -230,11 +230,16 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!player.loading(), 5000);   // the manifest refused
 
         // Stand in for the current track's bytes having arrived: the local file
-        // is what the player would be holding by now. It is never played.
+        // is what the player would be holding by now. It plays, muted: nothing
+        // is fetched ahead for a track that is not playing.
         mp->setSource(QUrl::fromLocalFile(m_wav));
         QTRY_VERIFY_WITH_TIMEOUT(mp->mediaStatus() == QMediaPlayer::LoadedMedia
                                  || mp->mediaStatus() == QMediaPlayer::BufferedMedia, 5000);
         QCOMPARE(mp->duration(), 30000);
+        player.setMuted(true);
+        mp->play();
+        if (!QTest::qWaitFor([mp] { return mp->playbackState() == QMediaPlayer::PlayingState; }, 5000))
+            QSKIP("this machine does not play the file");
 
         const int before = proxy.connections();
         mp->setPosition(6000);
@@ -264,6 +269,11 @@ private slots:
         mp->setSource(QUrl::fromLocalFile(m_wav));
         QTRY_VERIFY_WITH_TIMEOUT(mp->mediaStatus() == QMediaPlayer::LoadedMedia
                                  || mp->mediaStatus() == QMediaPlayer::BufferedMedia, 5000);
+        // Nothing is fetched ahead for a track that is not playing.
+        player.setMuted(true);
+        mp->play();
+        if (!QTest::qWaitFor([mp] { return mp->playbackState() == QMediaPlayer::PlayingState; }, 5000))
+            QSKIP("this machine does not play the file");
 
         const int before = proxy.connections();
         for (int i = 0; i < 8; ++i) {
@@ -294,6 +304,11 @@ private slots:
         mp->setSource(QUrl::fromLocalFile(m_wav));
         QTRY_VERIFY_WITH_TIMEOUT(mp->mediaStatus() == QMediaPlayer::LoadedMedia
                                  || mp->mediaStatus() == QMediaPlayer::BufferedMedia, 5000);
+        // Nothing is fetched ahead for a track that is not playing.
+        player.setMuted(true);
+        mp->play();
+        if (!QTest::qWaitFor([mp] { return mp->playbackState() == QMediaPlayer::PlayingState; }, 5000))
+            QSKIP("this machine does not play the file");
 
         const int before = proxy.connections();
         mp->setPosition(6000);

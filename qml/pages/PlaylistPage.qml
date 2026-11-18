@@ -22,11 +22,14 @@ Rectangle {
     property string coverUrl: ""
     property string playlistDescription: ""
     property int    playlistDuration: 0
-    property string playlistType: ""   // "USER" = editable, "" / "EDITORIAL" = read-only
+    property string playlistType: ""   // "USER" / "EDITORIAL"
+    // Whether the user made it, as the header says. Another user's playlist
+    // saved here is USER too, and only the creator may edit.
+    property bool   playlistEditable: false
+    // The bridge's TrackRows, which JS cannot read, or a JS array. Read
+    // through trackModel, which also has their number in `length`.
     property var    tracks: []
     property bool   loading: false
-
-    readonly property bool isUserPlaylist: playlistType === "USER"
 
     // What the last load was told, "" when it was served.
     property string loadError: ""
@@ -35,11 +38,48 @@ Rectangle {
     // artwork are still correct. Gated on what the server said: a playlist with
     // no songs in it is ordinary.
     readonly property bool loadFailed:
-        loadError.length > 0 && !loading && tracks.length === 0
+        loadError.length > 0 && !loading && trackModel.length === 0
+
+    // The failure came with Tidal out of reach; see AlbumPage.loadOffline.
+    property bool loadOffline: false
+
+    // Try again, and the way back once Tidal answers again.
+    function retryLoad() {
+        if (root.playlistUuid.length === 0) return
+        if (bridge.offline) bridge.retryConnection()
+        loadPlaylist()
+    }
+
+    Connections {
+        target: bridge
+        function onOfflineChanged() {
+            if (!bridge.offline && root.loadFailed && root.loadOffline) root.retryLoad()
+        }
+    }
 
     // The first reason is kept; see ArtistPage.noteLoadError().
     function noteLoadError(err) {
-        if (root.loadError.length === 0) root.loadError = err
+        if (root.loadError.length > 0) return
+        root.loadError = err
+        root.loadOffline = bridge.offline === true
+    }
+
+    // The words typed into the field over the list.
+    property string trackFilter: ""
+
+    // root.tracks as the bridge handed it, sorted by the headings and narrowed
+    // by the field; a row becomes a JS object only once drawn. A row's `place`
+    // is its index in root.tracks, which a removal names, twins apart.
+    TrackListHeader.Sort { id: trackSort }
+    readonly property alias trackRows: trackModel
+    TrackModel {
+        id: trackModel
+        source: root.tracks
+        sortKey: trackSort.key
+        descending: trackSort.descending
+        pattern: root.trackFilter
+        // Case and accents do not count, and every word must be found.
+        everyWord: true
     }
 
     // Records this playlist as the "playing from" source, then starts playback.
@@ -48,18 +88,19 @@ Rectangle {
         player.playTracks(list, i)
     }
 
-    // "1 hr 4 min" / "52 min". Each case is a whole translatable string, so a
-    // translation can reorder or re-unit it instead of inheriting English order.
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
+    onPlaylistUuidChanged: {
+        root.trackFilter = ""
+        if (playlistUuid.length > 0) loadPlaylist()
     }
 
-    onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
+    // An undo, or a change Tidal did not confirm, moved rows this page did
+    // not move itself: the rows are read again.
+    Connections {
+        target: Edits
+        function onPlaylistChanged(uuid) {
+            if (uuid === root.playlistUuid && root.playlistUuid.length > 0) root.reloadTracks()
+        }
+    }
 
     // ── the one number on this page with no live source ──────────────────
     // The length arrives once with the header, so it is refreshed from the
@@ -82,7 +123,7 @@ Rectangle {
                 // A song added to this playlist from a row on this page updates
                 // no tracklist, so reload when the count and the list disagree.
                 // The reload raises no signal, so this cannot loop.
-                if (cached[i].numTracks !== root.tracks.length)
+                if (cached[i].numTracks !== trackModel.length)
                     root.reloadTracks()
                 return
             }
@@ -93,7 +134,7 @@ Rectangle {
     // not the page of it that happens to be drawn. The menu can be opened
     // before fetchPlaylistTracks() has answered, so an empty page asks again.
     function allTracks(cb) {
-        if (root.tracks.length > 0) { cb(root.tracks); return }
+        if (trackModel.length > 0) { cb(trackModel.list()); return }
         if (root.playlistUuid.length === 0) return
         bridge.fetchPlaylistTracks(root.playlistUuid, function (t, err) {
             if (!err && t.length > 0) cb(t)
@@ -105,7 +146,7 @@ Rectangle {
     function reloadTracks() {
         if (root.playlistUuid.length === 0) return
         var requested = root.playlistUuid
-        bridge.fetchPlaylistTracks(requested, function (t, err) {
+        bridge.fetchPlaylistTrackRows(requested, function (t, err) {
             // A reply for a playlist the user has already left says nothing
             // about the one on screen.
             if (requested !== root.playlistUuid) return
@@ -116,12 +157,111 @@ Rectangle {
         })
     }
 
+    // ── reordering by drag ───────────────────────────────────────────────
+    // Only in the list's own order with every row shown, so a drop between
+    // two rows means the same place on Tidal; and one move at a time. The row
+    // stays put and TrackDrag's preview travels, so the line sits in a gap.
+    property bool moving: false
+    readonly property bool canReorder: root.playlistEditable && trackSort.key === ""
+        && root.trackFilter.trim().length === 0 && !root.moving && !root.loading
+        && trackModel.length > 1
+    readonly property int rowHeight: 52
+    property int  dragFrom: -1
+    property real dragRowY: 0
+    // The pointer over the list, in the list's own coordinates.
+    property bool pointerInside: false
+    property real pointerY: 0
+    property int  _currentBefore: -1
+    readonly property bool dragging: root.dragFrom >= 0
+    // The gap the drop aims at, 0 above the first row to n below the last,
+    // nearest the pointer; and the row's place after the drop.
+    readonly property int dropGap: !root.dragging || !root.pointerInside ? -1
+        : Math.max(0, Math.min(trackModel.length,
+              Math.round((root.pointerY + tracksList.contentY
+                          - (root.dragRowY - root.dragFrom * root.rowHeight)) / root.rowHeight)))
+    readonly property int dropTo: root.dropGap > root.dragFrom ? root.dropGap - 1 : root.dropGap
+
+    function beginMove(row, index) {
+        root._currentBefore = tracksList.currentIndex
+        // Keeps the dragged row alive while the list scrolls under it.
+        tracksList.currentIndex = index
+        root.dragFrom = index
+        root.dragRowY = row.y
+        root.pointerInside = false
+    }
+    function cancelMove() {
+        edgeScroll.stop()
+        if (!root.dragging) return
+        root.dragFrom = -1
+        root.pointerInside = false
+        tracksList.currentIndex = root._currentBefore
+    }
+    function endMove() {
+        if (!root.dragging) return
+        var from = root.dragFrom, to = root.dropTo
+        root.cancelMove()
+        if (to < 0 || to === from || from >= trackModel.length) return
+        var requested = root.playlistUuid
+        var trackId = Number(trackModel.sourceAt(from).id)
+        root.moving = true
+        // The row moves on Tidal's word, as a removal leaves on it.
+        Edits.movePlaylistItem(requested, root.playlistTitle, trackId, from, to,
+                               function (ok, stale) {
+            if (requested !== root.playlistUuid) return
+            root.moving = false
+            if (stale === true) { Qt.callLater(root.reloadAfterStaleMove); return }
+            if (ok !== true || Number((trackModel.sourceAt(from) || {}).id) !== trackId) return
+            root.tracks = trackModel.withMoved(from, to)
+        })
+    }
+    onTracksChanged: if (root.dragging) root.cancelMove()
+    onCanReorderChanged: if (!root.canReorder && root.dragging) root.cancelMove()
+
+    // Scrolls while the pointer is held near the top or the bottom of the list.
+    Timer {
+        id: edgeScroll
+        interval: 16
+        repeat: true
+        running: root.dragging && root.pointerInside
+        readonly property real band: 48
+        onTriggered: {
+            var y = root.pointerY
+            var top = detailBar.height + 40, bottom = tracksList.height
+            var step = y < top + band ? -Math.min(16, top + band - y)
+                     : y > bottom - band ? Math.min(16, y - (bottom - band)) : 0
+            if (step === 0) return
+            var lo = tracksList.originY
+            var hi = tracksList.originY + Math.max(0, tracksList.contentHeight - tracksList.height)
+            tracksList.contentY = Math.max(lo, Math.min(hi, tracksList.contentY + step))
+        }
+    }
+
+    readonly property string staleMoveText:
+        qsTr("This playlist was changed somewhere else, so nothing was moved. It has been reloaded.")
+    function reloadAfterStaleMove() {
+        Toasts.show(root.staleMoveText)
+        loadPlaylistHeader(root.playlistUuid)
+        reloadTracks()
+    }
+
+    // A removal was refused because the playlist changed somewhere else since
+    // this page read it. Nothing was removed; the page reads it again.
+    readonly property string staleRemovalText:
+        qsTr("This playlist was changed somewhere else, so nothing was removed. It has been reloaded.")
+    function reloadAfterStaleRemoval() {
+        Toasts.show(root.staleRemovalText)
+        loadPlaylistHeader(root.playlistUuid)
+        reloadTracks()
+    }
+
     function loadPlaylist() {
         loading = true
         loadError = ""
+        loadOffline = false
+        playlistEditable = false
         // Which playlist these replies are about; see MixPage.loadMix().
         var requested = playlistUuid
-        bridge.fetchPlaylistTracks(requested, function (t, err) {
+        bridge.fetchPlaylistTrackRows(requested, function (t, err) {
             if (requested !== root.playlistUuid) return
             root.loading = false
             if (err) { root.noteLoadError(err); return }
@@ -131,8 +271,8 @@ Rectangle {
     }
 
     // The hero's own request: the page can be opened with nothing but a uuid,
-    // and the tracks endpoint answers tracks only. `type` decides whether the
-    // user may edit. Nothing the reply leaves out overwrites the caller's.
+    // and the tracks endpoint answers tracks only. `editable` decides whether
+    // the user may edit. Nothing else the reply leaves out overwrites the caller's.
     function loadPlaylistHeader(requested) {
         bridge.fetchPlaylist(requested, function (p, err) {
             // Superseded first, and on its own: a reply about a playlist
@@ -147,236 +287,222 @@ Rectangle {
             if (p.description) root.playlistDescription = p.description
             if (p.duration)    root.playlistDuration    = p.duration
             if (p.type)        root.playlistType        = p.type
+            root.playlistEditable = p.editable === true
         })
     }
 
     ListView {
         id: tracksList
+        objectName: "playlistTracksList"
         anchors.fill: parent
         clip: true
-        model: root.tracks
+        model: trackModel
+        // As on Collection's tracks: rows leaving the view become the ones
+        // coming in, rather than each made anew.
+        reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
+        // The rows' 16 px inset: a vertical ListView puts its delegates at
+        // x 0 whatever x they ask for, so the view's margins inset them. The
+        // header and footer step back out to the view's edges.
+        leftMargin: Theme.space4
+        // Plus the scroll bar's lane, so the rows end as far from its inner
+        // edge as they start from the left edge.
+        rightMargin: Theme.space4 + Math.round(vbar.width - vbar.leftPadding)
+        readonly property real rowWidth: width - leftMargin - rightMargin
 
-        header: Rectangle {
+        // The hero, then the column headings, which stay under the bar once
+        // the hero has scrolled away. Over the rows, which pass beneath them.
+        header: Item {
+            // Out to the view's edges by a transform: Qt 6.6's ListView
+            // resets a header's or footer's x to 0.
+            transform: Translate { x: -tracksList.leftMargin }
             width: tracksList.width
-            // Grows with its content, so a wrapped title, description or pill
-            // row is not cut off.
-            implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
-            color: "transparent"
+            z: 2
+            // A height from the start: a Column reports one only after its
+            // first layout, and the view, scrolled to that, stays past the hero.
+            height: hero.height + headings.height
+            // For the bar, opaque by the time the headings reach it.
+            readonly property real heroHeight: hero.height
 
-            Rectangle {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Theme.accentTint }
-                    GradientStop { position: 1; color: Theme.bg }
-                }
-            }
-
-            RowLayout {
-                id: heroRow
-                anchors {
-                    left: parent.left; right: parent.right
-                    verticalCenter: parent.verticalCenter
-                    leftMargin: 64; rightMargin: 24
-                }
-                spacing: 24
-
-                Rectangle {
-                    objectName: "heroArt"
-                    width: 180
-                    height: 180
-                    radius: Theme.radiusArt
-                    color: Theme.accentWash
-                    clip: true
-                    Image {
-                        id: playlistCover
-                        objectName: "heroCover"
-                        anchors.fill: parent
-                        visible: root.coverUrl.length > 0
-                        source: root.coverUrl.length > 0 ? "image://tidal/" + root.coverUrl : ""
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                        opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
-                    }
-                    Grid {
-                        id: collageGrid
-                        anchors.fill: parent
-                        columns: 2
-                        rows: 2
-                        visible: root.coverUrl.length === 0 && root.tracks.length >= 4
-                        Repeater {
-                            model: root.tracks.slice(0, 4)
-                            Image {
-                                width: 90
-                                height: 90
-                                source: (modelData && modelData.coverUrl) ? "image://tidal/" + modelData.coverUrl : ""
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                mipmap: true
-                            }
-                        }
-                    }
-                    VectorIcon {
-                        visible: !playlistCover.visible && !collageGrid.visible
-                        anchors.centerIn: parent
-                        name: "playlist"
-                        color: Theme.accent
-                        width: 64
-                        height: 64
-                        strokeWidth: 1.5
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: 8
-
-                    Text {
-                        text: qsTr("Playlist")
-                        color: Theme.textSec
-                        font.pixelSize: 12
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-
-                    Text {
-                        objectName: "heroTitle"
-                        Layout.fillWidth: true
-                        text: root.playlistTitle
-                        color: Theme.textPrimary
-                        font.pixelSize: 28
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        visible: root.playlistDescription.length > 0
-                        Layout.fillWidth: true
-                        text: root.playlistDescription
-                        color: Theme.textSec
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        text: {
-                            // One complete sentence per case rather than glued
-                            // fragments, so a translation can reorder it.
-                            var n = root.tracks.length
-                            var d = root.playlistDuration
-                            return d > 0 ? qsTr("%n track(s) • %1", "", n).arg(root.durationText(d))
-                                         : qsTr("%n track(s)", "", n)
-                        }
-                        color: Theme.textSec
-                        font.pixelSize: 14
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
-
-                    // A Flow, so the pills wrap in a narrow pane.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: 12
-                        // The queue confirmation is drawn just above this row.
-                        // Assigned, not bound: an id inside the list's header
-                        // component is out of reach from the page root.
-                        Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
-
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    bridge.markPlaylistPlayed(root.playlistUuid)
-                                    root.playFrom(root.tracks, 0)
-                                }
-                            }
-                        }
-
-                        PillButton {
-                            text: qsTr("Shuffle")
-                            icon: "shuffle"
-                            accent: false
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    bridge.markPlaylistPlayed(root.playlistUuid)
-                                    player.setShuffle(true)
-                                    root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                                }
-                            }
-                        }
-
-                        PillButton {
-                            objectName: "playlistEditButton"
-                            visible: root.isUserPlaylist
-                            text: qsTr("Edit")
-                            icon: "edit"
-                            accent: false
-                            onClicked: {
-                                editTitleField.text         = root.playlistTitle
-                                editDescField.text          = root.playlistDescription
-                                editPlaylistPopup.errorText = ""
-                                editPlaylistPopup.busy      = false
-                                editPlaylistPopup.open()
-                            }
-                        }
-                    }
-                }
-            }
-
-            // A right-click on the hero pins what the page is showing.
-            MouseArea {
-                objectName: "heroPinArea"
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: function (mouse) {
-                    var p = mapToItem(root, mouse.x, mouse.y)
+            DetailHero {
+                id: hero
+                width: tracksList.width
+                kind: qsTr("Playlist")
+                title: root.playlistTitle
+                artSource: root.coverUrl
+                // Without a cover of its own, the tracks' covers; see DetailHero.
+                artCovers: trackModel.leadCovers
+                artIcon: "playlist"
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
                     root.showHeroPinMenu(p.x, p.y)
                 }
+
+                Text {
+                    visible: root.playlistDescription.length > 0
+                    Layout.fillWidth: true
+                    text: root.playlistDescription
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    text: {
+                        // One complete sentence per case rather than glued
+                        // fragments, so a translation can reorder it.
+                        var n = trackModel.length
+                        var d = root.playlistDuration
+                        // The count is the tracklist's, still on its way.
+                        if (root.loading && n === 0)
+                            return d > 0 ? Theme.lengthText(d) : ""
+                        return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(Theme.lengthText(d))
+                                     : qsTr("%Ln track(s)", "", n)
+                    }
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontBody
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                // Narrows the list to the tracks whose title, artists or album
+                // hold every word typed. Play and Shuffle still take them all.
+                SearchBar {
+                    objectName: "playlistFilter"
+                    visible: trackModel.length > 0
+                    Layout.preferredWidth: 280
+                    Layout.topMargin: Theme.space1
+                    placeholder: qsTr("Find in this playlist…")
+                    text: root.trackFilter
+                    onTextEdited: (txt) => { root.trackFilter = txt }
+                }
+
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: {
+                            if (trackModel.length > 0) {
+                                bridge.markPlaylistPlayed(root.playlistUuid)
+                                root.playFrom(trackModel.sortedRows(), 0)
+                            }
+                        }
+                    },
+                    PillButton {
+                        text: qsTr("Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (trackModel.length > 0) {
+                                bridge.markPlaylistPlayed(root.playlistUuid)
+                                player.setShuffle(true)
+                                root.playFrom(trackModel.sortedRows(), Math.floor(Math.random() * trackModel.length))
+                            }
+                        }
+                    },
+                    PillButton {
+                        objectName: "playlistEditButton"
+                        visible: root.playlistEditable
+                        text: qsTr("Edit")
+                        icon: "edit"
+                        accent: false
+                        onClicked: {
+                            editTitleField.text         = root.playlistTitle
+                            editDescField.text          = root.playlistDescription
+                            editPlaylistPopup.errorText = ""
+                            editPlaylistPopup.busy      = false
+                            editPlaylistPopup.open()
+                        }
+                },
+                DownloadAction {
+                    kind: "playlist"
+                    itemId: root.playlistUuid
+                    folderName: root.playlistTitle
+                    trackSource: root.allTracks
+                },
+                // The hero's menu, which right-click also opens: the queue
+                // actions, Pin and Copy link.
+                IconButton {
+                    objectName: "heroMoreButton"
+                    icon: "more"
+                    label: qsTranslate("DetailHero", "More", "button that opens the page's menu")
+                    size: 20
+                    pad: Theme.space5
+                    backed: true
+                    onClicked: {
+                        var p = mapToItem(root, 0, height)
+                        root.showHeroPinMenu(p.x, p.y)
+                    }
+                    }
+                ]
+            }
+
+            TrackListHeader {
+                id: headings
+                objectName: "playlistTracksHeader"
+                y: hero.height
+                pinIn: tracksList
+                pinBelow: detailBar.height
+                // Over the rows, inset as they are.
+                x: tracksList.leftMargin
+                width: tracksList.rowWidth
+                sort: trackSort
+                showAlbum: width - root.sidebarReclaim >= albumBreakpoint
+                showAdded: width - root.sidebarReclaim >= addedBreakpoint
             }
         }
 
         delegate: TrackRow {
             id: playlistTrackRow
-            width: tracksList.width - 32
-            x: 16
+            objectName: "playlistTrackRow"
+            width: tracksList.rowWidth
             // Against the width this row would have with the sidebar out, so
             // the column cannot reappear as the window narrows. See
             // root.sidebarReclaim.
             showAlbum:      width - root.sidebarReclaim >= albumBreakpoint
-            trackNum:       index + 1
+            showAdded:      width - root.sidebarReclaim >= addedBreakpoint
+            // Its number on the playlist, filtered or sorted.
+            trackNum:       place + 1
             title:          modelData.title
             artists:        modelData.artists
             albumTitle:     modelData.albumTitle
             durationStr:    modelData.durationStr
             coverUrl:       modelData.coverUrl80
-            isPlaying:      player.currentTrack.id === modelData.id && player.playing
             trackData:      modelData
-            playlistUuid:   root.isUserPlaylist ? root.playlistUuid : ""
-            trackItemIndex: index
+            playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
+            // Its place on Tidal's list, which a sort does not move.
+            trackItemIndex: place
+            reorderable: root.canReorder
+            onReorderStarted: (x, y) => root.beginMove(playlistTrackRow, index)
+            onReorderCanceled: root.cancelMove()
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
-                root.playFrom(root.tracks, index)
+                root.playFrom(trackModel.shownRows(), index)
             }
             // The row leaves the page only on the server's word. The count
-            // beside the title reads root.tracks.length, and the bridge repairs
+            // beside the title reads trackModel.length, and the bridge repairs
             // the cached counts drawn elsewhere.
             onRemoveFromPlaylistRequested: function(itemIndex) {
-                bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {
-                    // Called before the list is touched: a successful removal
-                    // takes this delegate's row out of the model.
-                    playlistTrackRow.confirmRemovedFromPlaylist(ok === true)
-                    if (ok) {
-                        var arr = root.tracks.slice()
-                        arr.splice(itemIndex, 1)
-                        root.tracks = arr
+                var requested = root.playlistUuid
+                var row = playlistTrackRow
+                var trackId = Number(modelData.id)
+                var named = root.playlistTitle
+                var had = trackModel.countOf(trackId)
+                // Edits confirms it with Tidal before it says so and offers Undo.
+                Edits.removeFromPlaylist(requested, named, trackId, itemIndex, had,
+                                         function(ok, stale, index) {
+                    if (requested !== root.playlistUuid) return
+                    if (stale === true) { Qt.callLater(root.reloadAfterStaleRemoval); return }
+                    // Before the list is touched, which rebuilds the rows. An
+                    // earlier splice may have destroyed this one already.
+                    if (row) row.confirmRemovedFromPlaylist(ok === true)
+                    if (ok === true && index >= 0 && index < trackModel.length) {
+                        // The row the server took out, not itemIndex when an
+                        // earlier removal landed in between.
+                        root.tracks = trackModel.withRemoved(index)
                     }
                 })
             }
@@ -385,66 +511,108 @@ Rectangle {
         // The footer, so the message sits directly beneath the header and
         // scrolls with it, as on MixPage.
         footer: Item {
+            transform: Translate { x: -tracksList.leftMargin }
             width: tracksList.width
-            height: root.loadFailed ? 200 : 32
+            height: root.loadFailed ? loadErrorState.implicitHeight + 2 * Theme.space12
+                  : noMatches.visible ? noMatches.implicitHeight + 2 * Theme.space12 : 32
 
+            // The filter left no rows: said in the list, as the collection
+            // says it, with the way back.
             ColumnLayout {
+                id: noMatches
+                objectName: "playlistNoMatches"
+                visible: !root.loadFailed && trackModel.length > 0
+                         && root.trackFilter.trim().length > 0 && trackModel.count === 0
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 96, 420)
+                spacing: Theme.space2
+                Text {
+                    objectName: "playlistNoMatchesText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("No tracks match \"%1\"").arg(root.trackFilter.trim())
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
+                }
+                Text {
+                    objectName: "playlistNoMatchesHint"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Clear the field above to see every track again.")
+                    color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                }
+            }
+
+            ErrorState {
+                id: loadErrorState
                 objectName: "playlistLoadError"
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: 10
-
-                VectorIcon {
-                    Layout.alignment: Qt.AlignHCenter
-                    // A Layout owns the size of its direct children, so a plain
-                    // width would be overwritten.
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    name: "playlist"
-                    color: Theme.textDim
-                    strokeWidth: 1.5
-                }
-
-                Text {
-                    objectName: "playlistLoadErrorText"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("This playlist could not be loaded")
-                    color: Theme.textPrimary
-                    font.pixelSize: 18
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                }
-
-                // Not the server's own string; see AlbumPage's panel for why.
+                namePrefix: "playlistLoadError"
+                icon: "playlist"
+                offline: root.loadOffline
+                title: qsTr("This playlist could not be loaded")
                 // One long literal, since lupdate cannot read a concatenation.
-                Text {
-                    objectName: "playlistLoadErrorDetail"
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.")
-                    color: Theme.textSec
-                    font.pixelSize: 13
-                    wrapMode: Text.WordWrap
-                }
+                detail: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
+                onRetry: root.retryLoad()
             }
         }
 
         ScrollBar.vertical: ScrollBar {
+            id: vbar
+            objectName: "playlistScrollBar"
             active: true
             policy: ScrollBar.AsNeeded
+            // A long list keeps a handle the pointer can find and grab.
+            minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
+        }
+        WheelStep { view: tracksList }
+
+        // Where the dragged row would land: a line in the gap.
+        Rectangle {
+            objectName: "playlistDropIndicator"
+            visible: root.dragging && root.dropGap >= 0 && root.dropTo !== root.dragFrom
+            x: tracksList.leftMargin + Theme.space2
+            width: tracksList.rowWidth - 2 * Theme.space2
+            height: 2
+            color: Theme.accent
+            y: root.dragRowY + (root.dropGap - root.dragFrom) * root.rowHeight - tracksList.contentY - 1
+            z: 3
         }
     }
 
-    // Back button sits in a fixed bar that doesn't overlap the track list
-    Rectangle {
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+    // The list's half of a reorder: where a row of its own is carried to.
+    DropArea {
+        objectName: "playlistReorderDrop"
+        anchors.fill: tracksList
+        keys: TrackDrag.keys
+        enabled: root.dragging
+        function follow(drag) {
+            root.pointerY = drag.y
+            root.pointerInside = true
+        }
+        onEntered: (drag) => follow(drag)
+        onPositionChanged: (drag) => follow(drag)
+        onExited: root.pointerInside = false
+        onDropped: (drop) => {
+            root.pointerY = drop.y
+            root.pointerInside = true
+            drop.accept(Qt.MoveAction)
+            root.endMove()
+        }
     }
 
-    LoadingOverlay { loading: root.loading }
+    DetailBar {
+        id: detailBar
+        objectName: "playlistStickyHeader"
+        flickable: tracksList
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.heroHeight : 280
+        title: root.playlistTitle
+    }
+
+    Skeleton { loading: root.loading; kind: "detail" }
 
     // The pin carries the labels and the artwork the page is showing, so the
     // sidebar row reads the same as the page it came from.
@@ -509,13 +677,15 @@ Rectangle {
         anchors.centerIn: Overlay.overlay
         width: 400
         modal: true
+        // Dims the app behind, as the queue panel does. Fusion's own is faint.
+        Overlay.modal: Rectangle { color: Theme.scrim }
         focus: true
         // No way out of the dialog while a request is out, so the user can
         // always tell whether the rename took.
         closePolicy: editPlaylistPopup.busy
                      ? Popup.NoAutoClose
                      : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-        padding: 20
+        padding: Theme.space5
         background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
         // Mirrors NewPlaylistDialog: the field goes read-only and both buttons
@@ -528,13 +698,13 @@ Rectangle {
 
         Column {
             width: parent.width
-            spacing: 14
+            spacing: Theme.space4
 
-            Text { text: qsTr("Edit Playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+            Text { text: qsTr("Edit playlist"); color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
                 width: parent.width; height: 36; radius: Theme.radiusField
                 // The field's own activeFocus: a FocusScope that is a child of
@@ -544,10 +714,11 @@ Rectangle {
                 TextInput {
                     id: editTitleField
                     objectName: "editPlaylistTitleField"
-                    anchors.fill: parent; anchors.margins: 8
-                    color: Theme.textPrimary; font.pixelSize: 14
+                    anchors.fill: parent; anchors.margins: Theme.space2
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     selectByMouse: true
-                    selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                    selectionColor: Theme.textSelection
+                    selectedTextColor: Theme.textSelectionInk
                     // The same cap the create dialog applies, so a title the
                     // server would refuse cannot be typed in either place.
                     maximumLength: 100
@@ -560,7 +731,7 @@ Rectangle {
                 }
             }
 
-            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
                 width: parent.width; height: 72; radius: Theme.radiusField
                 // See the title field for why this is not a FocusScope.
@@ -569,11 +740,12 @@ Rectangle {
                 TextEdit {
                     id: editDescField
                     objectName: "editPlaylistDescField"
-                    anchors.fill: parent; anchors.margins: 8
-                    color: Theme.textPrimary; font.pixelSize: 14
+                    anchors.fill: parent; anchors.margins: Theme.space2
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     wrapMode: TextEdit.WordWrap
                     selectByMouse: true
-                    selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                    selectionColor: Theme.textSelection
+                    selectedTextColor: Theme.textSelectionInk
                     readOnly: editPlaylistPopup.busy
                     onTextChanged: if (editPlaylistPopup.errorText.length > 0)
                                        editPlaylistPopup.errorText = ""
@@ -590,13 +762,29 @@ Rectangle {
                 // a binding loop.
                 visible: editPlaylistPopup.errorText.length > 0
                 text: editPlaylistPopup.errorText
-                color: Theme.red
-                font.pixelSize: 12
+                color: Theme.redText
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
 
-            Row {
-                spacing: 10; anchors.right: parent.right
+            RowLayout {
+                width: parent.width
+                spacing: Theme.space3
+                // Away from Save, so it is not hit on the way there.
+                PillButton {
+                    objectName: "editPlaylistDelete"
+                    text: qsTr("Delete", "verb, the button that deletes the playlist")
+                    danger: true
+                    enabled: !editPlaylistPopup.busy
+                    opacity: enabled ? 1 : 0.45
+                    Layout.preferredWidth:  implicitWidth
+                    Layout.preferredHeight: implicitHeight
+                    onClicked: {
+                        editPlaylistPopup.close()
+                        deletePlaylistDialog.askFor(root.playlistUuid, root.playlistTitle)
+                    }
+                }
+                Item { Layout.fillWidth: true }
                 PillButton {
                     objectName: "editPlaylistCancel"
                     text: qsTr("Cancel"); accent: false
@@ -604,6 +792,8 @@ Rectangle {
                     // NewPlaylistDialog's pair.
                     enabled: !editPlaylistPopup.busy
                     opacity: enabled ? 1 : 0.45
+                    Layout.preferredWidth:  implicitWidth
+                    Layout.preferredHeight: implicitHeight
                     onClicked: editPlaylistPopup.close()
                 }
                 PillButton {
@@ -615,9 +805,15 @@ Rectangle {
                     enabled: !editPlaylistPopup.busy
                              && editTitleField.text.trim().length > 0
                     opacity: enabled ? 1 : 0.45
+                    Layout.preferredWidth:  implicitWidth
+                    Layout.preferredHeight: implicitHeight
                     onClicked: root.saveEdits()
                 }
             }
         }
     }
+
+    // Main leaves the page once the bridge says the playlist is gone.
+    readonly property alias deleteDialog: deletePlaylistDialog
+    DeletePlaylistDialog { id: deletePlaylistDialog }
 }

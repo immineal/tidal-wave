@@ -25,6 +25,8 @@ TestCase {
     Component { id: trackRowC;  TrackRow  { } }
     Component { id: mediaCardC; MediaCard { } }
     Component { id: albumC;     AlbumPage { anchors.fill: parent } }
+    // Where the confirmations are drawn, as in Main.qml.
+    ToastHost { id: toastHost; anchors.fill: parent; z: 10 }
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
@@ -58,7 +60,7 @@ TestCase {
     // A MenuItem reports visible: false while its menu is shut, so whether it
     // is offered has to be asked of an open menu.
     function openCardMenu(card) {
-        card.pinMenu.showPin(10, 10, card.pinKind, card.itemId,
+        card.ensureMenu().showPin(10, 10, card.pinKind, card.itemId,
                              card.title, card.subtitle, card.coverUrl)
         tryVerify(function () { return card.pinMenu.visible }, 2000, "the card menu did not open")
         return card.pinMenu
@@ -137,9 +139,10 @@ TestCase {
         player.setCurrentTrackForTest({})
         player.resetQueueCallsForTest()
         pins.setItemsForTest([])
-        // The confirmation is one shared tool tip, so a leftover from the last
+        // The confirmation is the one toast, so a leftover from the last
         // test would pass for the next one's confirmation.
-        testCase.ToolTip.toolTip.close()
+        Toasts.dismiss()
+        Toasts.plainMs = 600
     }
 
     // ── both actions are offered, everywhere ─────────────────────────────
@@ -182,6 +185,22 @@ TestCase {
         var menu = openHeroMenu(makeAlbumPage(4))
         verify(menu.playNextItem.visible,   "an album header offers no Play next")
         verify(menu.addToQueueItem.visible, "an album header offers no Add to queue")
+        menu.close()
+    }
+
+    // An album is added to a playlist whole, from its header, as in Spotify.
+    SignalSpy { id: pickSpy; target: Edits; signalName: "playlistPickRequested" }
+
+    function test_a_page_header_adds_the_whole_album_to_a_playlist() {
+        var menu = openHeroMenu(makeAlbumPage(4))
+        verify(menu.addToPlaylistItem.visible, "an album header offers no Add to playlist")
+        verify(indexOfItem(menu, menu.addToQueueItem) < indexOfItem(menu, menu.addToPlaylistItem),
+               "Add to playlist is not after the queue entries")
+        pickSpy.clear()
+        menu.addToPlaylistItem.triggered()
+        compare(pickSpy.count, 1, "no picker was asked for")
+        compare(titlesOf(pickSpy.signalArguments[0][0]), "Track 1,Track 2,Track 3,Track 4",
+                "the picker was not handed the album")
         menu.close()
     }
 
@@ -278,7 +297,7 @@ TestCase {
             mediaType: data.kind, itemId: "42", title: "Glass Orchard"
         })
         settle(holder)
-        compare(card.pinMenu.trackSource !== null, data.queueable,
+        compare(card.ensureMenu().trackSource !== null, data.queueable,
                 data.kind + " tile: wrong idea of whether it has tracks")
     }
 
@@ -286,7 +305,7 @@ TestCase {
     // still has to go in, in order, whenever it lands.
     function test_a_late_tracklist_is_queued_whole_and_in_order() {
         var card = makeCard()
-        card.pinMenu.trackSource = function (cb) {
+        card.ensureMenu().trackSource = function (cb) {
             lateAnswer.deliver = function () { cb(testCase.makeTracks(3)) }
             lateAnswer.restart()
         }
@@ -350,15 +369,15 @@ TestCase {
     // never blocks, and times out on its own.
     function test_queueing_confirms_and_the_confirmation_goes_away() {
         var page = makeAlbumPage(4)
-        var tip = testCase.ToolTip.toolTip
-        verify(tip, "there is no shared tool tip to confirm with")
+        var tip = toastHost.card
 
         page.pinMenu.addToQueueItem.triggered()
 
         tryVerify(function () { return tip.visible }, 2000, "queueing gave no confirmation")
-        compare(tip.text, qsTr("%n track(s) added to queue", "queue confirmation", 4))
-        verify(!tip.activeFocus, "the confirmation took focus")
-        verify(!tip.modal, "the confirmation blocked the window")
+        compare(Toasts.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 4))
+        verify(!toastHost.actionButton.visible, "queueing offered an action")
+        verify(!tip.activeFocus && !toastHost.actionButton.activeFocus,
+               "the confirmation took focus")
 
         tryVerify(function () { return !tip.visible }, 5000,
                   "the confirmation never went away on its own")
@@ -368,22 +387,22 @@ TestCase {
     // depend on which menu the action was taken from.
     function test_a_row_confirms_too() {
         var row = makeRow(makeTracks(1)[0])
-        var tip = testCase.ToolTip.toolTip
+        var tip = toastHost.card
         row.openMenu()
         row.rowMenu.addToQueueItem.triggered()
         row.rowMenu.close()
 
         tryVerify(function () { return tip.visible }, 2000, "a row queued without a word")
-        compare(tip.text, qsTr("%n track(s) added to queue", "queue confirmation", 1))
+        compare(Toasts.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
     function test_the_confirmation_names_the_action() {
         var page = makeAlbumPage(2)
-        var tip = testCase.ToolTip.toolTip
+        var tip = toastHost.card
 
         page.pinMenu.playNextItem.triggered()
         tryVerify(function () { return tip.visible }, 2000, "Play next gave no confirmation")
-        compare(tip.text, qsTr("%n track(s) added to play next", "queue confirmation", 2))
+        compare(Toasts.text, qsTr("%Ln track(s) added to play next", "queue confirmation", 2))
         tryVerify(function () { return !tip.visible }, 5000, "the confirmation never went away")
     }
 }

@@ -2,15 +2,17 @@
 // the server. These cases drive a real TidalBridge. The seam is the virtuals
 // on TidalClient that FakeClient below answers from lists this file owns, so
 // nothing here touches the network or needs a Tidal session.
-// Not covered: the album, artist and track favourites, whose client calls are
-// not virtual and so cannot be answered.
 
 #include <QTest>
 #include <QSignalSpy>
 #include <QJSEngine>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+
+#include <utility>
 
 #include "api/TidalBridge.h"
 #include "api/TidalClient.h"
@@ -101,10 +103,135 @@ public:
     }
 
     void removeTrackFromPlaylist(const QString &uuid, int itemIndex,
-                                 std::function<void(bool)> cb) override {
+                                 std::function<void(PlaylistWrite)> cb) override {
         Q_UNUSED(uuid); Q_UNUSED(itemIndex);
         ++removeCalls;
-        cb(removeOk);
+        cb(removeOk ? PlaylistWrite::Done : PlaylistWrite::Failed);
+    }
+
+    // ── the liked-song seam ──────────────────────────────────────────────
+    QList<Track> likes;            // newest first, as the server holds them
+    int     trackPageReads = 0;
+    int     headReads      = 0;
+    int     holdAfterPages = -1;   // parks the reply to the page after this many
+    QString pageError;             // answers the page after holdAfterPages instead
+    std::function<void()> parkedPage;
+    bool    addTrackOk = true;
+
+    // A page larger than this answers an error, as Tidal does above 10000.
+    int        refuseAbove = -1;
+    QList<int> trackLimits;
+    int        indexPageReads = 0;
+    // Liked, but in no listing: what favorites/ids holds beyond the pages.
+    QSet<qint64> unlistedLikes;
+    // Listed likes the ids answer leaves out, as one read before them does.
+    QSet<qint64> idsLeaveOut;
+    int        idReads = 0;
+
+    // Parks each ids reply, as the server had it when asked.
+    bool holdIds = false;
+    QList<std::function<void()>> parkedIds;
+
+    void fetchFavoriteIds(FavoriteIdsCallback cb) override {
+        ++idReads;
+        FavoriteIds ids;
+        for (const Track &t : likes) ids.tracks.insert(t.id);
+        ids.tracks.unite(unlistedLikes);
+        ids.tracks.subtract(idsLeaveOut);
+        if (holdIds) { parkedIds << [cb, ids] { cb(ids, QString()); }; return; }
+        cb(ids, QString());
+    }
+    void fetchFavoriteTracksByIndex(TracksCallback cb, int limit, int offset, bool) override {
+        ++indexPageReads;
+        fetchFavoriteTracksNewestFirst(cb, limit, offset);
+    }
+    void fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset) override {
+        trackLimits << limit;
+        if (refuseAbove >= 0 && limit > refuseAbove) { cb({}, QStringLiteral("400")); return; }
+        const int page = trackPageReads++;
+        const auto answer = [this, cb, limit, offset]() { cb(likes.mid(offset, limit), QString()); };
+        if (page == holdAfterPages) {
+            if (!pageError.isEmpty()) { cb({}, pageError); return; }
+            parkedPage = answer;
+            return;
+        }
+        answer();
+    }
+    // ── saved albums and followed artists, newest first ──────────────────
+    QList<Album>  albums;
+    QList<Artist> artists;
+    // A page larger than this fails, as one that timed out would.
+    int  savedRefuseAbove = -1;
+    // Paging skips the first row of each page after the first, as order=DATE
+    // does where saves share a date.
+    bool savedPagingLoses = false;
+    // holdLists parks every sign-in list reply, in the order asked, for
+    // deliverList().
+    bool holdLists = false;
+    QList<std::function<void()>> parkedLists;
+
+    void answerList(std::function<void()> answer) {
+        if (holdLists) { parkedLists << answer; return; }
+        answer();
+    }
+    void deliverList() { if (!parkedLists.isEmpty()) parkedLists.takeFirst()(); }
+
+    template <typename T>
+    void answerSaved(const QList<T> &all, std::function<void(QList<T>, QString)> cb,
+                     int limit, int offset) {
+        if (savedRefuseAbove >= 0 && limit > savedRefuseAbove) {
+            answerList([cb] { cb({}, QStringLiteral("timed out")); });
+            return;
+        }
+        const QList<T> page = all.mid(offset + (savedPagingLoses && offset > 0 ? 1 : 0), limit);
+        answerList([cb, page] { cb(page, QString()); });
+    }
+    void fetchFavoriteAlbums(AlbumsCallback cb, int limit, int offset) override {
+        answerSaved(albums, cb, limit, offset);
+    }
+    void fetchFavoriteArtists(ArtistsCallback cb, int limit, int offset) override {
+        answerSaved(artists, cb, limit, offset);
+    }
+
+    // What users/<id>/playlistsAndFavoritePlaylists lists, paged by offset.
+    QList<Playlist> library;
+    void fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset) override {
+        answerList([this, cb, limit, offset] { cb(library.mid(offset, limit), QString()); });
+    }
+
+    void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb) override {
+        ++headReads;
+        if (kind == FavoriteKind::Albums || kind == FavoriteKind::Artists) {
+            FavoritesHead h;
+            h.total = int(kind == FavoriteKind::Albums ? albums.size() : artists.size());
+            const qint64 newest = kind == FavoriteKind::Albums
+                ? (albums.isEmpty() ? 0 : albums.first().id)
+                : (artists.isEmpty() ? 0 : artists.first().id);
+            if (newest > 0) h.newest = QString::number(newest);
+            cb(h, QString());
+            return;
+        }
+        if (kind != FavoriteKind::Tracks) { cb({0, QString()}, QString()); return; }
+        FavoritesHead h;
+        h.total = int(likes.size());
+        if (!likes.isEmpty()) h.newest = QString::number(likes.first().id);
+        cb(h, QString());
+    }
+
+    void addTrackFavorite(qint64 id, std::function<void(bool)> cb) override {
+        Q_UNUSED(id);
+        cb(addTrackOk);
+    }
+    bool removeTrackOk = true;
+    void removeTrackFavorite(qint64 id, std::function<void(bool)> cb) override {
+        Q_UNUSED(id);
+        cb(removeTrackOk);
+    }
+
+    void deliverPage() {
+        holdAfterPages = -1;
+        const auto page = std::exchange(parkedPage, nullptr);
+        if (page) page();
     }
 
     // ── the favourite-mix seam ───────────────────────────────────────────
@@ -193,6 +320,270 @@ private slots:
         QVERIFY(m_dir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
         QStandardPaths::setTestModeEnabled(true);
+    }
+
+    // ── liked songs ─────────────────────────────────────────────────────────
+    // One page holds every like, newest first; the collection waits for it.
+    void theLikesArriveInOnePage() {
+        Harness h;
+        h.client.likes = mkLikes(150);
+        h.client.holdAfterPages = 1;
+        h.client.setUserId(kUid);
+
+        QCOMPARE(h.client.trackLimits.value(0), 10000);
+        QVERIFY(h.bridge.favoritesLoading());
+        h.client.deliverPage();
+        QVERIFY(!h.bridge.favoritesLoading());
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 150);
+        QCOMPARE(firstLiked(h), 1000LL);
+    }
+
+    // Tidal refusing the one page: the likes are paged at 100, by INDEX.
+    void aRefusedPageIsPagedByIndex() {
+        Harness h;
+        h.client.likes = mkLikes(250);
+        h.client.refuseAbove = 100;
+        h.client.setUserId(kUid);
+
+        QVERIFY(h.client.indexPageReads >= 3);
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 250);
+        QCOMPARE(firstLiked(h), 1000LL);
+    }
+
+    // A song the listings leave out, unavailable here, is still liked.
+    void aLikeOnlyTheIdsListHoldsHasItsHeart() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.unlistedLikes = {4242};
+        h.client.setUserId(kUid);
+
+        QVERIFY(h.bridge.isTrackFavorite(4242));
+        QVERIFY(h.bridge.isTrackFavorite(1000));
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 3);
+    }
+
+    // Unliked on the phone: the next reload takes that heart away too.
+    void anIdsOnlyLikeRemovedElsewhereLosesItsHeart() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.unlistedLikes = {4242};
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        h.client.unlistedLikes.clear();
+        h.client.likes.removeAt(1);       // moves the head, so the list reloads
+        h.bridge.syncFavorites();
+        QVERIFY(!h.bridge.isTrackFavorite(4242));
+        QVERIFY(!h.bridge.isTrackFavorite(999));
+    }
+
+    // Unliked here: an ids answer from before that cannot bring it back.
+    void anUnlikeHereIsNotUndoneByTheIdsList() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.unlistedLikes = {4242};
+        h.client.setUserId(kUid);
+        QVERIFY(h.bridge.isTrackFavorite(4242));
+
+        h.client.holdIds = true;
+        h.client.likes.prepend(mkLike(2000));    // moves the head: a reload
+        h.bridge.syncFavorites();
+        QCOMPARE(h.client.parkedIds.size(), 1);  // still says 4242 is liked
+
+        h.client.unlistedLikes.clear();
+        h.bridge.removeTrackFavorite(4242, QJSValue());
+        QVERIFY(!h.bridge.isTrackFavorite(4242));
+        while (!h.client.parkedIds.isEmpty()) h.client.parkedIds.takeFirst()();
+        QVERIFY(!h.bridge.isTrackFavorite(4242));
+        QVERIFY(h.bridge.isTrackFavorite(2000));
+    }
+
+    void theCollectionWaitsForTheFirstPage() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.holdAfterPages = 0;
+        h.client.setUserId(kUid);
+        QVERIFY(h.bridge.favoritesLoading());
+        QVERIFY(h.bridge.searchFavoriteTracks(QString()).isEmpty());
+        h.client.deliverPage();
+        QVERIFY(!h.bridge.favoritesLoading());
+    }
+
+    // The four lists land apart, and the liked songs need not be last. Each
+    // says it is loading until its own reply is in, the playlists until their
+    // last page, so an empty list is never read as an empty library.
+    void eachListIsLoadingUntilItsOwnReply() {
+        Harness h;
+        for (int i = 0; i < 60; ++i)
+            h.client.library << mkPlaylist(QStringLiteral("pl-%1").arg(i),
+                                                 QStringLiteral("Liste %1").arg(i),
+                                                 3, 600, QString(), kJan2026 + i);
+        h.client.holdLists = true;
+        h.client.likes = mkLikes(3);
+        h.client.setUserId(kUid);
+
+        QVERIFY(!h.bridge.favoritesLoading());
+        QVERIFY(h.bridge.albumsLoading());
+        QVERIFY(h.bridge.artistsLoading());
+        QVERIFY(h.bridge.playlistsLoading());
+
+        h.client.deliverList();               // albums
+        QVERIFY(!h.bridge.albumsLoading());
+        QVERIFY(h.bridge.artistsLoading());
+        h.client.deliverList();               // artists
+        QVERIFY(!h.bridge.artistsLoading());
+
+        QSignalSpy playlists(&h.bridge, &TidalBridge::favoritePlaylistsChanged);
+        h.client.deliverList();               // the first 50 playlists
+        QVERIFY(h.bridge.playlistsLoading());
+        h.client.deliverList();               // the last 10
+        QVERIFY(h.bridge.playlistsLoading());
+        h.client.deliverList();               // the empty page that ends it
+        QVERIFY(!h.bridge.playlistsLoading());
+        QCOMPARE(h.bridge.getUserPlaylists().size(), 60);
+        QVERIFY(playlists.size() >= 2);       // the first page, and the end
+    }
+
+    void aSyncBeforeTheFirstLoadEndsAsksNothing() {
+        Harness h;
+        h.client.likes = mkLikes(150);
+        h.client.holdAfterPages = 1;
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+        QCOMPARE(h.client.headReads, 0);
+    }
+
+    void aLikeFromThePhoneArrivesOnTop() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        QSignalSpy elsewhere(&h.bridge, &TidalBridge::favoritesChangedElsewhere);
+        QSignalSpy redraws(&h.bridge, &TidalBridge::favoriteTracksChanged);
+        h.client.likes.prepend(mkLike(2000));
+        h.bridge.syncFavorites();
+
+        QCOMPARE(firstLiked(h), 2000LL);
+        QVERIFY(h.bridge.isTrackFavorite(2000));
+        QCOMPARE(elsewhere.size(), 1);
+        QCOMPARE(redraws.size(), 1);
+    }
+
+    // Every row Liked tracks lists has its heart, also where the ids answer
+    // is older than the listing, and after a reload.
+    void everyListedLikeHasItsHeart() {
+        Harness h;
+        h.client.likes = mkLikes(5);
+        h.client.idsLeaveOut = {h.client.likes.at(2).id, h.client.likes.at(4).id};
+        h.client.setUserId(kUid);
+        const auto everyRowLiked = [&h] {
+            const QVariantList rows = h.bridge.searchFavoriteTracks(QString());
+            for (const QVariant &v : rows)
+                if (!h.bridge.isTrackFavorite(v.toMap().value(QStringLiteral("id")).toLongLong()))
+                    return false;
+            return !rows.isEmpty();
+        };
+        QVERIFY(everyRowLiked());
+        h.client.likes.prepend(mkLike(2000));
+        h.client.idsLeaveOut.insert(2000);
+        h.bridge.syncFavorites();
+        QCOMPARE(firstLiked(h), 2000LL);
+        QVERIFY(everyRowLiked());
+    }
+
+    void aRemovalFromThePhoneLeaves() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        h.client.likes.removeAt(1);
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 2);
+        QVERIFY(!h.bridge.isTrackFavorite(999));
+    }
+
+    void nothingChangedCostsOneRequestPerList() {
+        Harness h;
+        h.client.likes = mkLikes(150);
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();          // the first check has no head to compare
+
+        QSignalSpy elsewhere(&h.bridge, &TidalBridge::favoritesChangedElsewhere);
+        const int pages = h.client.trackPageReads;
+        h.client.headReads = 0;
+        h.bridge.syncFavorites();
+        QCOMPARE(h.client.headReads, 4);
+        QCOMPARE(h.client.trackPageReads, pages);
+        QCOMPARE(elsewhere.size(), 0);
+    }
+
+    // The first check reloads, finds the list unchanged and tells nobody.
+    void anUnchangedReloadRaisesNothing() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.setUserId(kUid);
+        QSignalSpy elsewhere(&h.bridge, &TidalBridge::favoritesChangedElsewhere);
+        QSignalSpy redraws(&h.bridge, &TidalBridge::favoriteTracksChanged);
+        h.bridge.syncFavorites();
+        QCOMPARE(elsewhere.size(), 0);
+        QCOMPARE(redraws.size(), 0);
+    }
+
+    void aFailedReloadKeepsTheListAndTriesAgain() {
+        Harness h;
+        h.client.likes = mkLikes(150);
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        h.client.likes.prepend(mkLike(2000));
+        h.client.holdAfterPages = h.client.trackPageReads + 1;
+        h.client.pageError = QStringLiteral("offline");
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 150);
+        QCOMPARE(firstLiked(h), 1000LL);
+
+        h.client.holdAfterPages = -1;
+        h.client.pageError.clear();
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 151);
+        QCOMPARE(firstLiked(h), 2000LL);
+    }
+
+    // A reload's pages can predate a like made here, so they do not land.
+    void aLikeHereDuringAReloadIsNotOverwritten() {
+        Harness h;
+        h.client.likes = mkLikes(150);
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        h.client.likes.prepend(mkLike(2000));
+        h.client.holdAfterPages = h.client.trackPageReads + 1;
+        h.bridge.syncFavorites();
+        QVERIFY(h.client.parkedPage);
+
+        h.client.tracks[3000] = mkLike(3000);
+        h.bridge.addTrackFavorite(3000, QJSValue());
+        QCOMPARE(firstLiked(h), 3000LL);
+
+        h.client.deliverPage();
+        QCOMPARE(firstLiked(h), 3000LL);
+        QVERIFY(h.bridge.isTrackFavorite(3000));
+    }
+
+    void signingOutDropsAReloadInFlight() {
+        Harness h;
+        h.client.likes = mkLikes(150);
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        h.client.likes.prepend(mkLike(2000));
+        h.client.holdAfterPages = h.client.trackPageReads + 1;
+        h.bridge.syncFavorites();
+        h.client.setUserId(0);
+        h.client.deliverPage();
+        QVERIFY(h.bridge.searchFavoriteTracks(QString()).isEmpty());
     }
 
     // ── a playlist's cached count ───────────────────────────────────────────
@@ -421,7 +812,7 @@ private slots:
     }
 
     // The count is not written on the strength of the post alone: the post
-    // sends onDuplicateFound=SKIP, so an accepted add may have added nothing.
+    // sends onDupes=SKIP, so an accepted add may have added nothing.
     void theCacheIsNotWrittenUntilTheHeaderAnswers() {
         Harness h;
         h.fillOne(0, 0);
@@ -750,12 +1141,138 @@ private slots:
         QCOMPARE(h.client.trackReads, 0);
     }
 
+    // ── whose playlist it is ──────────────────────────────────────────────
+    // Rows as playlistsAndFavoritePlaylists answers them: the user's own, one
+    // saved from another user and an editorial one, whose creator is empty.
+    // Only the first can take a song, a new title or a removal.
+    void onlyTheUsersOwnPlaylistsAreEditable() {
+        Harness h;
+        h.client.library = TidalClient::parsePlaylists(QJsonDocument::fromJson(R"({"items": [
+            {"type": "USER_CREATED", "created": "2026-01-02T00:00:00.000+0000",
+             "playlist": {"uuid": "mine", "title": "Mine", "type": "USER",
+                          "creator": {"id": 7}}},
+            {"type": "USER_FAVORITE", "created": "2026-01-03T00:00:00.000+0000",
+             "playlist": {"uuid": "theirs", "title": "Theirs", "type": "USER",
+                          "creator": {"id": 4242}}},
+            {"type": "USER_FAVORITE", "created": "2026-01-04T00:00:00.000+0000",
+             "playlist": {"uuid": "editorial", "title": "Picked", "type": "EDITORIAL",
+                          "creator": {}}}
+        ]})").object());
+        QCOMPARE(h.client.library.size(), 3);
+        h.client.setUserId(kUid);
+
+        const QVariantList rows = h.bridge.getUserPlaylists();
+        QCOMPARE(rowFor(rows, QStringLiteral("mine")).value(QStringLiteral("editable")), QVariant(true));
+        QCOMPARE(rowFor(rows, QStringLiteral("theirs")).value(QStringLiteral("editable")), QVariant(false));
+        QCOMPARE(rowFor(rows, QStringLiteral("editorial")).value(QStringLiteral("editable")), QVariant(false));
+
+        // The header a playlist page reads says the same. Editorial ones come
+        // back from playlists/<uuid> with {"id": 0}.
+        h.client.headers.insert(QStringLiteral("editorial"), Playlist::fromJson(
+            QJsonDocument::fromJson(R"({"uuid": "editorial", "type": "EDITORIAL",
+                                       "creator": {"id": 0}})").object()));
+        h.client.headers.insert(QStringLiteral("mine"), h.client.library.value(0));
+        QJSValue seen = h.engine.newObject();
+        const QJSValue record = h.engine.evaluate(QStringLiteral(
+            "(function (s) { return function (p, err) { s[p.uuid] = p.editable; }; })")).call({seen});
+        h.bridge.fetchPlaylist(QStringLiteral("editorial"), record);
+        h.bridge.fetchPlaylist(QStringLiteral("mine"), record);
+        QCOMPARE(seen.property(QStringLiteral("editorial")).toBool(), false);
+        QVERIFY(seen.property(QStringLiteral("editorial")).isBool());
+        QCOMPARE(seen.property(QStringLiteral("mine")).toBool(), true);
+    }
+
+    // A playlist made here is the user's even if the reply names no creator.
+    void aPlaylistMadeHereIsEditable() {
+        Harness h;
+        h.client.setUserId(kUid);
+        h.fillOne(0, 0);
+        QCOMPARE(rowFor(h.bridge.getUserPlaylists(), kUuid).value(QStringLiteral("editable")),
+                 QVariant(true));
+    }
+
+    // ── saved albums and followed artists on a reload ───────────────────────
+    // The one page failing, the reload pages by date, which loses rows that
+    // share a save date. What it lacks may still be saved, so nothing goes.
+    void aLossyReloadDoesNotShortenTheSavedLists() {
+        Harness h;
+        for (int i = 0; i < 250; ++i) {
+            h.client.albums  << mkAlbum(5000 - i);
+            h.client.artists << mkArtist(8000 - i);
+        }
+        h.client.setUserId(kUid);
+        QCOMPARE(h.bridge.searchFavoriteAlbums(QString()).size(), 250);
+        QCOMPARE(h.bridge.searchFavoriteArtists(QString()).size(), 250);
+
+        h.client.savedRefuseAbove = 100;
+        h.client.savedPagingLoses = true;
+        h.client.albums.prepend(mkAlbum(6000));     // saved on the phone
+        h.client.artists.prepend(mkArtist(9000));
+        h.bridge.syncFavorites();
+
+        const QVariantList albums = h.bridge.searchFavoriteAlbums(QString());
+        const QVariantList artists = h.bridge.searchFavoriteArtists(QString());
+        QCOMPARE(albums.size(), 251);
+        QCOMPARE(artists.size(), 251);
+        QCOMPARE(albums.value(0).toMap().value(QStringLiteral("id")).toLongLong(), 6000LL);
+        QCOMPARE(artists.value(0).toMap().value(QStringLiteral("id")).toLongLong(), 9000LL);
+    }
+
+    // Once the one page works again, a removal made elsewhere shows.
+    void theNextWholeReloadTakesOverAgain() {
+        Harness h;
+        for (int i = 0; i < 250; ++i) h.client.albums << mkAlbum(5000 - i);
+        h.client.setUserId(kUid);
+        h.client.savedRefuseAbove = 100;
+        h.client.savedPagingLoses = true;
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteAlbums(QString()).size(), 250);
+
+        h.client.savedRefuseAbove = -1;
+        h.client.albums.removeAt(3);
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteAlbums(QString()).size(), 249);
+    }
+
 private:
+    static Album mkAlbum(qint64 id) {
+        Album a;
+        a.id    = id;
+        a.title = QStringLiteral("Record %1").arg(id);
+        return a;
+    }
+    static Artist mkArtist(qint64 id) {
+        Artist a;
+        a.id   = id;
+        a.name = QStringLiteral("Singer %1").arg(id);
+        return a;
+    }
+
     static constexpr qint64 kDay      = 24LL * 60 * 60 * 1000;
     static constexpr qint64 kJan2026  = 1767225600000LL;   // 2026-01-01T00:00:00Z
     // An author's creation date, as the header carries for a followed playlist.
     static constexpr qint64 kAuthored2019 = 1546300800000LL; // 2019-01-01T00:00:00Z
     static qint64 daysAfterJan(int days) { return kJan2026 + days * kDay; }
+
+    static constexpr qint64 kUid = 7;
+
+    static Track mkLike(qint64 id) {
+        Track t;
+        t.id    = id;
+        t.title = QStringLiteral("Song %1").arg(id);
+        return t;
+    }
+    // Newest first, counting down from id 1000.
+    static QList<Track> mkLikes(int n) {
+        QList<Track> out;
+        for (int i = 0; i < n; ++i) out << mkLike(1000 - i);
+        return out;
+    }
+    template <typename H>
+    static qint64 firstLiked(H &h) {
+        return h.bridge.searchFavoriteTracks(QString()).value(0).toMap()
+            .value(QStringLiteral("id")).toLongLong();
+    }
 
     // A bridge whose cache can be filled. That needs a JS engine: without a
     // Tidal session a row only enters m_favoritePlaylists through

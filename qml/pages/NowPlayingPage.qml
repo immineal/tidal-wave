@@ -24,8 +24,8 @@ Rectangle {
     // ─── Responsive layout ─────────────────────────────
     // The page margin and the gap between the cover and the text column, named
     // because all the width arithmetic below leans on them.
-    readonly property int pageMargin: 48
-    readonly property int columnGap:  64
+    readonly property int pageMargin: Theme.space12
+    readonly property int columnGap:  Theme.space16
 
     readonly property real contentWidth: Math.max(0, width - 2 * pageMargin)
 
@@ -37,17 +37,18 @@ Rectangle {
 
     // The vertical gap between the two blocks once they are stacked, which is
     // also what stackedCoverRoom has to leave room for.
-    readonly property int stackGap: 32
+    readonly property int stackGap: Theme.space8
 
     // ─── Crossing the breakpoint ───────────────────────
     // How stacked the page is: 0 with the cover beside the text, 1 with it
     // above. Everything that moves in the rearrangement is lerped off this one
-    // clock. An open panel is the stacked arrangement at every width.
-    readonly property bool stackedLayout: stacked || showPanel
+    // clock. A docked panel takes the artwork's place and moves nothing; the
+    // reading view is the stacked arrangement at every width.
+    readonly property bool stackedLayout: stacked || readingView
     property real stackness: stackedLayout ? 1 : 0
 
     Behavior on stackness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // ─── Artwork or lyrics ─────────────────────────────
@@ -57,14 +58,14 @@ Rectangle {
     property real lyricsness: showLyrics ? 1 : 0
 
     Behavior on lyricsness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // The same for the credits, and read the same way: 0 artwork, 1 credits.
     property real creditsness: showCredits ? 1 : 0
 
     Behavior on creditsness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // How far the slot is towards being a panel, whichever one. The max, not
@@ -94,7 +95,7 @@ Rectangle {
     property real readingness: readingView ? 1 : 0
 
     Behavior on readingness {
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // The same, between the windowed panel's value and the reading view's.
@@ -102,24 +103,26 @@ Rectangle {
         return panelValue + (reading - panelValue) * root.readingness
     }
 
-    // Stacked, the cover takes the height the rest of the page leaves it,
-    // capped at 420 and at the content width and floored at 180. Side by side
-    // it keeps 45% of the content width.
-    readonly property real sideCoverSize:    Math.min(contentWidth * 0.45, 420)
-    readonly property real stackedCoverSize: Math.min(contentWidth, 420,
+    // Stacked, the cover takes the height the page leaves it, floored at 180;
+    // side by side 45% of the content width. Both stop at coverCap: 420, or in
+    // fullscreen the height the page has, so the art fills the screen.
+    readonly property real sideRoom: height - 2 * pageMargin - headerRow.height - 32
+    readonly property real coverCap: fullScreen ? Math.max(420, sideRoom) : 420
+    readonly property real sideCoverSize:    Math.min(contentWidth * 0.45, coverCap)
+    readonly property real stackedCoverSize: Math.min(contentWidth, coverCap,
                                                       Math.max(180, stackedCoverRoom))
     readonly property real coverSize: blend(sideCoverSize, stackedCoverSize)
 
     // ─── What a panel asks for instead ─────────────────
-    // The size the lines are set in: 14 docked, twice that in the reading view,
-    // where they are read from further back. Lerped, so it grows with the slot.
-    readonly property int  lyricsSize:  14
-    readonly property int  readingSize: 28
+    // The size the lines are set in: 18 docked, 28 in the reading view, where
+    // they are read from further back. Lerped, so it grows with the slot.
+    readonly property int  lyricsSize:  Theme.fontSection
+    readonly property int  readingSize: Theme.fontDisplay
     readonly property real lyricLineSize: rblend(lyricsSize, readingSize)
 
-    // A measure, not a square: 640px is about 90 characters at 14px, past the
+    // A measure, not a square: 640px is about 70 characters at 18px, past the
     // longest lyric line, and wider is not more readable. Held in characters,
-    // so the reading size gets twice the width.
+    // so the reading size gets a wider one.
     readonly property real lyricsMeasure: 640 * lyricLineSize / lyricsSize
     readonly property real lyricsWidth: Math.min(contentWidth, lyricsMeasure)
 
@@ -133,9 +136,15 @@ Rectangle {
     readonly property real lyricsHeight:
         Math.max(coverSize, 280, Math.min(lyricsCap, stackedCoverRoom))
 
+    // A docked panel's box. Side by side it is the artwork's column at the
+    // height of the pair; stacked it is the measure wide and the artwork's
+    // height tall. Neither moves the text column or Up Next.
+    readonly property real dockedWidth:  blend(sideCoverSize, lyricsWidth)
+    readonly property real dockedHeight: blend(sideBodyHeight, Math.max(stackedCoverSize, 280))
+
     // The slot both live in: square for the artwork, a column for a panel.
-    readonly property real slotWidth:  lblend(coverSize, lyricsWidth)
-    readonly property real slotHeight: lblend(coverSize, lyricsHeight)
+    readonly property real slotWidth:  lblend(coverSize, rblend(dockedWidth, lyricsWidth))
+    readonly property real slotHeight: lblend(coverSize, rblend(dockedHeight, lyricsHeight))
 
     // What is left once the margins, the header row, the two 32px gaps and the
     // text column have taken their height. The settled stacked height: a
@@ -156,10 +165,9 @@ Rectangle {
     // which keeps the arithmetic below closed-form.
     readonly property real infoHeight: infoColumn.implicitHeight
     // The settled height the pair takes side by side, and the centre line both
-    // are held on there. `lblend` and not `slotHeight`: this must not be one of
-    // the things the stack animation is moving.
-    readonly property real sideBodyHeight:
-        Math.max(lblend(sideCoverSize, lyricsHeight), infoHeight)
+    // are held on there. Not `slotHeight`: this must not be one of the things
+    // the stack animation or a panel is moving.
+    readonly property real sideBodyHeight: Math.max(sideCoverSize, infoHeight)
 
     readonly property real coverX: Math.round(blend(0, (contentWidth - slotWidth) / 2))
     readonly property real coverY: Math.round(blend((sideBodyHeight - slotHeight) / 2, 0))
@@ -185,7 +193,7 @@ Rectangle {
     // width the row has this frame. The volume's arithmetic below asks it of
     // the settled width, so its threshold holds still during a restack.
     function gapFor(w) {
-        return w >= transportFixedWidth + transportGaps * 16 ? 16 : 8
+        return w >= transportFixedWidth + transportGaps * Theme.space4 ? Theme.space4 : Theme.space2
     }
 
     // ─── Where the volume lives ────────────────────────
@@ -195,11 +203,11 @@ Rectangle {
     readonly property int volumeIconSize:       18
     readonly property int volumePercentWidth:   36
     readonly property int volumeOutputWidth:    32
-    readonly property int volumeClusterSpacing: 10
+    readonly property int volumeClusterSpacing: Theme.space3
     // The gap between speaker and readout, paid as the readout's top padding so
     // the hover target has no dead strip. The bar's extra lift on the same 4 is
     // deliberate: tst_output_picker.qml requires both to render alike.
-    readonly property int volumeStackGap:        4
+    readonly property int volumeStackGap:        Theme.space1
     // As wide as the wider of the two it holds, which is the readout. The
     // speaker is centred in it, and so is the flyout above it.
     readonly property int volumeStackWidth:
@@ -269,13 +277,23 @@ Rectangle {
         return Window.window ? Window.window.formatSleepTime(seconds) : ""
     }
 
-    // Lyrics state: "none", "loading", "ready", "unavailable"
+    // Lyrics state: "none", "loading", "ready", "unavailable", and
+    // "instrumental" when another site knows the track has no words.
     property string lyricsState: "none"
     property var    lyricsData:  []   // [{ms, text}] for timed; [{ms: 0, text}] for plain
     property bool   lyricsIsTimed: false
+    // -1 before the first timed line starts: nothing is lit, and the view
+    // holds line 0 (followLine).
     property int    currentLyricLine: -1
     property bool   userScrolled: false
     property bool   ignoreLyricsSync: false
+    // Set when the words came from another site: its name and the page.
+    property string lyricsSource: ""
+    // The timings were made here from plain lyrics, and may be off.
+    property bool   lyricsAutoSynced: false
+    // Bumped by every loadLyrics(), so an answer for an earlier one is dropped.
+    property int    lyricsSerial: 0
+    property string lyricsSourceUrl: ""
 
     // The band at the bottom of the open panel that belongs to the chips.
     // Nothing scrolls through it, so a tap on a chip cannot also hit a lyric.
@@ -289,10 +307,28 @@ Rectangle {
     // offset, not its centred item.
     function recentreLyrics() {
         if (!root.showLyrics || root.userScrolled) return
-        if (root.currentLyricLine < 0 || root.lyricsData.length === 0) return
+        if (root.lyricsData.length === 0) return
         // Instant: a re-wrap is a correction, and a correction that travels
         // reads as the words drifting on their own.
-        centreLyricLine(root.currentLyricLine, false)
+        centreLyricLine(root.followLine(), false)
+    }
+
+    // The line the view keeps centred: the one being sung, or the first.
+    function followLine() { return Math.max(root.currentLyricLine, 0) }
+
+    // A scroll that ends with the followed line exactly where centring puts it
+    // (in the intro: back at the top) is a resync. Near it is still a scroll.
+    function resumeIfCentred() {
+        if (!root.userScrolled || !root.lyricsIsTimed) return
+        var line = root.followLine()
+        var item = lyricsView.itemAtIndex(line)
+        if (!item) return
+        var was = lyricsView.contentY
+        var want = root.lyricCentreY(line)
+        lyricsView.contentY = was
+        if (Math.abs(want - was) > 2) return
+        root.userScrolled = false
+        root.centreLyricLine(line, true)
     }
 
     // Puts one line in the middle of the panel, animated when the song moved
@@ -302,17 +338,33 @@ Rectangle {
         id: lyricsScroll
         target: lyricsView
         property: "contentY"
-        duration: Theme.dur(260)
+        duration: Theme.dur(Theme.motionMedium)
         easing.type: Easing.OutCubic
+        // Lines built on the way can move the target on Qt 6.4; land on it.
+        onFinished: if (!root.userScrolled) lyricsView.contentY = root.lyricCentreY(root.followLine())
+    }
+
+    // positionViewAtIndex finds the line; Qt 6.4 then leaves it a few px off
+    // the middle, so the offset is worked out from the line itself.
+    function lyricCentreY(line) {
+        lyricsView.positionViewAtIndex(line, ListView.Center)
+        var item = lyricsView.itemAtIndex(line)
+        if (!item) return lyricsView.contentY
+        var top = lyricsView.originY - lyricsView.topMargin
+        var bottom = Math.max(top, lyricsView.originY + lyricsView.contentHeight
+                                   + lyricsView.bottomMargin - lyricsView.height)
+        return Math.max(top, Math.min(bottom, item.y + item.height / 2 - lyricsView.height / 2))
     }
 
     function centreLyricLine(line, animated) {
         if (line < 0 || line >= root.lyricsData.length) return
         lyricsScroll.stop()
         var was = lyricsView.contentY
-        lyricsView.positionViewAtIndex(line, ListView.Center)
-        if (!animated) return
-        var want = lyricsView.contentY
+        var want = root.lyricCentreY(line)
+        if (!animated) {
+            lyricsView.contentY = want
+            return
+        }
         if (want === was) return
         lyricsView.contentY = was
         lyricsScroll.from = was
@@ -365,28 +417,103 @@ Rectangle {
 
     function loadLyrics() {
         if (!hasTrack || track.id <= 0) return
+        var serial = ++lyricsSerial
         lyricsState = "loading"
+        lyricsSource = ""
+        lyricsSourceUrl = ""
+        lyricsAutoSynced = false
+        var forId = track.id
         bridge.fetchLyrics(track.id, function(result, err) {
-            if (err) { lyricsState = "unavailable"; return }
-            var rawText = result.text || ""
-            var timed   = result.timed || false
-            if (rawText.length === 0) { lyricsState = "unavailable"; return }
-            lyricsIsTimed = timed
-            if (timed) {
-                lyricsData = parseLrc(rawText)
-            } else {
-                var plain = rawText.split('\n')
-                var arr = []
-                for (var i = 0; i < plain.length; i++) {
-                    var t = plain[i].trim()
-                    if (t.length > 0) arr.push({ ms: 0, text: t })
-                }
-                lyricsData = arr
+            if (!root.lyricsCurrent(forId, serial)) return
+            var rawText = err ? "" : (result.text || "")
+            if (rawText.length > 0 && result.timed) { root.showLyricsText(rawText, true); return }
+            // Tidal's plain words show at once; the sites are still asked for synced ones.
+            if (rawText.length > 0) {
+                root.showLyricsText(rawText, false)
+                root.autoSyncLyrics(forId, serial, rawText)
             }
-            lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
-            currentLyricLine = 0
+            root.findLyricsElsewhere(forId, serial, rawText.length > 0)
         })
     }
+
+    function lyricsCurrent(forId, serial) {
+        return serial === root.lyricsSerial && root.hasTrack && root.track.id === forId
+    }
+
+    function lyricsSitesOn() { return prefs.lyricsLrclib || prefs.lyricsOtherSites }
+
+    // Synced lyrics from a site beat Tidal's plain ones and auto-synced ones;
+    // plain lyrics from a site are used only when Tidal has none.
+    function findLyricsElsewhere(forId, serial, havePlain) {
+        if (!lyricsSitesOn()) { if (!havePlain) lyricsState = "unavailable"; return }
+        bridge.findLyrics(root.track, function(result, err) {
+            if (!root.lyricsCurrent(forId, serial)) return
+            var text = err ? "" : (result.text || "")
+            if (text.length > 0 && result.timed) {
+                // Real timings: the plain lyrics need no syncing any more.
+                if (havePlain && prefs.lyricsAutoSync) bridge.cancelAutoSync()
+                root.lyricsSource    = result.source || ""
+                root.lyricsSourceUrl = result.url || ""
+                root.lyricsAutoSynced = false
+                root.showLyricsText(text, true)
+                return
+            }
+            if (havePlain) return
+            if (!err && result.instrumental) { root.lyricsState = "instrumental"; return }
+            if (text.length === 0) { root.lyricsState = "unavailable"; return }
+            root.lyricsSource    = result.source || ""
+            root.lyricsSourceUrl = result.url || ""
+            root.showLyricsText(text, false)
+            root.autoSyncLyrics(forId, serial, text)
+        })
+    }
+
+    // Plain lyrics timed against the audio, here. Shown only when the aligner
+    // trusts its result, and never over real timings that came meanwhile.
+    function autoSyncLyrics(forId, serial, text) {
+        if (!prefs.lyricsAutoSync) return
+        bridge.autoSyncLyrics(forId, text, function(result, err) {
+            if (!root.lyricsCurrent(forId, serial)) return
+            if (err || !result.kept || !result.lrc || root.lyricsIsTimed) return
+            root.showLyricsText(result.lrc, true)
+            root.lyricsAutoSynced = true
+        })
+    }
+
+    function showLyricsText(rawText, timed) {
+        lyricsIsTimed = timed
+        if (timed) {
+            lyricsData = parseLrc(rawText)
+        } else {
+            var plain = rawText.split('\n')
+            var arr = []
+            for (var i = 0; i < plain.length; i++) {
+                var t = plain[i].trim()
+                if (t.length > 0) arr.push({ ms: 0, text: t })
+            }
+            lyricsData = arr
+        }
+        lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
+        currentLyricLine = -1
+    }
+
+    // A site switched on may have what is missing; auto-sync switched off
+    // takes its timings away, switched on may add them.
+    function lyricsSwitchChanged() {
+        var plainShown = lyricsState === "ready" && (!lyricsIsTimed || lyricsAutoSynced)
+        if (lyricsState === "unavailable" || plainShown) loadLyrics()
+    }
+    Connections {
+        target: prefs
+        function onLyricsLrclibChanged()     { if (prefs.lyricsLrclib) root.lyricsSwitchChanged() }
+        function onLyricsOtherSitesChanged() { if (prefs.lyricsOtherSites) root.lyricsSwitchChanged() }
+        function onLyricsAutoSyncChanged()   { root.lyricsSwitchChanged() }
+    }
+
+    // The next track's audio is analysed ahead only while lyrics are on screen.
+    readonly property bool lyricsLookAhead: showLyrics && prefs.lyricsAutoSync
+    onLyricsLookAheadChanged: bridge.setLyricsLookAhead(lyricsLookAhead)
+    Component.onDestruction: bridge.setLyricsLookAhead(false)
 
     // ─── Credits ───────────────────────────────────────
     // The same four states the lyrics have: "none", "loading", "ready",
@@ -481,7 +608,7 @@ Rectangle {
         onTriggered: {
             if (root.ignoreLyricsSync) return
             var pos = player.position
-            var found = 0
+            var found = -1
             for (var i = 0; i < root.lyricsData.length; i++) {
                 if (root.lyricsData[i].ms <= pos) found = i
                 else break
@@ -489,7 +616,7 @@ Rectangle {
             if (found !== root.currentLyricLine) {
                 root.currentLyricLine = found
                 if (!root.userScrolled)
-                    root.centreLyricLine(found, true)
+                    root.centreLyricLine(root.followLine(), true)
             }
         }
     }
@@ -526,6 +653,7 @@ Rectangle {
         function onDownloadStarted(id)         { if (root.hasTrack && id === root.track.id) root.dlState = "busy" }
         function onDownloadFinished(id, path)  { if (root.hasTrack && id === root.track.id) { root.dlState = "done";  npDlReset.restart() } }
         function onDownloadError(id, msg)      { if (root.hasTrack && id === root.track.id) { root.dlState = "error"; npDlReset.restart() } }
+        function onDownloadCancelled(id)       { if (root.hasTrack && id === root.track.id) root.dlState = "idle" }
     }
     Timer { id: npDlReset; interval: 3000; onTriggered: root.dlState = "idle" }
     function updateLikedState() {
@@ -564,7 +692,7 @@ Rectangle {
     // eased: a new track fades its colour in.
     property color gradientTop: coverTint.hasColor ? coverTint.color
                                                    : Theme.accentSoft
-    Behavior on gradientTop { ColorAnimation { duration: Theme.dur(420) } }
+    Behavior on gradientTop { ColorAnimation { duration: Theme.dur(Theme.motionSlow) } }
 
     Rectangle {
         anchors.fill: parent
@@ -595,31 +723,37 @@ Rectangle {
             y: root.pageMargin
             width:  root.contentWidth
             height: Math.max(0, pageFlick.contentHeight - 2 * root.pageMargin)
-            spacing: 32
+            spacing: Theme.space8
 
             // The way out, and the way to make the page the whole screen. The
             // down-arrow mirrors the player bar's up-arrow.
             RowLayout {
                 id: headerRow
                 Layout.fillWidth: true
-                spacing: 12
+                spacing: Theme.space3
 
-                ChromeButton {
+                IconButton {
                     objectName: "nowPlayingCollapse"
                     icon: "chevron-down"
-                    tip: qsTr("Close Now Playing", "returns to the page you came from")
-                    onActivated: Window.window.goBack()
+                    backed: true
+                    pad: Theme.space5
+                    iconColor: Theme.textPrimary
+                    label: qsTr("Close now playing", "returns to the page you came from")
+                    onClicked: Window.window.goBack()
                 }
 
                 Item { Layout.fillWidth: true }
 
-                ChromeButton {
+                IconButton {
                     objectName: "nowPlayingFullscreen"
                     icon: root.fullScreen ? "fullscreen-exit" : "fullscreen"
-                    tip: root.fullScreen
+                    backed: true
+                    pad: Theme.space5
+                    iconColor: Theme.textPrimary
+                    label: root.fullScreen
                          ? qsTr("Leave fullscreen", "button, restores the window")
                          : qsTr("Fullscreen", "button, fills the screen with this page")
-                    onActivated: root.toggleFullScreen()
+                    onClicked: root.toggleFullScreen()
                 }
             }
 
@@ -646,19 +780,16 @@ Rectangle {
                     // Album art. A square of its own size centred in the slot:
                     // the slot stops being square when a panel opens, and
                     // stretched artwork would show in the crossfade.
-                    Rectangle {
+                    CoverArt {
                         objectName: "nowPlayingArt"
                         anchors.centerIn: parent
                         width:  root.coverSize
                         height: root.coverSize
-                        radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
                         opacity: 1 - root.panelness
                         visible: opacity > 0.01
-                        Image {
-                            anchors.fill: parent
-                            source: hasTrack ? "image://tidal/" + track.coverUrl : ""
-                            fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                        }
+                        // The large rendition where the map has it: the
+                        // 320px one goes soft at 420 and more.
+                        source: hasTrack ? (track.coverUrl1280 || track.coverUrl || "") : ""
                     }
 
                     // Lyrics panel. This one does take the whole slot, which is
@@ -687,7 +818,7 @@ Rectangle {
                             id: lyricsView
                             objectName: "nowPlayingLyricsView"
                             anchors.fill: parent
-                            anchors.margins: 16
+                            anchors.margins: Theme.space4
                             // Content margins, not a smaller viewport: a line
                             // can be drawn anywhere in the box and still be
                             // scrolled clear of the chips.
@@ -696,10 +827,39 @@ Rectangle {
                             clip: true
                             model: root.lyricsData
                             // The gap between lines rides the type size.
-                            spacing: Math.round(8 * root.lyricLineSize / root.lyricsSize)
+                            spacing: Math.round(Theme.space2 * root.lyricLineSize / root.lyricsSize)
                             cacheBuffer: 200
 
                             onMovingChanged: if (moving) root.userScrolled = true
+                            onMovementEnded: root.resumeIfCentred()
+
+                            // Plain lyrics only: synced ones follow the song.
+                            // In the right margin, from the top corner down to
+                            // the chips' band, so it never sits over a chip.
+                            ScrollBar.vertical: ScrollBar {
+                                id: lyricsBar
+                                objectName: "nowPlayingLyricsScrollBar"
+                                parent: lyricsPanel
+                                x: lyricsPanel.width - width - 3
+                                y: 12
+                                height: Math.max(0, lyricsPanel.height - y - root.lyricsFooterRoom)
+                                policy: !root.lyricsIsTimed && root.lyricsState === "ready"
+                                        && lyricsView.visibleArea.heightRatio < 1
+                                        ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                                visible: policy === ScrollBar.AlwaysOn
+                                padding: Theme.space1
+                                // Set straight on contentY, which never starts
+                                // the view moving, so say it here.
+                                onPressedChanged: if (pressed) root.userScrolled = true
+
+                                contentItem: Rectangle {
+                                    implicitWidth: 4
+                                    radius: width / 2
+                                    color: lyricsBar.pressed || lyricsBar.hovered ? Theme.textSec : Theme.textDim
+                                    Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+                                }
+                                background: Rectangle { implicitWidth: 10; color: "transparent" }
+                            }
 
                             // Every resize is a re-wrap, which moves the
                             // centred line. Deferred so the delegates are laid
@@ -731,8 +891,8 @@ Rectangle {
                                 opacity: active ? 1.0 : (hovered ? 0.85 : 0.55)
                                 lineHeight: 1.6
                                 wrapMode: Text.WordWrap
-                                Behavior on opacity { NumberAnimation { duration: Theme.dur(180); easing.type: Easing.OutCubic } }
-                                Behavior on color   { ColorAnimation  { duration: Theme.dur(180) } }
+                                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic } }
+                                Behavior on color   { ColorAnimation  { duration: Theme.dur(Theme.motionMedium) } }
 
                                 HoverHandler {
                                     id: hoverHandler
@@ -758,23 +918,30 @@ Rectangle {
                                 anchors.centerIn: parent
                                 visible: root.lyricsState === "loading"
                                 text: qsTr("Loading lyrics…")
-                                color: Theme.textDim; font.pixelSize: 14
+                                color: Theme.textDim; font.pixelSize: Theme.fontBody
                             }
                             Text {
                                 anchors.centerIn: parent
                                 visible: root.lyricsState === "unavailable"
                                 text: qsTr("No lyrics available")
-                                color: Theme.textDim; font.pixelSize: 14
+                                color: Theme.textDim; font.pixelSize: Theme.fontBody
+                            }
+                            Text {
+                                objectName: "nowPlayingLyricsInstrumental"
+                                anchors.centerIn: parent
+                                visible: root.lyricsState === "instrumental"
+                                text: qsTr("Instrumental", "a track with no words")
+                                color: Theme.textDim; font.pixelSize: Theme.fontBody
                             }
                         }
 
                         // Resync button
                         Rectangle {
                             objectName: "nowPlayingLyricsResync"
-                            visible: root.userScrolled && root.lyricsIsTimed && root.currentLyricLine >= 0
+                            visible: root.userScrolled && root.lyricsIsTimed && root.lyricsData.length > 0
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
-                            anchors.bottomMargin: 10
+                            anchors.bottomMargin: Theme.space3
                             width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusChip
                             color: Theme.artScrimStrong
                             border.color: Theme.artBorder
@@ -782,7 +949,7 @@ Rectangle {
                                 id: rsText
                                 anchors.centerIn: parent
                                 text: qsTr("Resync")
-                                color: Theme.artInk; font.pixelSize: 12
+                                color: Theme.artInk; font.pixelSize: Theme.fontMeta
                             }
                             HoverHandler { cursorShape: Qt.PointingHandCursor }
                             // ReleaseWithinBounds: the default DragThreshold
@@ -792,10 +959,59 @@ Rectangle {
                                 gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: {
                                     root.userScrolled = false
-                                    if (root.currentLyricLine >= 0)
-                                        root.centreLyricLine(root.currentLyricLine, true)
+                                    root.centreLyricLine(root.followLine(), true)
                                 }
                             }
+                        }
+
+                        // Where the words came from, when it was not Tidal.
+                        // Bottom left, clear of the chips in the other corner.
+                        Text {
+                            id: lyricsSourceText
+                            objectName: "nowPlayingLyricsSource"
+                            readonly property string sourceUrl: root.lyricsSourceUrl
+                            visible: root.lyricsState === "ready" && root.lyricsSource.length > 0
+                                     && !(root.userScrolled && root.lyricsIsTimed)
+                            anchors.left: parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: Theme.space4
+                            anchors.bottomMargin: Theme.space3
+                            height: 26
+                            width: Math.min(implicitWidth,
+                                            Math.max(0, parent.width - panelChips.width - 46))
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: qsTr("Lyrics from %1", "%1 is a lyrics website").arg(root.lyricsSource)
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            font.underline: sourceHover.hovered && sourceUrl.length > 0
+                            HoverHandler {
+                                id: sourceHover
+                                cursorShape: parent.sourceUrl.length > 0 ? Qt.PointingHandCursor
+                                                                         : Qt.ArrowCursor
+                            }
+                            TapHandler {
+                                gesturePolicy: TapHandler.ReleaseWithinBounds
+                                onTapped: if (parent.sourceUrl.length > 0) app.openUrl(parent.sourceUrl)
+                            }
+                        }
+
+                        // Timings made here, from plain lyrics. Beside the source
+                        // when there is one, and hidden with it during a scroll.
+                        Text {
+                            objectName: "nowPlayingLyricsAutoSynced"
+                            visible: root.lyricsState === "ready" && root.lyricsAutoSynced
+                                     && !root.userScrolled
+                            anchors.left: lyricsSourceText.visible ? lyricsSourceText.right : parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: lyricsSourceText.visible ? Theme.space3 : Theme.space4
+                            anchors.bottomMargin: Theme.space3
+                            height: 26
+                            width: Math.min(implicitWidth, Math.max(0, parent.width - panelChips.width - 46
+                                       - (lyricsSourceText.visible ? lyricsSourceText.width + 10 : 0)))
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: qsTr("Synced automatically, may be off")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                         }
                     }
 
@@ -821,9 +1037,9 @@ Rectangle {
                         // every size below is its docked size times this.
                         readonly property real typeScale:
                             root.lyricLineSize / root.lyricsSize
-                        readonly property int  labelSize: Math.round(11 * typeScale)
-                        readonly property int  nameSize:  Math.round(14 * typeScale)
-                        readonly property int  factSize:  Math.round(12 * typeScale)
+                        readonly property int  labelSize: Math.round(Theme.fontMicro * typeScale)
+                        readonly property int  nameSize:  Math.round(Theme.fontBody * typeScale)
+                        readonly property int  factSize:  Math.round(Theme.fontMeta * typeScale)
                         // Same flip, same reason, as the lyric line's.
                         readonly property int  align: root.readingness >= 0.5
                                                       ? Text.AlignHCenter
@@ -833,7 +1049,7 @@ Rectangle {
                             id: creditsFlick
                             objectName: "nowPlayingCreditsView"
                             anchors.fill: parent
-                            anchors.margins: 16
+                            anchors.margins: Theme.space4
                             visible: root.creditsState === "ready"
                             // Content margins, not a smaller viewport, as on
                             // the lyric list.
@@ -851,7 +1067,7 @@ Rectangle {
                             ColumnLayout {
                                 id: creditsColumn
                                 width: creditsFlick.width
-                                spacing: Math.round(16 * creditsPanel.typeScale)
+                                spacing: Math.round(Theme.space4 * creditsPanel.typeScale)
 
                                 // Who played what. The group's type is the
                                 // label's own word for the role, so it is data
@@ -861,7 +1077,7 @@ Rectangle {
                                     delegate: ColumnLayout {
                                         required property var modelData
                                         Layout.fillWidth: true
-                                        spacing: 2
+                                        spacing: Theme.spaceHalf
 
                                         Text {
                                             Layout.fillWidth: true
@@ -869,7 +1085,6 @@ Rectangle {
                                             color: Theme.textDim
                                             font.pixelSize: creditsPanel.labelSize
                                             font.bold: true
-                                            font.letterSpacing: 1
                                             horizontalAlignment: creditsPanel.align
                                             wrapMode: Text.WordWrap
                                         }
@@ -894,7 +1109,7 @@ Rectangle {
                                 // when the API did not carry it.
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.topMargin: Math.round(8 * creditsPanel.typeScale)
+                                    Layout.topMargin: Math.round(Theme.space2 * creditsPanel.typeScale)
                                     height: 1
                                     color: Theme.border
                                     visible: root.creditsReleaseDate.length > 0
@@ -975,11 +1190,12 @@ Rectangle {
                     // Lyrics in the corner. The Row skips a hidden chip, so
                     // with no lyrics Credits takes the corner.
                     Row {
+                        id: panelChips
                         objectName: "nowPlayingPanelChips"
                         anchors.bottom: parent.bottom
                         anchors.right: parent.right
-                        anchors.margins: 10
-                        spacing: 8
+                        anchors.margins: Theme.space3
+                        spacing: Theme.space2
 
                         PanelChip {
                             objectName: "nowPlayingCreditsToggle"
@@ -1001,7 +1217,7 @@ Rectangle {
 
                         PanelChip {
                             objectName: "nowPlayingLyricsToggle"
-                            visible: root.lyricsState !== "unavailable"
+                            visible: root.hasTrack && root.lyricsState !== "unavailable"
                             on: root.showLyrics
                             label: root.lyricsState === "loading"
                                    ? qsTr("Loading…") : qsTr("Lyrics")
@@ -1030,25 +1246,36 @@ Rectangle {
                     id: infoColumn
                     parent: infoBox
                     width: root.infoWidth
-                    spacing: 24
+                    spacing: Theme.space6
 
                     RowLayout {
                         id: npTransportRow
                         Layout.fillWidth: true
-                        spacing: 16
+                        spacing: Theme.space4
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 8
+                            spacing: Theme.space2
                             // "Playing from" link: back to the playlist, album,
                             // mix or liked songs it started from.
                             Text {
                                 id: sourceLink
+                                objectName: "nowPlayingSourceLink"
                                 visible: hasTrack && player.sourceName.length > 0
-                                text: qsTr("Playing from: %1").arg(player.sourceName)
-                                color: sourceLinkHov.hovered ? Theme.textPrimary : Theme.textDim
-                                font.pixelSize: 12
-                                font.letterSpacing: 0.5
+                                activeFocusOnTab: visible
+                                Keys.onReturnPressed: goToSource()
+                                Keys.onSpacePressed:  goToSource()
+                                Accessible.role: Accessible.Link
+                                Accessible.name: text
+                                Accessible.onPressAction: goToSource()
+                                font.underline: activeFocus
+                                // A search has only its query for a name, so it says so.
+                                text: player.sourceType === "search"
+                                      ? qsTr("Playing from: search “%1”",
+                                             "the track was started from the search results").arg(player.sourceName)
+                                      : qsTr("Playing from: %1").arg(player.sourceName)
+                                color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
+                                font.pixelSize: Theme.fontMeta
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                                 HoverHandler { id: sourceLinkHov; cursorShape: Qt.PointingHandCursor }
@@ -1063,8 +1290,12 @@ Rectangle {
                             Text {
                                 id: titleLink
                                 objectName: "nowPlayingTitle"
-                                text: hasTrack ? track.title : "–"; color: Theme.textPrimary
-                                font.pixelSize: 32; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
+                                text: hasTrack ? track.title : qsTranslate("PlayerBar", "No track playing")
+                                color: Theme.textPrimary
+                                font.pixelSize: Theme.fontDisplay; font.bold: true; Layout.fillWidth: true
+                                // Two lines before it elides: a long title is
+                                // most of what this page is for.
+                                wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
                                 font.underline: titleHit.containsMouse && hasTrack && Number(track.albumId) > 0
                                 activeFocusOnTab: hasTrack && Number(track.albumId) > 0
                                 Keys.onReturnPressed: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
@@ -1090,16 +1321,18 @@ Rectangle {
                             // and elides: without Layout.fillWidth the names'
                             // own width is the column's minimum width.
                             ArtistLinks {
+                                visible: hasTrack
                                 Layout.fillWidth: true
                                 namePrefix: "nowPlaying"
-                                fontPixelSize: 18
+                                fontPixelSize: Theme.fontSection
                                 artistList: root.artistList
                                 joinedText: hasTrack ? track.artists : ""
                                 fallbackArtistId: hasTrack ? Number(track.artistId) : 0
                             }
                             Text {
                                 id: albumLink
-                                text: hasTrack ? track.albumTitle : ""; color: Theme.textSec; font.pixelSize: 15
+                                visible: hasTrack
+                                text: hasTrack ? track.albumTitle : ""; color: Theme.textSec; font.pixelSize: Theme.fontBody
                                 // Same reason as the artist line above.
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
@@ -1129,7 +1362,11 @@ Rectangle {
                         // Download button, shown while a track is playing.
                         Item {
                             id: npDownloadBtn
+                            objectName: "nowPlayingDownloadButton"
                             visible: root.hasTrack
+                            Accessible.role: Accessible.Button
+                            Accessible.name: qsTr("Download")
+                            Accessible.onPressAction: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track)
                             Layout.preferredWidth: 44
                             Layout.preferredHeight: 44
                             activeFocusOnTab: root.dlState !== "busy"
@@ -1144,15 +1381,15 @@ Rectangle {
                                 anchors.centerIn: parent
                                 visible: root.dlState === "idle" || root.dlState === "error"
                                 name: "download"
-                                color: root.dlState === "error" ? Theme.red
+                                color: root.dlState === "error" ? Theme.redText
                                        : (npDlHov.hovered ? Theme.textPrimary : Theme.textSec)
-                                width: 24; height: 24; strokeWidth: 1.5
+                                width: 24; height: 24
                             }
                             VectorIcon {
                                 anchors.centerIn: parent
                                 visible: root.dlState === "done"
                                 name: "check"; color: Theme.green
-                                width: 24; height: 24; strokeWidth: 2
+                                width: 24; height: 24
                             }
                             Item {
                                 id: npSpinner
@@ -1160,12 +1397,12 @@ Rectangle {
                                 width: 22; height: 22
                                 visible: root.dlState === "busy"
                                 Rectangle {
-                                    width: 3.5; height: 9; radius: 1.75
+                                    width: 3.5; height: 9; radius: width / 2
                                     anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter
                                     color: Theme.accent
                                 }
                                 RotationAnimator {
-                                    target: npSpinner; from: 0; to: 360; duration: Theme.dur(800)
+                                    target: npSpinner; from: 0; to: 360; duration: Theme.dur(Theme.motionSlow * 2)
                                     loops: Theme.reduceMotion ? 1 : Animation.Infinite
                                     running: root.dlState === "busy"
                                 }
@@ -1174,18 +1411,20 @@ Rectangle {
                             TapHandler { onTapped: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track) }
                             ToolTip.visible: npDlHov.hovered && root.dlState === "error"
                             ToolTip.text: qsTr("Download failed. Click to retry.")
-                            ToolTip.delay: 300
+                            ToolTip.delay: Theme.tooltipDelay
                         }
 
-                        CtrlBtn {
+                        IconButton {
                             id: npLikeBtn
                             objectName: "nowPlayingLikeButton"
                             visible: root.hasTrack
                             icon: root.isLiked ? "heart-filled" : "heart"
-                            size: 24
+                            size: 24; pad: Theme.space5
                             active: root.isLiked
-                            // On the row: CtrlBtn has its own hover tool tip,
-                            // and two uses of the shared one fight.
+                            label: root.isLiked ? qsTranslate("PlayerBar", "Unlike track")
+                                                : qsTranslate("PlayerBar", "Like track")
+                            // On the row: IconButton has its own hover tool
+                            // tip, and two uses of the shared one fight.
                             onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked,
                                                                       npTransportRow)
                         }
@@ -1193,22 +1432,9 @@ Rectangle {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.space3
 
-                        // Quality badge
-                        Rectangle {
-                            objectName: "qualityBadge"
-                            visible: player.audioQuality.length > 0
-                            height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusBadge
-                            color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
-                                   player.audioQuality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
-                            Text {
-                                id: qlbl; objectName: "qualityBadgeText"
-                                anchors.centerIn: parent
-                                text: player.qualityLabel(player.audioQuality)
-                                color: Theme.textPrimary; font.pixelSize: 11; font.bold: true
-                            }
-                        }
+                        QualityBadge { withTier: true }
 
                         Item { Layout.fillWidth: true } // Pusher
 
@@ -1218,6 +1444,8 @@ Rectangle {
                         Rectangle {
                             id: sleepTimerBtn
                             objectName: "nowPlayingSleepTimerButton"
+                            // A running timer stays reachable after the queue ends.
+                            visible: root.hasTrack || root.sleepTimerActive
                             // height minus glyphSize has to stay even, so the
                             // ring round the glyph is a whole number of pixels:
                             // anchor centring rounds.
@@ -1246,7 +1474,7 @@ Rectangle {
                                            + trailPad
                             radius: cornerRadius
 
-                            // Rest and hover as a pair, as on ChromeButton.
+                            // Rest and hover as a pair, as on a backed IconButton.
                             // Counting, the hover is the accent at 0.36:
                             // accentTint to accentWash is too small a step.
                             readonly property color restFill:
@@ -1255,7 +1483,7 @@ Rectangle {
                                 root.sleepTimerActive
                                     ? Qt.rgba(Theme.accent.r, Theme.accent.g,
                                               Theme.accent.b, 0.36)
-                                    : Theme.surfaceHov
+                                    : Qt.tint(Theme.surfaceHigh, Theme.hoverFill)
                             readonly property color restBorder:
                                 root.sleepTimerActive ? Theme.accent : Theme.border
                             // The counting pill's border is already the accent
@@ -1267,8 +1495,8 @@ Rectangle {
                             color: sleepMa.containsMouse ? hoverFill : restFill
                             border.color: sleepMa.containsMouse ? hoverBorder : restBorder
                             border.width: 1
-                            Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
-                            Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
+                            Behavior on color        { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+                            Behavior on border.color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
 
                             // Never drawn. One clock per digit, a line each, so its
                             // width is the widest clock as a Text lays it out. A
@@ -1294,16 +1522,15 @@ Rectangle {
                                 anchors.left: parent.left
                                 anchors.leftMargin: sleepTimerBtn.leadInset
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
+                                spacing: Theme.space2
 
                                 VectorIcon {
                                     objectName: "nowPlayingSleepTimerIcon"
                                     name: "clock"
-                                    color: root.sleepTimerActive ? Theme.accent : Theme.textSec
+                                    color: root.sleepTimerActive ? Theme.accentText : Theme.textSec
 
                                     // Heavier than VectorIcon's 1.8 default, which
                                     // draws too thin a line at this size.
-                                    strokeWidth: 2.4
 
                                     // Layout.preferredWidth/Height: a layout imposes
                                     // VectorIcon's implicit 24 over a plain
@@ -1315,9 +1542,10 @@ Rectangle {
                                 Text {
                                     id: sleepLabel
                                     objectName: "nowPlayingSleepTimerLabel"
+                                    Component.onCompleted: Theme.tabularFigures(sleepLabel)
                                     text: root.sleepTimerActive ?
-                                          (root.sleepStopAtEndOfTrack ? qsTr("End of Track") : root.formatSleepTime(root.sleepTimeLeft)) :
-                                          qsTr("Sleep Timer")
+                                          (root.sleepStopAtEndOfTrack ? qsTr("End of track") : root.formatSleepTime(root.sleepTimeLeft)) :
+                                          qsTr("Sleep timer")
                                     // The pill is sized from this label. While
                                     // counting it holds the widest clock of its
                                     // shape, "mm:ss" or "h:mm:ss".
@@ -1329,8 +1557,8 @@ Rectangle {
                                             ? Math.ceil(sleepClockRuler.implicitWidth)
                                             : implicitWidth
                                     horizontalAlignment: Text.AlignHCenter
-                                    color: root.sleepTimerActive ? Theme.accent : Theme.textSec
-                                    font.pixelSize: 11
+                                    color: root.sleepTimerActive ? Theme.accentText : Theme.textSec
+                                    font.pixelSize: Theme.fontMicro
                                     font.bold: root.sleepTimerActive
                                 }
                             }
@@ -1345,6 +1573,21 @@ Rectangle {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: sleepTimerPopup.open()
                             }
+
+                            activeFocusOnTab: true
+                            Keys.onReturnPressed: sleepTimerPopup.openFromKeyboard()
+                            Keys.onSpacePressed:  sleepTimerPopup.openFromKeyboard()
+                            Accessible.role: Accessible.Button
+                            Accessible.name: sleepLabel.text
+                            Accessible.onPressAction: sleepTimerPopup.open()
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: -Theme.space1
+                                radius: height / 2
+                                color: "transparent"
+                                border.width: sleepTimerBtn.activeFocus ? 2 : 0
+                                border.color: Theme.accent
+                            }
                         }
                     }
 
@@ -1354,7 +1597,7 @@ Rectangle {
                         parent: sleepTimerBtn
                         x: sleepTimerBtn.width - width
                         width: 260
-                        padding: 12
+                        padding: Theme.space3
 
                         // ── how tall it is, and which side of the pill it opens on ──
                         // Both come from the content's implicit height. Binding
@@ -1365,7 +1608,7 @@ Rectangle {
                         height: popupHeight
 
                         // The gap to the pill, whichever side it lands on.
-                        readonly property real pillGap: 6
+                        readonly property real pillGap: Theme.space2
 
                         // The pill's top in window coordinates and the room
                         // under it. Summed along the parent chain so every term
@@ -1392,6 +1635,20 @@ Rectangle {
                         modal: true
                         focus: true
                         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                        // From the keyboard the first choice takes focus, and
+                        // closing hands it back to the pill.
+                        property bool fromKeyboard: false
+                        function openFromKeyboard() { fromKeyboard = true; open() }
+                        onOpened: {
+                            if (!fromKeyboard) return
+                            var first = root.sleepTimerActive ? sleepCancel : firstSleepOption
+                            first.forceActiveFocus(Qt.TabFocusReason)
+                        }
+                        onClosed: {
+                            if (fromKeyboard) sleepTimerBtn.forceActiveFocus(Qt.TabFocusReason)
+                            fromKeyboard = false
+                        }
                     
                         background: Rectangle {
                             color: Theme.surfaceHigh
@@ -1411,12 +1668,12 @@ Rectangle {
                         ColumnLayout {
                             id: contentCol
                             anchors.fill: parent
-                            spacing: 12
+                            spacing: Theme.space3
 
                             Text {
-                                text: qsTr("Sleep Timer")
+                                text: qsTr("Sleep timer")
                                 color: Theme.textPrimary
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontBody
                                 font.bold: true
                                 Layout.alignment: Qt.AlignLeft
                             }
@@ -1424,44 +1681,76 @@ Rectangle {
                             // Options container when timer is INACTIVE
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 10
+                                spacing: Theme.space3
                                 visible: !root.sleepTimerActive
 
                                 GridLayout {
                                     Layout.fillWidth: true
                                     columns: 3
-                                    columnSpacing: 8
-                                    rowSpacing: 8
+                                    columnSpacing: Theme.space2
+                                    rowSpacing: Theme.space2
                                 
-                                    SleepOptionBtn { minutes: 5 }
-                                    SleepOptionBtn { minutes: 15 }
-                                    SleepOptionBtn { minutes: 30 }
-                                    SleepOptionBtn { minutes: 45 }
-                                    SleepOptionBtn { minutes: 60 }
-                                    SleepOptionBtn { minutes: 90 }
+                                    // A preset starts at once; the slider below needs Start.
+                                    PillButton { id: firstSleepOption; objectName: "nowPlayingSleepOption"; readonly property int minutes: 5
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 15
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 30
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 45
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 60
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
+                                    PillButton { objectName: "nowPlayingSleepOption"; readonly property int minutes: 90
+                                                 Layout.fillWidth: true; compact: true; accent: false
+                                                 text: root.sleepPresetLabel(minutes); Accessible.name: root.sleepPresetName(minutes)
+                                                 onClicked: root.startSleepPreset(minutes) }
                                 }
 
                                 Rectangle {
+                                    id: sleepEndOfTrack
+                                    objectName: "nowPlayingSleepEndOfTrack"
                                     Layout.fillWidth: true
                                     height: 32
                                     radius: Theme.radiusButton
-                                    color: maEndOfTrack.containsMouse ? Theme.surfaceHov : Theme.surface
-                                    border.color: Theme.border
-                                    border.width: 1
+                                    color: maEndOfTrack.containsMouse ? Qt.tint(Theme.surface, Theme.hoverFill) : Theme.surface
+                                    border.color: activeFocus ? Theme.accent : Theme.border
+                                    border.width: activeFocus ? 2 : 1
+                                    function activate() {
+                                        root.startSleepTimer(0, true)
+                                        sleepTimerPopup.close()
+                                    }
+                                    activeFocusOnTab: true
+                                    Keys.onReturnPressed: activate()
+                                    Keys.onSpacePressed:  activate()
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: endOfTrackText.text
+                                    Accessible.onPressAction: activate()
                                 
                                     RowLayout {
                                         anchors.centerIn: parent
-                                        spacing: 6
+                                        spacing: Theme.space2
                                         VectorIcon {
                                             name: "track"
-                                            color: Theme.accent
+                                            color: Theme.accentText
                                             width: 12
                                             height: 12
                                         }
                                         Text {
-                                            text: qsTr("Stop at End of Track")
+                                            id: endOfTrackText
+                                            text: qsTr("Stop at end of track")
                                             color: Theme.textPrimary
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontMeta
                                             font.bold: true
                                         }
                                     }
@@ -1471,10 +1760,7 @@ Rectangle {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
                                         hoverEnabled: true
-                                        onClicked: {
-                                            root.startSleepTimer(0, true)
-                                            sleepTimerPopup.close()
-                                        }
+                                        onClicked: sleepEndOfTrack.activate()
                                     }
                                 }
 
@@ -1488,55 +1774,25 @@ Rectangle {
                                 // Custom Slider (using the project's native slider styling)
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    spacing: Theme.space1
                                     Text {
+                                        id: customLabel
                                         text: qsTr("Custom: %1 min").arg(customSlider.value)
                                         color: Theme.textSec
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontMeta
                                     }
                                 
-                                    Item {
+                                    // The volume's slider, in whole minutes.
+                                    VolumeSlider {
                                         id: customSlider
-                                        property int value: 20
+                                        objectName: "nowPlayingSleepSlider"
                                         Layout.fillWidth: true
-                                        height: 20
-                                    
-                                        Rectangle {
-                                            id: customTrack
-                                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
-                                            // A 3px bar, so the chip radius clamps to a capsule
-                                            height: 3; radius: Theme.radiusChip
-                                            color: Theme.border
-
-                                            Rectangle {
-                                                width: ((customSlider.value - 1) / 119.0) * customTrack.width
-                                                height: parent.height; radius: parent.radius
-                                                color: Theme.accent
-                                            }
-
-                                            Rectangle {
-                                                x: Math.max(0, Math.min(customTrack.width - width, ((customSlider.value - 1) / 119.0) * customTrack.width - width / 2))
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                width: 10; height: 10; radius: 5
-                                                color: Theme.textPrimary
-                                            }
-                                        }
-
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            preventStealing: true
-                                            onPressed: (mouse) => {
-                                                var pct = Math.max(0, Math.min(1, mouse.x / width))
-                                                customSlider.value = Math.round(1 + pct * 119)
-                                            }
-                                            onPositionChanged: (mouse) => {
-                                                if (pressed) {
-                                                    var pct = Math.max(0, Math.min(1, mouse.x / width))
-                                                    customSlider.value = Math.round(1 + pct * 119)
-                                                }
-                                            }
-                                            cursorShape: Qt.PointingHandCursor
-                                        }
+                                        from: 1; to: 120; stepSize: 1; pageStep: 10
+                                        snapToStep: true
+                                        value: 20
+                                        onMoved: (v) => customSlider.value = v
+                                        accessibleName: qsTr("Custom length", "sleep timer slider, in minutes")
+                                        Accessible.description: customLabel.text
                                     }
 
                                     // The popup's primary action, the PillButton
@@ -1545,7 +1801,7 @@ Rectangle {
                                     PillButton {
                                         objectName: "nowPlayingSleepTimerStart"
                                         Layout.fillWidth: true
-                                        Layout.topMargin: 8
+                                        Layout.topMargin: Theme.space2
                                         text: qsTr("Start", "verb, begins the sleep timer")
                                         icon: "play"
                                         accent: true
@@ -1560,7 +1816,7 @@ Rectangle {
                             // Options container when timer is ACTIVE
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 10
+                                spacing: Theme.space3
                                 visible: root.sleepTimerActive
 
                                 Rectangle {
@@ -1573,49 +1829,37 @@ Rectangle {
                                 
                                     ColumnLayout {
                                         anchors.centerIn: parent
-                                        spacing: 2
+                                        spacing: Theme.spaceHalf
                                         Text {
                                             text: root.sleepStopAtEndOfTrack ? qsTr("Stopping at end of track") : 
                                                   root.sleepIsFading ? qsTr("Fading out audio…") : 
                                                   qsTr("Remaining: %1").arg(root.formatSleepTime(root.sleepTimeLeft))
                                             color: Theme.textPrimary
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontMeta
                                             font.bold: true
                                             Layout.alignment: Qt.AlignHCenter
                                         }
                                         Text {
                                             text: root.sleepStopAtEndOfTrack ? qsTr("Fades out last 15s") : qsTr("Fades out last 30s")
                                             color: Theme.textDim
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             visible: root.sleepFadeOut
                                             Layout.alignment: Qt.AlignHCenter
                                         }
                                     }
                                 }
                             
-                                Rectangle {
+                                // The way back, so the quiet pill and not red.
+                                PillButton {
+                                    id: sleepCancel
+                                    objectName: "nowPlayingSleepCancel"
                                     Layout.fillWidth: true
-                                    height: 32
-                                    radius: Theme.radiusButton
-                                    color: Theme.redSoft
-                                    border.color: Theme.red
-                                    border.width: 1
-                                
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: qsTr("Cancel Sleep Timer")
-                                        color: Theme.red
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
-                                
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.cancelSleepTimer()
-                                            sleepTimerPopup.close()
-                                        }
+                                    compact: true
+                                    accent: false
+                                    text: qsTr("Cancel sleep timer")
+                                    onClicked: {
+                                        root.cancelSleepTimer()
+                                        sleepTimerPopup.close()
                                     }
                                 }
                             }
@@ -1629,43 +1873,51 @@ Rectangle {
 
                             // Robust Options Toggle (Custom Row Switch)
                             RowLayout {
+                                id: fadeRow
+                                objectName: "nowPlayingSleepFade"
                                 Layout.fillWidth: true
-                                spacing: 12
+                                spacing: Theme.space3
+                                function toggle() {
+                                    if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
+                                }
+                                activeFocusOnTab: true
+                                Keys.onReturnPressed: toggle()
+                                Keys.onSpacePressed:  toggle()
+                                Accessible.role: Accessible.CheckBox
+                                Accessible.name: fadeText.text
+                                Accessible.checkable: true
+                                Accessible.checked: root.sleepFadeOut
+                                Accessible.onToggleAction: toggle()
+                                Accessible.onPressAction: toggle()
                             
                                 Text {
+                                    id: fadeText
                                     text: qsTr("Fade out audio")
                                     color: Theme.textSec
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontMeta
                                     Layout.fillWidth: true
                                 }
                             
-                                Rectangle {
-                                    width: 34
-                                    height: 18
-                                    radius: Theme.radiusChip
-                                    color: root.sleepFadeOut ? Theme.accent : Theme.surface
-                                    border.color: Theme.border
-                                    border.width: 1
-                                
-                                    Rectangle {
-                                        x: root.sleepFadeOut ? 17 : 1
-                                        y: 1
-                                        width: 16
-                                        height: 16
-                                        radius: 8
-                                        color: root.sleepFadeOut ? Theme.accentInk : Theme.textPrimary
-                                        Behavior on x { NumberAnimation { duration: Theme.dur(150) } }
-                                    }
+                                // The row is the keyboard's target and the
+                                // screen reader's checkbox, so the switch is
+                                // only drawn here.
+                                Toggle {
+                                    objectName: "nowPlayingSleepFadeToggle"
+                                    activeFocusOnTab: false
+                                    Accessible.ignored: true
+                                    showFocus: fadeRow.activeFocus
+                                    checked: root.sleepFadeOut
+                                    onToggled: fadeRow.toggle()
                                 }
                             
                                 // Handlers, not a MouseArea: the whole row is
                                 // the hit target, and an anchored MouseArea
                                 // inside a layout is undefined behaviour.
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                // Exclusive on press, as in SettingsPanel's buttons.
                                 TapHandler {
-                                    onTapped: {
-                                        if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
-                                    }
+                                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                                    onTapped: fadeRow.toggle()
                                 }
                             }
                         }
@@ -1691,7 +1943,9 @@ Rectangle {
                             objectName: "nowPlayingTransportRow"
                             anchors.fill: parent
                             spacing: root.transportSpacing
-                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
+                            IconButton { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; pad: Theme.space5; active: player.shuffle; checkable: true
+                                      label: qsTranslate("PlayerBar", "Shuffle")
+                                      onClicked: player.setShuffle(!player.shuffle) }
                             // The cluster's counterweight, which keeps play in
                             // the middle. Invisible, not zero-width: a RowLayout
                             // keeps the spacing of a zero-width child.
@@ -1701,32 +1955,53 @@ Rectangle {
                                 Layout.preferredWidth: root.volumeClusterWidth
                             }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; onClicked: player.previous() }
+                            IconButton { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; pad: Theme.space5
+                                      label: qsTranslate("PlayerBar", "Previous track")
+                                      onClicked: player.previous() }
                             Rectangle {
                                 id: npPlayPause
                                 objectName: "nowPlayingPlayButton"
-                                width: 64; height: 64; radius: 32; color: Theme.textPrimary
+                                width: 64; height: 64; radius: width / 2; color: Theme.textPrimary
                                 border.width: activeFocus ? 2 : 0
                                 border.color: Theme.accent
                                 activeFocusOnTab: true
                                 Keys.onReturnPressed: player.playPause()
                                 Keys.onSpacePressed:  player.playPause()
+                                Accessible.role: Accessible.Button
+                                Accessible.name: player.playing ? qsTranslate("PlayerBar", "Pause")
+                                                                : qsTranslate("PlayerBar", "Play")
+                                Accessible.onPressAction: player.playPause()
                                 VectorIcon {
                                     anchors.centerIn: parent
                                     name: player.playing ? "pause" : "play"
                                     color: Theme.bg
                                     width: 32
                                     height: 32
-                                    strokeWidth: 1.5
+                                    visible: !player.loading
                                 }
-                                scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
+                                BusyRing {
+                                    objectName: "nowPlayingLoadingRing"
+                                    anchors.centerIn: parent
+                                    width: 30; height: 30
+                                    thickness: 3
+                                    color: Theme.bg
+                                    visible: player.loading
+                                    running: player.loading
+                                }
+                                scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                                 HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
                                 TapHandler   { onTapped: player.playPause() }
                                 PlayerBar.LoadErrorTip { }
                             }
-                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
+                            IconButton { objectName: "nowPlayingNext"; icon: "next"; size: 28; pad: Theme.space5
+                                      label: qsTranslate("PlayerBar", "Next track")
+                                      onClicked: player.next() }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
+                            IconButton { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; pad: Theme.space5; active: player.repeatMode > 0
+                                      label: player.repeatMode === 2 ? qsTranslate("PlayerBar", "Repeat: one track")
+                                           : player.repeatMode === 1 ? qsTranslate("PlayerBar", "Repeat: all")
+                                                                     : qsTranslate("PlayerBar", "Repeat: off")
+                                      onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
 
                             // The volume, where the row can hold it. Invisible,
                             // not folded: a Layout drops an invisible child and
@@ -1772,7 +2047,7 @@ Rectangle {
                         // drops spacing only for an invisible child, and going
                         // invisible would be a step at the end.
                         clip: true
-                        spacing: 12
+                        spacing: Theme.space3
                         // The true play order, shuffle included. queueCount is
                         // read for the dependency, not queueTracks, which
                         // copies the whole queue into JS.
@@ -1783,11 +2058,10 @@ Rectangle {
                         Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
 
                         Text {
-                            text: qsTr("Up Next")
+                            text: qsTr("Up next")
                             color: Theme.textDim
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMicro
                             font.bold: true
-                            font.letterSpacing: 1
                         }
 
                         Repeater {
@@ -1796,25 +2070,21 @@ Rectangle {
                                 required property int index
                                 required property var modelData
                                 Layout.fillWidth: true
-                                Layout.topMargin: 4
-                                Layout.bottomMargin: 4
-                                spacing: 12
+                                Layout.topMargin: Theme.space1
+                                Layout.bottomMargin: Theme.space1
+                                spacing: Theme.space3
                                 property var upTrack: modelData
-                                Rectangle {
-                                    width: 44; height: 44; radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
-                                    Image {
-                                        anchors.fill: parent
-                                        source: upTrack && upTrack.coverUrl80 ? "image://tidal/" + upTrack.coverUrl80 : ""
-                                        fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                                    }
+                                CoverArt {
+                                    width: 44; height: 44
+                                    source: upTrack && upTrack.coverUrl80 ? upTrack.coverUrl80 : ""
                                 }
                                 ColumnLayout {
-                                    Layout.fillWidth: true; spacing: 4
-                                    Text { Layout.fillWidth: true; text: upTrack ? upTrack.title : ""; color: Theme.textPrimary; font.pixelSize: 14; elide: Text.ElideRight }
+                                    Layout.fillWidth: true; spacing: Theme.space1
+                                    Text { Layout.fillWidth: true; text: upTrack ? upTrack.title : ""; color: Theme.textPrimary; font.pixelSize: Theme.fontBody; elide: Text.ElideRight }
                                     ArtistLinks {
                                         Layout.fillWidth: true
                                         namePrefix: "nowPlayingUpNext"
-                                        fontPixelSize: 12
+                                        fontPixelSize: Theme.fontMeta
                                         artistList: upTrack && upTrack.artistList ? upTrack.artistList : []
                                         joinedText: upTrack ? upTrack.artists : ""
                                         fallbackArtistId: upTrack ? Number(upTrack.artistId) : 0
@@ -1839,14 +2109,28 @@ Rectangle {
         width: chipLabel.implicitWidth + 16
         height: 26; radius: Theme.radiusChip
         color: chip.on ? Theme.accent : Theme.artScrimStrong
-        border.color: chip.on ? "transparent" : Theme.artBorder
+        // The focus ring is the text colour, not the accent: an "on" chip is
+        // already filled with the accent.
+        border.width: chip.activeFocus ? 2 : 1
+        border.color: chip.activeFocus ? Theme.textPrimary
+                    : chip.on ? "transparent" : Theme.artBorder
+
+        activeFocusOnTab: true
+        Keys.onReturnPressed: chip.toggled()
+        Keys.onSpacePressed:  chip.toggled()
+        Accessible.role: Accessible.Button
+        Accessible.name: chip.label
+        Accessible.checkable: true
+        Accessible.checked: chip.on
+        Accessible.onPressAction: chip.toggled()
+        Accessible.onToggleAction: chip.toggled()
 
         Text {
             id: chipLabel
             anchors.centerIn: parent
             text: chip.label
             color: chip.on ? Theme.accentInk : Theme.artInk
-            font.pixelSize: 11; font.bold: true
+            font.pixelSize: Theme.fontMicro; font.bold: true
         }
 
         HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -1858,87 +2142,14 @@ Rectangle {
             onTapped: chip.toggled()
         }
     }
-
-    // A disc-backed icon button for the page's own chrome, as
-    // components/BackButton.qml: stacked, on a short window this row scrolls
-    // over the artwork, where a bare glyph loses its edge.
-    component ChromeButton : Rectangle {
-        id: cb
-        property string icon
-        property string tip
-        signal activated()
-
-        implicitWidth: 36
-        implicitHeight: 36
-        radius: width / 2
-        readonly property color restFill:
-            Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.55)
-        readonly property color hoveredFill:
-            Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.90)
-        color: cbHov.hovered ? cb.hoveredFill : cb.restFill
-
-        // The focus ring takes over the border entirely, so a focused button
-        // is never ambiguous against a merely hovered one.
-        border.width: cb.activeFocus ? 2 : 1
-        border.color: cb.activeFocus ? Theme.accent
-                    : (cbHov.hovered ? Theme.textSec : Theme.border)
-
-        activeFocusOnTab: true
-        Keys.onReturnPressed: cb.activated()
-        Keys.onSpacePressed:  cb.activated()
-
-        Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
-        Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
-
-        VectorIcon {
-            anchors.centerIn: parent
-            name: cb.icon
-            color: Theme.textPrimary
-            width: 18; height: 18
-            strokeWidth: 2
-        }
-
-        ToolTip.visible: cbHov.hovered && cb.tip.length > 0
-        ToolTip.text: cb.tip
-        ToolTip.delay: 600
-
-        HoverHandler { id: cbHov; cursorShape: Qt.PointingHandCursor }
-        // ReleaseWithinBounds: a DragThreshold TapHandler takes only a passive
-        // grab, so anything underneath answers the same tap.
-        TapHandler   { gesturePolicy: TapHandler.ReleaseWithinBounds
-                       onTapped: cb.activated() }
+    // The six presets' words and press, written once.
+    function sleepPresetLabel(minutes) { return qsTr("%1m", "compact duration in minutes").arg(minutes) }
+    function sleepPresetName(minutes) {
+        return qsTr("%1 minutes", "sleep timer option, for a screen reader").arg(minutes)
     }
-
-    component SleepOptionBtn : Rectangle {
-        id: optBtn
-        objectName: "nowPlayingSleepOption"
-        property int minutes
-        // Derived, so the unit suffix is one translatable string instead of six
-        property string label: qsTr("%1m", "compact duration in minutes").arg(optBtn.minutes)
-        Layout.fillWidth: true
-        height: 28
-        radius: Theme.radiusButton
-        color: ma.containsMouse ? Theme.surfaceHov : Theme.surface
-        border.color: Theme.border
-        border.width: 1
-        
-        Text {
-            anchors.centerIn: parent
-            text: optBtn.label
-            color: Theme.textPrimary
-            font.pixelSize: 12
-        }
-        
-        MouseArea {
-            id: ma
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: {
-                root.startSleepTimer(optBtn.minutes, false)
-                sleepTimerPopup.close()
-            }
-        }
+    function startSleepPreset(minutes) {
+        root.startSleepTimer(minutes, false)
+        sleepTimerPopup.close()
     }
 
     // ─── The volume cluster, written once and placed twice ─────────────
@@ -1953,7 +2164,8 @@ Rectangle {
         // with no dead strip between them. The flyout stands back while the
         // output picker's menu is open, as in the player bar.
         readonly property bool wantFlyout:
-            !outPicker.menuVisible && (muteHov.hovered || pctHov.hovered)
+            !outPicker.menuVisible
+            && (muteHov.hovered || pctHov.hovered || muteBtn.activeFocus)
 
         // A Popup is not an Item, so a tree walk cannot find it. Tests reach it
         // through here, which also tells the live one from the offstage copy.
@@ -1985,8 +2197,16 @@ Rectangle {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: player.setMuted(!player.muted)
                 Keys.onSpacePressed:  player.setMuted(!player.muted)
+                Accessible.role: Accessible.Button
+                Accessible.name: player.muted ? qsTranslate("PlayerBar", "Unmute")
+                                              : qsTranslate("PlayerBar", "Mute")
+                Accessible.onPressAction: player.setMuted(!player.muted)
+                Accessible.description: volPctText.text
+                // As on the bar's speaker: focus shows the flyout, arrows move it.
+                Keys.onUpPressed:   volFlyout.slider.stepBy(volFlyout.slider.stepSize)
+                Keys.onDownPressed: volFlyout.slider.stepBy(-volFlyout.slider.stepSize)
                 Rectangle {
-                    anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
+                    anchors.fill: parent; anchors.margins: -Theme.space1; radius: Theme.radiusButton; color: "transparent"
                     border.width: muteBtn.activeFocus ? 2 : 0
                     border.color: Theme.accent
                 }
@@ -1994,18 +2214,20 @@ Rectangle {
                     anchors.fill: parent
                     name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
                     color: muteHov.hovered ? Theme.textPrimary : Theme.textSec
-                    strokeWidth: 1.5
                 }
                 // A click still mutes, and the hover is what the flyout reads.
                 // A HoverHandler, because the flyout is not a child of this
                 // item and cannot see a MouseArea's containsMouse.
                 HoverHandler { id: muteHov; cursorShape: Qt.PointingHandCursor }
                 MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
+                PlayerBar.VolumeWheel { }
             }
 
             Text {
+                id: volPctText
                 objectName: vol.visible ? "nowPlayingVolumePercent"
                                         : "nowPlayingVolumePercentOffstage"
+                Component.onCompleted: Theme.tabularFigures(volPctText)
                 // Fixed, so a label running from "0%" to "100%" cannot move the
                 // buttons or the speaker. Layout.preferredWidth: a layout
                 // overwrites a plain width with the Text's implicit one.
@@ -2015,8 +2237,9 @@ Rectangle {
                 horizontalAlignment: Text.AlignHCenter
                 text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
                                           .toLocaleString(Qt.locale(), 'f', 0))
-                color: Theme.textDim; font.pixelSize: 12
+                color: Theme.textDim; font.pixelSize: Theme.fontMeta
                 HoverHandler { id: pctHov }
+                PlayerBar.VolumeWheel { }
             }
         }
 
@@ -2046,33 +2269,6 @@ Rectangle {
         }
     }
 
-    component CtrlBtn : Item {
-        id: ctrlBtn
-        property string icon; property int size: 24; property bool active: false
-        signal clicked()
-        width: size+20; height: size+20
-        activeFocusOnTab: true
-        Keys.onReturnPressed: clicked()
-        Keys.onSpacePressed:  clicked()
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: "transparent"
-            border.width: ctrlBtn.activeFocus ? 2 : 0
-            border.color: Theme.accent
-        }
-        VectorIcon {
-            anchors.centerIn: parent
-            name: parent.icon
-            color: parent.active ? Theme.accent : hov.hovered ? Theme.textPrimary : Theme.textSec
-            width: parent.size
-            height: parent.size
-            strokeWidth: 1.5
-        }
-        HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: parent.clicked() }
-    }
-
     // ─── Artist links ──────────────────────────────────────────────────
     // TidalBridge::trackToMap() carries the whole artist list as [{id, name}]. A
     // track map without it, such as a recently-played entry saved to disk, has
@@ -2094,6 +2290,7 @@ Rectangle {
         if (t === "mix")        return { page: "mix",        params: { mixId: player.sourceId } }
         if (t === "radio")      return { page: "radio",      params: { radioTitle: player.sourceName, trackId: Number(player.sourceId) } }
         if (t === "collection") return { page: "collection", params: { activeTab: 0 } }
+        if (t === "search")     return { page: "search",     params: { requestedQuery: player.sourceId } }
         return null
     }
     function goToSource() {

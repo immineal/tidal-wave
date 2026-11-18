@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QDataStream>
 #include <QFile>
+#include <QFileInfo>
 #include <QAudioDevice>
 #include <QGuiApplication>
 #include <QHash>
@@ -504,6 +505,13 @@ public:
         return file.value(key);
     }
 
+    // The size of the queue's rows file beside the settings, or -1.
+    qint64 rowsSaved(qint64 uid) const
+    {
+        const QFileInfo rows(m_dir.filePath(QStringLiteral("TidalWaveTest/queue-%1.dat").arg(uid)));
+        return rows.exists() ? rows.size() : -1;
+    }
+
     ~Child()
     {
         if (m_proc.state() == QProcess::NotRunning) return;
@@ -921,7 +929,8 @@ private slots:
         child.say("shuffle");
         QCOMPARE(child.leave(5000), QString());
         QCOMPARE(child.saved(QStringLiteral("user_7/playback/shuffle")).toBool(), true);
-        QVERIFY(!child.saved(QStringLiteral("user_7/playback/queue")).toByteArray().isEmpty());
+        // The rows have a file of their own since the whole queue is kept.
+        QVERIFY2(child.rowsSaved(7) > 0, "the queue's rows were not written before the quit");
     }
 
     void theSentencesHaveTheirGerman()

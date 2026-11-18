@@ -25,11 +25,19 @@ you happen to use.
 
 </details>
 
+The screenshots are drawn by `tests/visual/run.sh store` on a library of real
+records whose sleeves and artist photos are under Creative Commons licences
+or in the public domain.
+[`tests/visual/store/CREDITS.md`](tests/visual/store/CREDITS.md) names the
+author, source and licence of each image.
+
 ## Features
 
 - Login uses Tidal's OAuth device flow. You type your password on Tidal's own
   site in your browser, and the app never sees it. The session is cached as
-  plain JSON in `~/.config/tidal-wave/credentials.json`; see Privacy below.
+  plain JSON in `~/.config/tidal-wave/credentials.json` (under `$XDG_CONFIG_HOME`
+  where that is set; on macOS in `~/Library/Application Support/TidalWave/Tidal Wave/`);
+  see Privacy below.
 - Four stream qualities: 96 kbps, 320 kbps, lossless, and hi-res lossless.
 - Media keys, the lock screen and the desktop's player widget work through
   MPRIS2 on D-Bus.
@@ -51,13 +59,17 @@ you happen to use.
   the running app (`src/ui/ThemePalette.cpp`).
 - A complete German catalogue, following your system locale by default and
   switchable without a restart (`src/ui/I18n.cpp`, `i18n/tidal-wave_de.ts`).
-- The window goes down to 640x600, stacking the Now Playing transport and
+- The window goes down to 640x600, stacking the now playing transport and
   dropping the player bar's volume and cast controls on the way.
 - A queue panel with drag-to-reorder, shuffle and the three repeat modes.
 - A system tray icon, so playback carries on with the window closed.
 - Album, artist, playlist and mix pages. Biographies are parsed as rich text
   with every name a link.
-- A sleep timer on the Now Playing page, with presets, a custom slider, an
+- Plain lyrics are timed against the track's audio on your own machine, by a
+  small aligner in plain C++ that ships with the app (`src/lyricsync/`). Only
+  timings it is confident of are shown, marked "Synced automatically, may be
+  off". Real timings, from Tidal or a lyrics site, always come first.
+- A sleep timer on the now playing page, with presets, a custom slider, an
   optional fade-out and a mode that stops at the end of the track.
 - The Qt scene graph can be moved onto the CPU for machines where the GPU path
   misbehaves. Qt picks the backend before the first window exists, so this needs
@@ -72,33 +84,33 @@ I used Claude Code to generate most of the code for this project, since I recent
 ## Keyboard shortcuts
 
 These are fixed; there is no rebinding UI yet. The table lives in
-`src/ui/Shortcuts.cpp`.
+`src/ui/Shortcuts.cpp`, and `tests/tst_shortcuts.cpp` checks this list
+against it.
 
 | Shortcut | Action |
 | --- | --- |
 | Space | Play / pause |
-| Ctrl + Right | Next track |
-| Ctrl + Left | Previous track |
-| Right | Seek forward 10 seconds |
-| Left | Seek backward 10 seconds |
-| Up | Volume up (5%) |
-| Down | Volume down (5%) |
+| Ctrl + Right / Ctrl + Left | Next / previous track |
+| Shift + Right / Shift + Left | Seek forward / back 10 seconds |
+| Ctrl + Up / Ctrl + Down | Volume up / down (5%) |
 | Ctrl + M | Mute / unmute |
 | Ctrl + S | Toggle shuffle |
 | Ctrl + R | Cycle repeat mode (off / all / one) |
-| Ctrl + 1 | Go to Home |
-| Ctrl + 2 | Go to Search |
-| Ctrl + 3 | Go to Collection |
-| Ctrl + N | Go to Now Playing |
-| F11 | Toggle fullscreen |
+| Alt + Shift + B | Like or unlike the playing track |
+| Ctrl + 1 / Ctrl + 2 / Ctrl + 3 | Go to Home / Search / Collection |
+| Ctrl + 4 | Open now playing, or go back from it |
+| Ctrl + F / Ctrl + L | Put the keyboard in the search field |
+| F11 | Toggle fullscreen now playing |
 | Ctrl + J | Toggle the queue panel |
-| Escape | Go back |
-| Alt + Left | Go back |
+| Alt + Left / Escape | Go back |
 | Ctrl + , | Open Settings |
+| Ctrl + Z | Undo the last change (a like, a removal or a cleared queue) |
+| Ctrl + N | New playlist |
+| Ctrl + Q | Quit |
 
-On macOS Qt maps Ctrl onto Command, so Ctrl + M collides with Minimize and F11
-with Mission Control. Both are left as they are, since Linux is where the app
-ships.
+On macOS Qt maps Ctrl onto Command and Alt onto Option, so Ctrl + M collides
+with Minimize and F11 with Mission Control. Both are left as they are, since
+Linux is where the app ships.
 
 ## Installation
 
@@ -296,6 +308,63 @@ named.
     does send a `User-Agent` of `tidal-wave/<version>
     (+https://github.com/immineal/tidal-wave)`, so GitHub sees your IP address and which
     version you run. The reply is a version number and a link.
+*   **Lyrics sites, for a track Tidal has no synced lyrics for.** Settings ->
+    Experimental has a switch for each: "Synced lyrics from LRCLIB" is on by default,
+    "Lyrics from more sites" (NetEase, KuGou, Genius) is off until you turn it on. The
+    sites switched on are asked in this order, and the asking stops at the first that
+    has synced lyrics for the track or says it is an instrumental; plain lyrics a site
+    has are kept while the rest are asked (`src/api/LyricsProviders.cpp`,
+    `src/api/LyricsFinder.cpp`):
+    1.  `https://lrclib.net/api/get`, and `/api/search` if that finds nothing: the
+        track's artist, title, album and length.
+    2.  `https://music.163.com/api/search/get` (NetEase Cloud Music): the artist and
+        title; then `/api/song/lyric` with the id of the song it found.
+    3.  `https://lyrics.kugou.com/search` (KuGou): the artist, title and length; then
+        `/download` with the id and access key of the lyrics it found.
+    4.  `https://genius.com/<Artist>-<title>-lyrics`, the song page whose address is
+        built from the artist and title. Genius's search API is not used.
+
+    Lyrics are looked up only for the track playing while the now playing page is open.
+    So with the defaults, lrclib.net gets the artist, title, album and length of each
+    such track that Tidal has no synced lyrics for, and nothing else is asked.
+    music.163.com and lyrics.kugou.com are servers in China. No Tidal token or id is
+    sent. Each site asked sees your IP address and a `User-Agent` of
+    `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`. A lookup waits three
+    seconds before its first request, a site gets at most one request a second
+    and never two at once, and a site that refuses (HTTP 429, 403, 503 or a bot check) is
+    left alone for the time it asks for, or 15 minutes and doubling, plus up to 30 %.
+    Every request, a site's follow-up requests too, is checked against that site's
+    switch just before it goes out; switching a site off aborts its request under way,
+    and switching both off ends the lookup. No `QNetworkAccessManager` for it exists
+    until the first lookup.
+*   **ListenBrainz, only once you switch on Settings -> Scrobbling and connect.** Nothing
+    goes until then; the switch is off by default (`src/scrobble/ScrobbleSink.cpp`).
+    Connecting sends the user token you paste to
+    `https://api.listenbrainz.org/1/validate-token`. After that, `/1/submit-listens` gets a
+    "playing now" note when a track starts and a listen once it counts, which is after half
+    the track or 4 minutes, whichever comes first, for tracks over 30 seconds
+    (`src/scrobble/PlayTracker.cpp`). Both carry the artists, title, album, length, track
+    number, ISRC and the track's `tidal.com` link, the app's name and version, and the
+    listen also the time you played it, with each credited artist also listed on its own
+    (`src/scrobble/ListenBrainz.cpp`). Every request
+    carries your ListenBrainz token and the same `User-Agent` as the update check, so
+    ListenBrainz sees your IP address. No Tidal token or id other than that link is sent.
+*   **Last.fm, only once you switch it on in Settings -> Scrobbling and connect.** The
+    switch is off by default and separate from the ListenBrainz one; both can be on.
+    Connecting follows Last.fm's desktop sign-in: `auth.getToken`, then your browser opens
+    `https://www.last.fm/api/auth/` with the app's key and that token, and once you have
+    allowed access there, `auth.getSession` fetches your session key and user name. After
+    that `track.updateNowPlaying` and `track.scrobble`, at most 50 per call, go to
+    `https://ws.audioscrobbler.com/2.0/` under the same rule as for ListenBrainz. They
+    carry the first credited artist, title, album, length and track number and, for a
+    scrobble, the time you played it; no ISRC and no Tidal link (`src/scrobble/LastFm.cpp`). Every request
+    carries the app's Last.fm API key, which is in the source, a signature made with the
+    app's shared secret, also in the source, your session key and the same `User-Agent` as
+    the update check, so Last.fm sees your IP address.
+*   **Nothing, for timing plain lyrics.** "Sync plain lyrics automatically" (on by
+    default) analyses the track's audio file, which the player has downloaded to play it
+    anyway, on a low-priority thread of the app (`src/lyricsync/AutoSync.cpp`). It makes
+    no request of its own, to Tidal or anyone else.
 *   **Nothing, for feedback.** The two buttons in Settings -> Feedback open a URL and stop
     there. "Open a GitHub issue" builds
     `https://github.com/immineal/tidal-wave/issues/new?title=...&body=...`, "Send an email"
@@ -309,21 +378,44 @@ named.
 
 ### What is stored on your machine
 
-*   **`~/.config/tidal-wave/credentials.json`** holds your access and refresh tokens, the
-    token expiry, your Tidal user id, your country code and your display name
-    (`Auth::saveCredentials`). It is plain JSON, readable and writable by your user only,
-    not encrypted and not in a system keyring, so anything running as you can read it, and
-    the refresh token is enough to use your account. Logging out deletes it. Note the
-    lowercase directory name: this is not the same place as the settings below.
+*   **`~/.config/tidal-wave/credentials.json`** (under `$XDG_CONFIG_HOME` where that is
+    set; on macOS in `~/Library/Application Support/TidalWave/Tidal Wave/`) holds your access and refresh tokens, the token expiry, your Tidal user id, your
+    country code and your display name (`Auth::saveCredentials`). It is plain JSON,
+    readable and writable by your user only, not encrypted and not in a system keyring, so
+    anything running as you can read it, and the refresh token is enough to use your
+    account. Logging out deletes it. Note the lowercase directory name: this is not the
+    same place as the settings below.
+*   **`~/.config/tidal-wave/scrobbling-listenbrainz.json`**, next to it, holds your
+    ListenBrainz user token and user name once you connect, written the same way: plain
+    JSON, readable and writable by your user only (`ScrobbleSink::saveSecret`).
+    Disconnecting deletes it, and so does logging out of Tidal.
+    **`scrobbling-lastfm.json`** beside it holds your Last.fm session key and user name in
+    the same way.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
-    language, sidebar width, audio output device and software rendering flag
-    (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
+    language, sidebar width, audio output device, software rendering flag and the
+    three lyrics switches (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
     download folder (`src/player/Downloader.cpp`), your pinned items and recently played
-    list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), and the
-    update check's state (`src/ui/UpdateCheck.cpp`).
+    list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), the
+    update check's state (`src/ui/UpdateCheck.cpp`), and the two scrobbling switches
+    (`src/scrobble/ScrobbleSink.cpp`).
 *   **`~/.local/share/TidalWave/Tidal Wave/`** (`QStandardPaths::AppDataLocation`) holds
     `library/albumtracks-<userId>.json`, a cache of your library's album track listings so
-    that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`).
+    that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`), and
+    `scrobble-queue-listenbrainz.json` and `scrobble-queue-lastfm.json`, the listens not
+    yet accepted by each service, so a
+    quit or an outage loses none, with the user name they belong to. It holds at most
+    10000 and is removed once it is empty. Disconnecting keeps it, so the same account
+    connecting again sends them; connecting another account, or Discard next to the
+    count in Settings, deletes it
+    (`src/scrobble/ScrobbleSink.cpp`).
+*   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
+    lyrics found on another site, a note that a site called it an instrumental, or a note
+    that none were found, so that a song is looked up once. A "none found" note is
+    retried after 30 days, and so are plain lyrics, in case a site has synced ones by then
+    (`src/api/LyricsFinder.cpp`). Next to them, `<id>.sync.json` holds the timings made
+    here for a track's plain lyrics, with a hash of the words they belong to, or a note
+    that the track is too long to analyse (`src/lyricsync/AutoSync.cpp`). Nothing is written there while all three lyrics
+    switches are off.
 *   **`~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg`** and
     **`128x128/apps/tidal-wave.png`** are the app icon, installed by `cmake --install` so
     the tray, taskbar and launcher can resolve it by name. The app writes a copy itself only
@@ -352,3 +444,16 @@ return immediately and no `QNetworkAccessManager` is ever created.
 
 GNU General Public License, version 3 or later (`GPL-3.0-or-later`). The full
 text of GPLv3 is in `LICENSE`.
+
+### Credits for the lyrics aligner
+
+The aligner's letter net, `assets/lyricsync/ctc.f16.bin`, was trained in part on speech from
+LibriSpeech (V. Panayotov, G. Chen, D. Povey and S. Khudanpur, "LibriSpeech: an
+ASR corpus based on public domain audio books", ICASSP 2015;
+<https://www.openslr.org/12>), which is licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The net is a
+derived work; no LibriSpeech audio ships with the app.
+
+`assets/lyricsync/translit.bin`, the table that turns letters of other scripts
+into a to z, is generated from the data of Unidecode (Tomaz Solc, after Sean M.
+Burke's Text::Unidecode), GPL-2.0-or-later; `tools/lyricsync_export.py` writes it.

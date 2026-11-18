@@ -16,6 +16,12 @@ endif()
 # One binary per tst_*.cpp, because each carries its own QTEST_MAIN.
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tst_*.cpp")
 list(REMOVE_ITEM TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tst_qml.cpp")
+# Casting is built on Linux only (Avahi), and so are its tests.
+if(NOT (UNIX AND NOT APPLE))
+    foreach(linux_only discovery manager session server prep)
+        list(REMOVE_ITEM TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tst_cast_${linux_only}.cpp")
+    endforeach()
+endif()
 
 set(CORE_TEST_TARGETS "")
 foreach(test_src IN LISTS TEST_SOURCES)
@@ -37,10 +43,23 @@ endforeach()
 
 # These tests read the QML sources as text. They are given the source tree's
 # path so that a failure message can name the file to open.
-foreach(reads_qml_as_text tst_shortcuts tst_startup tst_qml_cpp_calls)
+foreach(reads_qml_as_text tst_shortcuts tst_startup tst_qml_cpp_calls tst_wording tst_design_tokens
+        tst_chosen_values)
     if(TARGET ${reads_qml_as_text})
         target_compile_definitions(${reads_qml_as_text} PRIVATE
             TIDALWAVE_QML_DIR="${CMAKE_SOURCE_DIR}/qml")
+    endif()
+endforeach()
+
+if(TARGET tst_desktop_entry)
+    target_compile_definitions(tst_desktop_entry PRIVATE
+        TIDALWAVE_DESKTOP_FILE="${CMAKE_SOURCE_DIR}/packaging/io.github.immineal.TidalWave.desktop")
+endif()
+
+foreach(reads_fixtures tst_lyrics tst_home_feed)
+    if(TARGET ${reads_fixtures})
+        target_compile_definitions(${reads_fixtures} PRIVATE
+            TW_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     endif()
 endforeach()
 
@@ -48,6 +67,7 @@ endforeach()
 qt_add_executable(tst_qml
     tst_qml.cpp
     TestStubs.h
+    A11yProbe.h
 )
 
 target_link_libraries(tst_qml PRIVATE
@@ -75,10 +95,19 @@ add_test(NAME tst_qml COMMAND tst_qml)
 # QML tests need a QPA plugin. Forcing offscreen keeps `ctest` working on a
 # headless box (and in CI) and stops test windows flashing on a desktop.
 set(TW_TEST_ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+# Nor may a test reach the desktop's session bus, where an MPRIS name shows in
+# the user's media controls. Tests that need a bus start a private one.
+list(APPEND TW_TEST_ENVIRONMENT "DBUS_SESSION_BUS_ADDRESS=unix:path=${CMAKE_CURRENT_BINARY_DIR}/no-session-bus")
 # Below Qt 6.5 the program names the FFmpeg media backend (src/main.cpp) where
 # Qt would pick GStreamer. The tests play through the one users get.
 if(Qt6_VERSION VERSION_LESS 6.5)
     list(APPEND TW_TEST_ENVIRONMENT "QT_MEDIA_BACKEND=ffmpeg")
+endif()
+# macOS finds ~/Library from the account whatever HOME says, so a test that
+# moves HOME would still write the real one. This moves it for every test.
+if(APPLE)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/macos-home")
+    list(APPEND TW_TEST_ENVIRONMENT "CFFIXED_USER_HOME=${CMAKE_CURRENT_BINARY_DIR}/macos-home")
 endif()
 set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
     ENVIRONMENT "${TW_TEST_ENVIRONMENT}"
@@ -88,3 +117,24 @@ set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
 # runner. The core binaries finish in under a minute each, so five means a hang.
 set_tests_properties(${CORE_TEST_TARGETS} PROPERTIES TIMEOUT 300)
 set_tests_properties(tst_qml PROPERTIES TIMEOUT 2700)
+
+# Main built again and again under tst_qml, which collects as the app does.
+# Qt 6.11+ cross-checks every incremental collection when asked and logs that
+# step, so it must never show while collections do.
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.11)
+    add_test(NAME tst_qml_gc_whole_heap
+             COMMAND tst_qml -input "${CMAKE_CURRENT_SOURCE_DIR}/qml-gc")
+    set_tests_properties(tst_qml_gc_whole_heap PROPERTIES
+        ENVIRONMENT "${TW_TEST_ENVIRONMENT};QV4_MM_CROSS_VALIDATE_INCREMENTAL_GC=1;QT_LOGGING_RULES=qt.qml.gc.stateTransitions=true"
+        PASS_REGULAR_EXPRESSION "Transitioning to the MarkGlobalObject state"
+        FAIL_REGULAR_EXPRESSION "CrossValidateIncrementalMarkPhase;Cross Validation Error;FAIL!;Received signal;Totals: [0-9]+ passed, [1-9]"
+        TIMEOUT 300)
+endif()
+
+# The colour switch's rainbow is a committed picture; this fails when it no
+# longer matches tools/make-rainbow.py. Skipped where there is no Python.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME rainbow_picture
+             COMMAND Python3::Interpreter -I "${CMAKE_SOURCE_DIR}/tools/make-rainbow.py" --check)
+endif()

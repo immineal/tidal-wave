@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import TidalWave
 
+// The one search field. Escape empties it, and an empty one gives the
+// keyboard back, as in the sidebar's LibraryFinder.
 Rectangle {
     id: root
-    height: 40
+    implicitHeight: 40
     radius: Theme.radiusField
     color: Theme.surfaceHigh
     border.color: focused ? Theme.accent : "transparent"
@@ -14,6 +16,8 @@ Rectangle {
     property bool  focused: input.activeFocus
     property string placeholder: qsTr("Search…")
     signal submitted(string text)
+    // Escape on an empty field, for a popup that closes on it.
+    signal emptyEscape()
     signal textEdited(string text)
 
     function releaseFocus() {
@@ -22,22 +26,24 @@ Rectangle {
 
     // This is a Rectangle, not a FocusScope, so clearing input.focus leaves
     // the enclosing scope with no focus item. Only the input can put itself
-    // back.
+    // back. The text comes up selected, so typing replaces the old query.
     function takeFocus() {
         input.forceActiveFocus()
+        input.selectAll()
     }
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 12
-        anchors.rightMargin: 12
-        spacing: 8
+        anchors.leftMargin: Theme.space3
+        // Less while the 32px clear target is there, so its cross keeps
+        // the place a 14px button had.
+        anchors.rightMargin: clearBtn.visible ? Theme.space1 : Theme.space3
+        spacing: Theme.space2
         VectorIcon {
             name: "search"
             color: Theme.textDim
             width: 16
             height: 16
-            strokeWidth: 1.8
         }
         Item {
             Layout.fillWidth: true
@@ -47,9 +53,21 @@ Rectangle {
                 anchors.fill: parent
                 focus: true
                 color: Theme.textPrimary
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
+                selectionColor: Theme.textSelection
+                selectedTextColor: Theme.textSelectionInk
                 verticalAlignment: TextInput.AlignVCenter
                 Keys.onReturnPressed: root.submitted(text)
+                // Claimed ahead of the window's Escape shortcut, which would
+                // otherwise take it and go back.
+                Keys.onShortcutOverride: (event) => {
+                    if (event.key === Qt.Key_Escape) event.accepted = true
+                }
+                Keys.onEscapePressed: {
+                    if (text.length > 0) { text = ""; return }
+                    root.releaseFocus()
+                    root.emptyEscape()
+                }
                 onTextChanged: root.textEdited(text)
             }
             Text {
@@ -57,29 +75,34 @@ Rectangle {
                 visible: input.text.length === 0
                 text: root.placeholder
                 color: Theme.textDim
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 verticalAlignment: Text.AlignVCenter
             }
         }
+        // A 32px target round the 14px cross.
         Item {
             id: clearBtn
+            objectName: "searchClear"
             visible: input.text.length > 0
-            width: 14
-            height: 14
+            Layout.preferredWidth: 32
+            Layout.preferredHeight: 32
             Layout.alignment: Qt.AlignVCenter
             activeFocusOnTab: true
             Keys.onReturnPressed: input.text = ""
             Keys.onSpacePressed:  input.text = ""
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTr("Clear search", "button, empties the search field")
+            Accessible.onPressAction: input.text = ""
             Rectangle {
-                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
+                anchors.centerIn: parent; width: 22; height: 22; radius: Theme.radiusButton; color: "transparent"
                 border.width: clearBtn.activeFocus ? 2 : 0
                 border.color: Theme.accent
             }
             VectorIcon {
-                anchors.fill: parent
+                anchors.centerIn: parent
+                width: 14; height: 14
                 name: "x"
-                color: clearBtn.activeFocus ? Theme.accent : Theme.textDim
-                strokeWidth: 1.8
+                color: clearBtn.activeFocus ? Theme.accentText : Theme.textDim
             }
             MouseArea {
                 anchors.fill: parent

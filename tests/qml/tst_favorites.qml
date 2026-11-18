@@ -58,13 +58,13 @@ TestCase {
     // The strings the shared helper can say, with the context of the file the
     // inline component is declared in, ContextMenu.qml. Written out here, so
     // swapping two of them in the helper is a failure.
-    readonly property string likeFailed:     qsTranslate("ContextMenu", "Could not like the song",
+    readonly property string likeFailed:     qsTranslate("ContextMenu", "Could not like the track",
                                                 "shown when adding a track to favourites failed")
-    readonly property string unlikeFailed:   qsTranslate("ContextMenu", "Could not unlike the song",
+    readonly property string unlikeFailed:   qsTranslate("ContextMenu", "Could not unlike the track",
                                                 "shown when removing a track from favourites failed")
     readonly property string saveFailed:     qsTranslate("ContextMenu", "Could not save the album",
                                                 "shown when saving an album to the library failed")
-    readonly property string unsaveFailed:   qsTranslate("ContextMenu", "Could not remove the album from your library",
+    readonly property string unsaveFailed:   qsTranslate("ContextMenu", "Could not remove the album from your collection",
                                                 "shown when removing an album from the library failed")
     readonly property string followFailed:   qsTranslate("ContextMenu", "Could not follow the artist",
                                                 "shown when following an artist failed")
@@ -72,7 +72,7 @@ TestCase {
                                                 "shown when unfollowing an artist failed")
     readonly property string mixSaveFailed:   qsTranslate("ContextMenu", "Could not save the mix",
                                                 "shown when saving a mix to the library failed")
-    readonly property string mixUnsaveFailed: qsTranslate("ContextMenu", "Could not remove the mix from your library",
+    readonly property string mixUnsaveFailed: qsTranslate("ContextMenu", "Could not remove the mix from your collection",
                                                 "shown when removing a mix from the library failed")
 
     // ── hosts ────────────────────────────────────────────────────────────
@@ -84,6 +84,9 @@ TestCase {
     Component { id: artistC;     ArtistPage     { anchors.fill: parent } }
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
     Component { id: mixC;        MixPage        { anchors.fill: parent } }
+    Component { id: iconC;       VectorIcon     { } }
+    // Where the messages are drawn, as in Main.qml.
+    ToastHost { id: toastHost; anchors.fill: parent; z: 10 }
 
     // NowPlayingPage reaches its sleep timer and fullscreen toggle through
     // Window.window, so it cannot be instantiated bare. Being a separate
@@ -263,9 +266,10 @@ TestCase {
         bridge.setFavoriteTracksListForTest([])
         bridge.setUserPlaylistsForTest([])
         bridge.setMixFavoriteForTest(testCase.mixId, false)
-        // One shared tool tip serves the whole window, so a leftover from the
-        // last test would pass for the next one's message.
-        testCase.ToolTip.toolTip.close()
+        // One toast serves the whole window, so a leftover from the last
+        // test would pass for the next one's message.
+        Toasts.dismiss()
+        Toasts.plainMs = 600
     }
 
     // ── the fixture itself ───────────────────────────────────────────────
@@ -368,44 +372,41 @@ TestCase {
     }
 
     // The message has to reach the screen as well as the property the other
-    // tests read. ToolTip.show() writes to the one shared tool tip of the
-    // anchor's window, which here is this TestCase's.
+    // tests read: the one toast, drawn by the host.
     function test_a_refusal_reaches_the_screen_and_goes_away() {
         player.setCurrentTrackForTest(makeTrack())
         var bar = makeBar()
         var btn = named(bar, "playerLikeButton")
-        var tip = testCase.ToolTip.toolTip
-        verify(tip, "there is no shared tool tip to say anything with")
-        verify(!tip.visible, "the tool tip was already up before the press")
+        var tip = toastHost.card
+        verify(!tip.visible, "the toast was already up before the press")
 
         bridge.setFavoriteOkForTest(false)
         clickCenter(btn)
 
         tryVerify(function () { return tip.visible }, 2000,
                   "a refused like never reached the screen")
-        compare(tip.text, testCase.likeFailed, "the tool tip said something else")
+        compare(Toasts.text, testCase.likeFailed, "the toast said something else")
+        verify(!toastHost.actionButton.visible, "a refusal offered Undo")
         verify(!tip.activeFocus, "the refusal took focus")
-        verify(!tip.modal, "the refusal blocked the window")
         tryVerify(function () { return !tip.visible }, 5000,
                   "the refusal never went away on its own")
     }
 
-    function test_an_accepted_like_puts_nothing_on_the_screen() {
+    // A like Tidal has confirmed says so, with Undo; see tst_undo.
+    function test_an_accepted_like_is_said_with_undo() {
         player.setCurrentTrackForTest(makeTrack())
         var bar = makeBar()
         var btn = named(bar, "playerLikeButton")
-        var tip = testCase.ToolTip.toolTip
+        var tip = toastHost.card
 
         clickCenter(btn)
 
         tryVerify(function () { return bar.isLiked }, 2000,
                   "an accepted like never filled the heart")
-        // A tool tip comes up only after the attached delay of the item it is
-        // anchored to, and the longest one in this app is 600ms. The wait has to
-        // outlast it, or the check passes while the tool tip is on its way.
-        wait(1200)
-        verify(!tip.visible, "a successful like put a tool tip on the screen: "
-               + tip.text)
+        tryVerify(function () { return tip.visible }, 2000, "a confirmed like said nothing")
+        compare(Toasts.text, "Added to your liked tracks")
+        verify(toastHost.actionButton.visible, "a confirmed like offered no Undo")
+        Edits.clearHistory()
     }
 
     // ── TrackRow: Like / Unlike in the row menu ──────────────────────────
@@ -675,6 +676,24 @@ TestCase {
                 "a refused follow turned the pill into Following")
     }
 
+    // Follow is not Like, so it does not draw Like's heart. Both states draw
+    // a glyph of their own.
+    function test_follow_draws_a_person_not_the_heart() {
+        var page = makeArtistPage()
+        var pill = named(page, "artistFollowPill")
+        var probe = createTemporaryObject(iconC, testCase)
+        var unfollowed = pill.icon
+        verify(unfollowed.indexOf("heart") === -1, "Follow draws \"" + unfollowed + "\", Like's glyph")
+        verify(probe._pathFor(unfollowed).length > 0, "\"" + unfollowed + "\" draws nothing")
+
+        clickCenter(pill)
+        tryVerify(function () { return page.isFollowing }, 2000, "the follow never landed")
+        var followed = pill.icon
+        verify(followed.indexOf("heart") === -1, "Following draws \"" + followed + "\", Like's glyph")
+        verify(probe._pathFor(followed).length > 0, "\"" + followed + "\" draws nothing")
+        verify(followed !== unfollowed, "Follow and Following draw the same glyph")
+    }
+
     function test_the_artist_page_says_nothing_when_the_follow_lands() {
         var page = makeArtistPage()
         var pill = named(page, "artistFollowPill")
@@ -775,7 +794,7 @@ TestCase {
         var page = makeCollection(1)
         var cards = cardsOn(page)
         compare(cards.length, 1, "the albums grid drew no tile")
-        var menu = cards[0].pinMenu
+        var menu = cards[0].ensureMenu()
         verify(menu, "the album tile has no menu")
 
         bridge.setFavoriteOkForTest(false)
@@ -797,7 +816,7 @@ TestCase {
         var cards = cardsOn(page)
         compare(cards.length, 1, "the albums grid drew no tile")
 
-        cards[0].pinMenu.removeItem.triggered()
+        cards[0].ensureMenu().removeItem.triggered()
 
         tryVerify(function () { return cardsOn(page).length === 0 }, 2000,
                   "an accepted removal left the tile in the grid")
@@ -810,7 +829,7 @@ TestCase {
         var page = makeCollection(2)
         var cards = cardsOn(page)
         compare(cards.length, 1, "the artists grid drew no tile")
-        var menu = cards[0].pinMenu
+        var menu = cards[0].ensureMenu()
         verify(menu, "the artist tile has no menu")
 
         bridge.setFavoriteOkForTest(false)
@@ -831,7 +850,7 @@ TestCase {
         var page = makeCollection(2)
         compare(cardsOn(page).length, 1, "the artists grid drew no tile")
 
-        cardsOn(page)[0].pinMenu.removeItem.triggered()
+        cardsOn(page)[0].ensureMenu().removeItem.triggered()
 
         tryVerify(function () { return cardsOn(page).length === 0 }, 2000,
                   "an accepted unfollow left the tile in the grid")
@@ -872,10 +891,10 @@ TestCase {
     // which has to count as refused.
     function test_an_undefined_answer_counts_as_refused() {
         var bar = makeBar()
-        bar.favoriteAction._refused(undefined, bar, "nope")
+        bar.favoriteAction._refused(undefined, "nope")
         compare(bar.favoriteAction.lastMessage, "nope",
                 "an undefined answer was taken for a success")
-        bar.favoriteAction._refused(true, bar, "nope again")
+        bar.favoriteAction._refused(true, "nope again")
         compare(bar.favoriteAction.lastMessage, "nope",
                 "a true answer was taken for a failure")
     }

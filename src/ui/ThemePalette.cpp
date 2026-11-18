@@ -31,8 +31,10 @@ struct Spec {
     const char *accent;
     const char *accentDim;
     const char *accentInk;    // ink on a solid accent fill
+    const char *accentText;   // accent as text or icon: 4.5:1 on every ground
     const char *red;
     const char *redInk;       // ink on a solid red fill
+    const char *redText;      // red as text: 4.5:1 on every ground
     const char *green;
 };
 
@@ -42,41 +44,41 @@ struct Spec {
 const Spec kSpecs[] = {
     { "sea",  "Sea",  true,
       "#000C14", "#07161E", "#0F202B", "#233B4A", "#192C39", 26,
-      "#FFFFFF", "#A0A0A0", "#6B6B6B",
-      "#0079A8", "#005A7D", "#FFFFFF",
-      "#D82C2C", "#FFFFFF", "#1DB954" },
+      "#FFFFFF", "#B5B5B5", "#8F8F8F",
+      "#0079A8", "#005A7D", "#FFFFFF", "#42BEFA",
+      "#D82C2C", "#FFFFFF", "#FF3A39", "#5DB42C" },
 
     { "pine", "Pine", true,
       "#031108", "#0F1B14", "#16251C", "#293E31", "#233429", 26,
-      "#EEF5F0", "#94A69B", "#637269",
-      "#18814E", "#105F39", "#FFFFFF",
-      "#D23535", "#FFFFFF", "#4ADE80" },
+      "#EEF5F0", "#A7BAAE", "#85948B",
+      "#18814E", "#105F39", "#FFFFFF", "#50C886",
+      "#D23535", "#FFFFFF", "#FE3D3F", "#79D961" },
 
     { "rust", "Rust", true,
       "#180A03", "#21140D", "#2C1C16", "#4B342B", "#3B2922", 26,
-      "#F7F2EF", "#A89C95", "#736B66",
-      "#C14A18", "#93340C", "#FFFFFF",
-      "#CF3939", "#FFFFFF", "#5FBF7A" },
+      "#F7F2EF", "#BFB3AB", "#968E88",
+      "#BA5702", "#8B3E00", "#FFFFFF", "#FAA36C",
+      "#CF3939", "#FFFFFF", "#FE3C40", "#5FBF7A" },
 
     { "sky",  "Sky",  false,
       "#FFFFFF", "#F2F5F8", "#E6EBF0", "#C1C8D0", "#CFD9E2", 26,
       "#08111A", "#4C5A66", "#798591",
-      "#0A6FC4", "#08528F", "#FFFFFF",
-      "#C0392B", "#FFFFFF", "#1B7F4B" },
+      "#0074B5", "#005A8C", "#FFFFFF", "#006CAD",
+      "#C51B32", "#FFFFFF", "#C51B32", "#1B7F4B" },
 
     { "sand", "Sand", false,
-      "#F6F6E0", "#EBEACC", "#DFDFB9", "#C1C18F", "#C1C193", 26,
+      "#F9F4E8", "#EFE7D8", "#E4DBC8", "#C8BCA3", "#C8BCA5", 26,
       "#1B1913", "#5D564A", "#837B6C",
-      "#2F6F4E", "#22543A", "#FFFFFF",
-      "#A8342A", "#FFFFFF", "#4F7A35" },
+      "#2F6F4E", "#22543A", "#FFFFFF", "#2B6B4B",
+      "#A8342A", "#FFFFFF", "#A8342A", "#4F7A35" },
 
-    // Sand and Clay keep distinct hues even at the near-white background;
-    // groundsAreTellableApart() in tests/tst_theme.cpp holds the distance.
+    // Sand is a warm paper, Clay a light blush; the two sit close, by choice.
+    // lightGroundsAreTellableApart() in tests/tst_theme.cpp holds the floor.
     { "clay", "Clay", false,
-      "#FFEDE4", "#FFE0D4", "#FFD1C2", "#E7AC99", "#FAC2B0", 26,
+      "#F8EFEA", "#F3E4DE", "#EED7CF", "#D2B4AB", "#E6CAC1", 26,
       "#241510", "#6E4F3E", "#96705D",
-      "#B4481C", "#8A3310", "#FFFFFF",
-      "#B3302A", "#FFFFFF", "#3F7A3A" },
+      "#AB5D2B", "#7E4118", "#FFFFFF", "#944812",
+      "#B3302A", "#FFFFFF", "#B12E29", "#3F7A3A" },
 };
 
 // ── the neutral ramps ────────────────────────────────────────────────────
@@ -96,7 +98,7 @@ struct Ramp {
 
 constexpr Ramp kNeutralDark{
     "#0A0A0A", "#141414", "#1E1E1E", "#383838", "#2A2A2A",
-    "#FFFFFF", "#A0A0A0", "#6B6B6B",
+    "#FFFFFF", "#B5B5B5", "#8F8F8F",
 };
 
 constexpr Ramp kNeutralLight{
@@ -181,6 +183,7 @@ QVariantMap build(const Spec &s, bool oled, bool tintedGreys) {
     m.insert(QStringLiteral("accent"),      accent);
     m.insert(QStringLiteral("accentDim"),   QColor(QString::fromLatin1(s.accentDim)));
     m.insert(QStringLiteral("accentInk"),    QColor(QString::fromLatin1(s.accentInk)));
+    m.insert(QStringLiteral("accentText"),  QColor(QString::fromLatin1(s.accentText)));
     m.insert(QStringLiteral("accentSoft"),  withAlpha(accent, soft));
     m.insert(QStringLiteral("accentTint"),  withAlpha(accent, tint));
     m.insert(QStringLiteral("accentWash"),  withAlpha(accent, wash));
@@ -195,6 +198,7 @@ QVariantMap build(const Spec &s, bool oled, bool tintedGreys) {
     m.insert(QStringLiteral("red"),     red);
     m.insert(QStringLiteral("redSoft"), withAlpha(red, 0.12));
     m.insert(QStringLiteral("redInk"),   QColor(QString::fromLatin1(s.redInk)));
+    m.insert(QStringLiteral("redText"),  QColor(QString::fromLatin1(s.redText)));
     m.insert(QStringLiteral("green"),   QColor(QString::fromLatin1(s.green)));
     // Pairs with accentWash, for the audio-quality badges.
     m.insert(QStringLiteral("greenWash"), withAlpha(QColor(QString::fromLatin1(s.green)), wash));

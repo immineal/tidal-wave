@@ -132,6 +132,45 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  # CI checks these files offline, as the screenshots point at the tag. Here
+  # the tag exists, so every URL is fetched, and publish waits for this job:
+  # a broken screenshot stops the release. A rehearsal before the tag exists
+  # checks offline and says so.
+  store-metadata:
+    name: The metadata stores read is valid, URLs included
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # ca-certificates: without a CA bundle each URL fails as not reachable.
+      - name: Install the validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            appstream desktop-file-utils ca-certificates
+
+      # On a release, the tag being released must be project()'s and every
+      # screenshot must name it.
+      - name: Validate both files and fetch every URL in the metainfo
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          ver=$(sed -n 's/^project(tidal-wave VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ "$EVENT" = release ]; then
+            if [ "$RELEASE_TAG" != "v$ver" ]; then
+              echo "::error::The release is $RELEASE_TAG, but project() says $ver."
+              exit 1
+            fi
+            packaging/validate-store-metadata.sh --tag "$RELEASE_TAG"
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$ver" > /dev/null; then
+            packaging/validate-store-metadata.sh --tag "v$ver"
+          else
+            echo "::notice title=Rehearsal::v$ver is not tagged yet, so the URLs are not fetched. The release run fetches them."
+            packaging/validate-store-metadata.sh --no-net --tag "v$ver"
+          fi
+
   # Qt 6.12 and FFmpeg bundled, built on Ubuntu 22.04 for its older glibc.
   appimage:
     name: tidal-wave-x86_64.AppImage
@@ -170,15 +209,26 @@ jobs:
           compression-level: 0
 
   # Runs after a failed build too, so that the missing files are named once
-  # here. Nothing is uploaded unless all six are present.
+  # here. Nothing is uploaded unless all six are present and the store
+  # metadata passed.
   publish:
     name: Checksums and upload
-    needs: [desktop, deb, appimage]
+    needs: [desktop, deb, appimage, store-metadata]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      # !cancelled() lets this job run after a failure; a failed metadata
+      # check leaves no file missing, so it is stopped here.
+      - name: Stop if the store metadata failed
+        if: needs.store-metadata.result != 'success'
+        env:
+          RESULT: ${{ needs.store-metadata.result }}
+        run: |
+          echo "::error::The store metadata check did not pass ($RESULT). Nothing is uploaded."
+          exit 1
+
       # Allowed to fail: with no artifacts at all, the next step says so.
       - name: Collect what the build jobs kept
         uses: actions/download-artifact@v8

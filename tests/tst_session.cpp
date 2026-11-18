@@ -9,12 +9,15 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QSet>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -38,7 +41,7 @@ const QByteArray kExpired =
 class FakeTidal : public QTcpServer {
 public:
     struct Seen { QByteArray verb; QString path; QByteArray bearer; QByteArray body; };
-    enum TokenAnswer { Issue, Refuse, Hold, BadGateway };
+    enum TokenAnswer { Issue, Refuse, Hold, BadGateway, RateLimited, Unavailable };
 
     FakeTidal()
     {
@@ -84,6 +87,16 @@ public:
         return out;
     }
 
+    // Answers the held profile requests, or only those for `path`.
+    void releaseProfiles(const QString &path = {})
+    {
+        const auto all = std::exchange(heldProfiles, {});
+        for (const auto &[sock, asked] : all) {
+            if (!path.isEmpty() && asked != path) { heldProfiles << qMakePair(sock, asked); continue; }
+            if (sock) answer(sock, 200, bodyFor(asked));
+        }
+    }
+
     // Answers the token requests that Hold kept waiting.
     void release()
     {
@@ -95,6 +108,13 @@ public:
     bool        refuseAll = false;      // 401 for a good token as well
     QByteArray  refusal = kExpired;
     TokenAnswer tokenAnswer = Issue;
+    // The profile answer waits for releaseProfiles(), or comes this late,
+    // as on a loaded machine.
+    bool        holdProfile = false;
+    int         profileDelayMs = 50;
+    // Who the session is, and the name each profile answers with.
+    qint64      userId = 7;
+    QHash<qint64, QByteArray> names{{7, "Robin"}, {8, "Sam"}};
     int         tokenRequests = 0;
     int         refused = 0;            // 401 answers given by the API
     QList<Seen> api;
@@ -109,16 +129,40 @@ private:
             // What a proxy says when the login host cannot be reached.
             case BadGateway: answer(sock, 502, "<html>Bad Gateway</html>"); return;
             case Refuse: answer(sock, 400, R"({"error":"invalid_grant","error_description":"gone"})"); return;
+            // Busy or down, said in the login host's own JSON.
+            case RateLimited:
+                answer(sock, 429, R"({"error":"too_many_requests","error_description":"slow down"})",
+                       "Retry-After: 1\r\n");
+                return;
+            case Unavailable:
+                answer(sock, 503, R"({"error":"server_error","error_description":"down"})");
+                return;
             case Issue:  issue(sock); return;
             }
         }
         api << seen;
         if (!refuseAll && goodTokens.contains(seen.bearer)) {
-            answer(sock, 200, R"({"userId":7,"countryCode":"DE","firstName":"Robin"})");
+            const QByteArray body = bodyFor(seen.path);
+            const bool profile = seen.path.startsWith(QLatin1String("/api/users/"));
+            if (profile && holdProfile)
+                heldProfiles << qMakePair(QPointer<QTcpSocket>(sock), seen.path);
+            else if (profile && profileDelayMs > 0)
+                QTimer::singleShot(profileDelayMs, sock, [sock, body] { answer(sock, 200, body); });
+            else
+                answer(sock, 200, body);
         } else {
             ++refused;
             answer(sock, 401, refusal);
         }
+    }
+
+    // A profile for the user in its path; anything else is the session's.
+    QByteArray bodyFor(const QString &path) const
+    {
+        const qint64 user = path.startsWith(QLatin1String("/api/users/"))
+            ? path.mid(11).toLongLong() : userId;
+        return "{\"userId\":" + QByteArray::number(user) + ",\"countryCode\":\"DE\","
+               "\"firstName\":\"" + names.value(user) + "\"}";
     }
 
     void issue(QTcpSocket *sock)
@@ -130,9 +174,10 @@ private:
                               + n + "\",\"expires_in\":3600}");
     }
 
-    static void answer(QTcpSocket *sock, int status, const QByteArray &body)
+    static void answer(QTcpSocket *sock, int status, const QByteArray &body,
+                       const QByteArray &extra = {})
     {
-        sock->write("HTTP/1.0 " + QByteArray::number(status) + " Answer\r\n"
+        sock->write("HTTP/1.0 " + QByteArray::number(status) + " Answer\r\n" + extra +
                     "Content-Type: application/json\r\nETag: \"e1\"\r\n"
                     "Content-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
         sock->flush();
@@ -140,6 +185,7 @@ private:
     }
 
     QList<QTcpSocket *> held;
+    QList<QPair<QPointer<QTcpSocket>, QString>> heldProfiles;
     int m_issued = 0;
 };
 
@@ -241,8 +287,28 @@ class TestSession : public QObject {
 
     std::unique_ptr<QTemporaryDir> m_home;
     QByteArray m_realHome;
+    QByteArray m_realConfig;
+    bool m_hadConfig = false;
+    QByteArray m_realFixedHome;
+    bool m_hadFixedHome = false;
 
-    QString credsPath() const
+    // Whether `path` lies in the scratch home, by its deepest existing parent:
+    // on macOS the temporary directory is reached through a symlink.
+    bool insideHome(const QString &path) const
+    {
+        QFileInfo at(path);
+        while (!at.exists() && at.absolutePath() != at.absoluteFilePath())
+            at = QFileInfo(at.absolutePath());
+        const QString root = QFileInfo(m_home->path()).canonicalFilePath();
+        const QString here = at.canonicalFilePath();
+        return here == root || here.startsWith(root + QLatin1Char('/'));
+    }
+
+    // Where this version keeps the session. On Linux that is the old place
+    // too, because init() points XDG_CONFIG_HOME at ~/.config.
+    QString credsPath() const { return Auth::credentialsPath(); }
+    // Where 0.4 and earlier kept it.
+    QString legacyCredsPath() const
     {
         return m_home->path() + QStringLiteral("/.config/tidal-wave/credentials.json");
     }
@@ -255,10 +321,11 @@ class TestSession : public QObject {
     }
 
     // A saved session whose token "old" expires `inSecs` from now.
-    void saveSession(qint64 inSecs)
+    void saveSession(qint64 inSecs, qint64 userId = 7, QString path = {})
     {
-        QVERIFY(QDir(m_home->path()).mkpath(QStringLiteral(".config/tidal-wave")));
-        QFile creds(credsPath());
+        if (path.isEmpty()) path = credsPath();
+        QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+        QFile creds(path);
         QVERIFY(creds.open(QIODevice::WriteOnly));
         creds.write(QJsonDocument(QJsonObject{
             {QStringLiteral("access_token"),  QStringLiteral("old")},
@@ -266,19 +333,22 @@ class TestSession : public QObject {
             {QStringLiteral("expires_at"),
              Auth::expiryToString(QDateTime::fromSecsSinceEpoch(
                  QDateTime::currentSecsSinceEpoch() + inSecs))},
-            {QStringLiteral("user_id"),       7},
+            {QStringLiteral("user_id"),       userId},
             {QStringLiteral("country_code"),  QStringLiteral("DE")},
         }).toJson());
     }
 
     // Signs in from a saved session and waits until the start-up requests
-    // (sessions, users/7) are answered.
-    void signIn(Rig &rig, qint64 expiresInSecs = 3600)
+    // (sessions, users/7) are answered and the name they bring is saved.
+    void signIn(Rig &rig, qint64 expiresInSecs = 3600, const QString &savedAt = {})
     {
-        saveSession(expiresInSecs);
+        saveSession(expiresInSecs, 7, savedAt);
         rig.auth.loadCredentials();
         QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
         QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.seenFor(QStringLiteral("/api/users/7")).size(), 1, 5000);
+        // The server has seen the request; its answer lands and is saved later.
+        if (!rig.tidal.holdProfile)
+            QTRY_COMPARE_WITH_TIMEOUT(rig.auth.username(), QStringLiteral("Robin"), 5000);
         QTest::qWait(20);
         rig.tidal.api.clear();
     }
@@ -287,16 +357,82 @@ private slots:
     void init()
     {
         m_realHome = qgetenv("HOME");
+        m_hadConfig = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+        m_realConfig = qgetenv("XDG_CONFIG_HOME");
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
         qputenv("HOME", m_home->path().toUtf8());
+        // Both, or the credentials of the account on this machine are read,
+        // written and deleted.
+        qputenv("XDG_CONFIG_HOME", (m_home->path() + QStringLiteral("/.config")).toUtf8());
         QCOMPARE(QDir::homePath(), m_home->path());
+#ifdef Q_OS_MACOS
+        // macOS finds ~/Library from the account, not from HOME.
+        m_hadFixedHome = qEnvironmentVariableIsSet("CFFIXED_USER_HOME");
+        m_realFixedHome = qgetenv("CFFIXED_USER_HOME");
+        qputenv("CFFIXED_USER_HOME", m_home->path().toUtf8());
+#endif
+        QVERIFY2(insideHome(Auth::credentialsPath()),
+                 qPrintable(QStringLiteral("the session would be kept outside the scratch home: ")
+                            + Auth::credentialsPath()));
     }
 
     void cleanup()
     {
+#ifdef Q_OS_MACOS
+        if (m_hadFixedHome) qputenv("CFFIXED_USER_HOME", m_realFixedHome);
+        else qunsetenv("CFFIXED_USER_HOME");
+#endif
         qputenv("HOME", m_realHome);
+        if (m_hadConfig) qputenv("XDG_CONFIG_HOME", m_realConfig);
+        else qunsetenv("XDG_CONFIG_HOME");
         m_home.reset();
+    }
+
+    // ── signing in ──────────────────────────────────────────────────────
+    // A saved token that is still good: the session is checked behind it,
+    // and that check must not announce the sign-in a second time, which
+    // would load the whole library twice.
+    void aSavedSessionSignsInOnce()
+    {
+        Rig rig;
+        QSignalSpy signedIn(&rig.auth, &Auth::loginSucceeded);
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QTest::qWait(100);
+        QCOMPARE(signedIn.count(), 1);
+    }
+
+    // ── where the session is kept ───────────────────────────────────────
+    // XDG_CONFIG_HOME is honoured, the app's Application Support folder on
+    // macOS, and a session saved by an earlier version under ~/.config is
+    // still read, then moved.
+    void theSessionIsKeptWhereTheDesktopKeepsSettings()
+    {
+#ifdef Q_OS_MACOS
+        const QString moved = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                            + QStringLiteral("/credentials.json");
+        QVERIFY2(moved.contains(QLatin1String("/Library/Application Support/")), qPrintable(moved));
+#else
+        const QString elsewhere = m_home->path() + QStringLiteral("/xdg");
+        qputenv("XDG_CONFIG_HOME", elsewhere.toUtf8());
+        const QString moved = elsewhere + QStringLiteral("/tidal-wave/credentials.json");
+#endif
+        Rig rig;
+        signIn(rig, 3600, legacyCredsPath());
+        if (QTest::currentTestFailed()) return;
+
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(moved), 2000);
+        QVERIFY(insideHome(moved));
+        QFile f(moved);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(f.readAll()).object()[QStringLiteral("user_id")].toInt(), 7);
+        QCOMPARE(QFileInfo(moved).permissions() & ~(QFileDevice::ReadUser | QFileDevice::WriteUser),
+                 QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        QVERIFY2(!QFile::exists(legacyCredsPath()), "the old copy of the tokens was left behind");
+
+        rig.auth.logout();
+        QVERIFY(!QFile::exists(moved));
     }
 
     // ── the clock runs past the expiry while the process lives ──────────
@@ -676,6 +812,132 @@ private slots:
         QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
         QVERIFY(rig.auth.accessToken().isEmpty());
         QVERIFY(!QFile::exists(credsPath()));
+    }
+
+    void aProfileThatComesAfterTheSessionIsNotSaved_data()
+    {
+        QTest::addColumn<bool>("signOut");
+        QTest::newRow("signed out")                 << true;
+        QTest::newRow("refused at a refresh") << false;
+    }
+
+    // The profile asked for at the start lands after the session ended, and
+    // no session file comes back.
+    void aProfileThatComesAfterTheSessionIsNotSaved()
+    {
+        QFETCH(bool, signOut);
+        Rig rig;
+        rig.tidal.holdProfile = true;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QVERIFY(QFile::exists(credsPath()));
+
+        if (signOut) {
+            rig.auth.logout();
+        } else {
+            rig.tidal.goodTokens.clear();
+            rig.tidal.tokenAnswer = FakeTidal::Refuse;
+            QSignalSpy expired(&rig.auth, &Auth::sessionExpired);
+            rig.send(QStringLiteral("get"), [](QString) {});
+            QTRY_COMPARE_WITH_TIMEOUT(expired.count(), 1, 5000);
+        }
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
+        QVERIFY(!QFile::exists(credsPath()));
+
+        rig.tidal.releaseProfiles();
+        QTest::qWait(200);
+        QVERIFY2(!QFile::exists(credsPath()), qPrintable(QString::fromUtf8(
+            QJsonDocument(savedCreds()).toJson(QJsonDocument::Compact))));
+        QVERIFY(rig.auth.username().isEmpty());
+    }
+
+    // A session that ends takes the account's name with it, so the sidebar
+    // and the settings show no one until the next sign-in names someone.
+    void theNameGoesWithTheSession_data()
+    {
+        QTest::addColumn<bool>("signOut");
+        QTest::newRow("signed out")           << true;
+        QTest::newRow("refused at a refresh") << false;
+    }
+
+    void theNameGoesWithTheSession()
+    {
+        QFETCH(bool, signOut);
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QCOMPARE(rig.auth.username(), QStringLiteral("Robin"));
+        QSignalSpy named(&rig.auth, &Auth::usernameChanged);
+
+        if (signOut) {
+            rig.auth.logout();
+        } else {
+            rig.tidal.goodTokens.clear();
+            rig.tidal.tokenAnswer = FakeTidal::Refuse;
+            QSignalSpy expired(&rig.auth, &Auth::sessionExpired);
+            rig.send(QStringLiteral("get"), [](QString) {});
+            QTRY_COMPARE_WITH_TIMEOUT(expired.count(), 1, 5000);
+        }
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
+        QCOMPARE(rig.auth.username(), QString());
+        QCOMPARE(named.count(), 1);
+    }
+
+    // The profile of the account before lands once another one signed in:
+    // its name is not the new account's.
+    void aProfileForTheAccountBeforeNamesNoOne()
+    {
+        Rig rig;
+        rig.tidal.holdProfile = true;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        rig.auth.logout();
+
+        rig.tidal.userId = 8;
+        saveSession(3600, 8);
+        rig.auth.loadCredentials();
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
+        QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.seenFor(QStringLiteral("/api/users/8")).size(), 1, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(rig.auth.userId(), qint64(8), 5000);
+
+        rig.tidal.releaseProfiles(QStringLiteral("/api/users/7"));
+        QTest::qWait(200);
+        QCOMPARE(rig.auth.username(), QString());
+        QVERIFY(!savedCreds().contains(QStringLiteral("username"))
+                || savedCreds().value(QStringLiteral("username")).toString().isEmpty());
+
+        rig.tidal.releaseProfiles(QStringLiteral("/api/users/8"));
+        QTRY_COMPARE_WITH_TIMEOUT(rig.auth.username(), QStringLiteral("Sam"), 5000);
+    }
+
+    // Busy or down is no refusal of the refresh token, whatever the body
+    // says: the session stays.
+    void aRefreshTheLoginHostCannotServeKeepsTheSession_data()
+    {
+        QTest::addColumn<int>("answer");
+        QTest::newRow("429 with an error in JSON") << int(FakeTidal::RateLimited);
+        QTest::newRow("503 with an error in JSON") << int(FakeTidal::Unavailable);
+    }
+
+    void aRefreshTheLoginHostCannotServeKeepsTheSession()
+    {
+        QFETCH(int, answer);
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        rig.tidal.goodTokens.clear();
+        rig.tidal.tokenAnswer = FakeTidal::TokenAnswer(answer);
+        QSignalSpy expired(&rig.auth, &Auth::sessionExpired);
+
+        QStringList errors;
+        rig.send(QStringLiteral("get"), [&errors](QString e) { errors << e; });
+        QTRY_COMPARE_WITH_TIMEOUT(errors.size(), 1, 5000);
+        QTest::qWait(50);
+        QVERIFY(!errors.first().isEmpty());
+        QCOMPARE(expired.count(), 0);
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
+        QCOMPARE(savedCreds()[QStringLiteral("refresh_token")].toString(),
+                 QStringLiteral("refresh-old"));
     }
 
     // An answer that is not the login host's is the network's fault: the

@@ -33,6 +33,10 @@ QString Feedback::mailAddress() const {
     return QLatin1String(kMailbox);
 }
 
+QString Feedback::privacyUrl() const {
+    return QStringLiteral("https://github.com/%1#privacy").arg(UpdateCheck::repoSlug());
+}
+
 QString Feedback::appVersion() const {
     return QLatin1String(TIDALWAVE_VERSION);
 }

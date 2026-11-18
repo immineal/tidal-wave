@@ -61,7 +61,8 @@ chmod +x /tmp/tidal-wave.AppImage
 (cd /tmp && ./tidal-wave.AppImage --appimage-extract >/dev/null)
 ROOT=/tmp/squashfs-root
 ID=io.github.immineal.TidalWave
-key() { sed -n "s/^$1=//p" "$ROOT/$ID.desktop"; }
+# The main group only: the actions below it have keys of the same names.
+key() { sed -n "/^\[Desktop Entry\]/,/^\[Desktop Action/ s/^$1=//p" "$ROOT/$ID.desktop"; }
 check() {
     local what="$1"
     shift
@@ -72,7 +73,7 @@ check() {
 check "the one entry at the top is $ID.desktop" \
     [ "$(cd "$ROOT" && echo *.desktop)" = "$ID.desktop" ]
 check "Exec names the bundled binary" \
-    [ "$(key Exec)" = tidal-wave -a -x "$ROOT/usr/bin/tidal-wave" ]
+    [ "$(key Exec | cut -d" " -f1)" = tidal-wave -a -x "$ROOT/usr/bin/tidal-wave" ]
 check "Icon is tidal-wave" [ "$(key Icon)" = tidal-wave ]
 # A tool's copy of the entry has a file name of the tool's own, so a shell can
 # match the window through StartupWMClass alone: against the app id on

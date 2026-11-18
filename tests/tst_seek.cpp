@@ -7,8 +7,13 @@
 #include <QDataStream>
 #include <QFile>
 #include <QHostAddress>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMediaDevices>
 #include <QMediaPlayer>
+#include <QProcess>
+#include <QSet>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -329,7 +334,9 @@ private slots:
         connect(&player, &Player::positionChanged, &player, [&ends, &positions] {
             if (ends > 0) ++positions;
         });
-        QTRY_VERIFY2_WITH_TIMEOUT(ends > 0, "the track never reached its end", 15000);
+        QTRY_VERIFY2_WITH_TIMEOUT(ends > 0, qPrintable(QStringLiteral(
+            "the track never reached its end: at %1 ms, status %2, state %3")
+            .arg(mp->position()).arg(int(mp->mediaStatus())).arg(int(mp->playbackState()))), 15000);
         QSignalSpy plays(&player, &Player::playingChanged);
         QTest::qWait(1500);
 
@@ -349,7 +356,64 @@ private slots:
         QVERIFY(player.playing());
     }
 
+    // The sound server stops taking the track's audio for good, as when it
+    // cannot activate the stream's links. It pauses this process's stream only.
+    void aTrackTheSoundServerLetGoOfPlaysToItsEnd()
+    {
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        QSKIP("Qt 6.4's own watch wakes the reader and makes no new stream");
+#endif
+        if (const char *why = obstacle(m_tidal)) QSKIP(why);
+        TidalApi    api;
+        TidalClient client{&api};
+        Player      player{&client};
+        QMediaPlayer *mp = startPlaying(player, m_tidal);
+        QVERIFY(mp);
+        Watch watch(mp);
+
+        QTRY_VERIFY_WITH_TIMEOUT(mp->position() >= 300, 10000);
+        const QList<qint64> streams = ownSoundNodes();
+        if (streams.isEmpty())
+            QSKIP("needs PipeWire, whose pw-dump and pw-cli find and pause this process's stream");
+        for (const qint64 node : streams)
+            QVERIFY2(QProcess::execute(QStringLiteral("pw-cli"),
+                         { QStringLiteral("send-command"), QString::number(node),
+                           QStringLiteral("Pause"), QStringLiteral("{}") }) == 0,
+                     "pw-cli could not pause the track's stream");
+
+        QTRY_VERIFY2_WITH_TIMEOUT(watch.ended, qPrintable(QStringLiteral(
+            "the track stood still at %1 ms").arg(mp->position())), 20000);
+        QVERIFY2(watch.furthest >= kProgDurationMs - 500,
+                 qPrintable(QStringLiteral("the track ended at %1 ms").arg(watch.furthest)));
+    }
+
 private:
+    // This process's streams as PipeWire numbers them, or none where there is
+    // no PipeWire to ask.
+    static QList<qint64> ownSoundNodes()
+    {
+        QProcess dump;
+        dump.start(QStringLiteral("pw-dump"), {});
+        if (!dump.waitForFinished(10000) || dump.exitCode() != 0) return {};
+        const QJsonArray objects = QJsonDocument::fromJson(dump.readAllStandardOutput()).array();
+        const auto number = [](const QJsonValue &v) { return v.toVariant().toLongLong(); };
+        const auto props  = [](const QJsonValue &o) {
+            return o[QStringLiteral("info")][QStringLiteral("props")].toObject();
+        };
+        // The process owns clients, and its streams are nodes of those.
+        QSet<qint64> clients;
+        for (const QJsonValue &o : objects)
+            if (o[QStringLiteral("type")].toString() == QStringLiteral("PipeWire:Interface:Client")
+                && number(props(o)[QStringLiteral("application.process.id")]) == QCoreApplication::applicationPid())
+                clients.insert(number(o[QStringLiteral("id")]));
+        QList<qint64> nodes;
+        for (const QJsonValue &o : objects)
+            if (o[QStringLiteral("type")].toString() == QStringLiteral("PipeWire:Interface:Node")
+                && clients.contains(number(props(o)[QStringLiteral("client.id")])))
+                nodes.append(number(o[QStringLiteral("id")]));
+        return nodes;
+    }
+
     // Why this Qt on this machine cannot run these tests on a track, or null.
     const char *obstacle(const QString &track) const
     {

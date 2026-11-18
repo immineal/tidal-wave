@@ -55,8 +55,8 @@ TestCase {
                                         albums: S.albums(20), artists: S.artists(20),
                                         playlists: S.playlists(20) }); break
         case 2: S.fill(page, { activeTab: 0 })
-                missed = S.fill(page, { filteredTracks: S.tracks(40), filteredAlbums: S.albums(30),
-                                        filteredArtists: S.artists(30), filteredPlaylists: S.playlists(30),
+                missed = S.fill(page, { savedTracks: S.tracks(40), savedAlbums: S.albums(30),
+                                        savedArtists: S.artists(30), savedPlaylists: S.playlists(30),
                                         mixes: S.mixes(12) }); break
         case 3: S.fill(page, { albumId: 42 })
                 missed = S.fill(page, { albumData: { title: "Ein langer Albumtitel (Deluxe Edition)",
@@ -69,10 +69,11 @@ TestCase {
                 missed = S.fill(page, { artistData: { name: "Ein langer Interpretenname",
                                                       bio: "Eine Biografie über mehrere Sätze, "
                                                          + "damit der Textblock wirklich umbricht.",
-                                                      coverUrl750: "", similarArtists: S.artists(10) },
+                                                      coverUrl750: "" },
+                                        similarArtists: S.artists(10),
                                         topTracks: S.tracks(10), albums: S.albums(18) }); break
         case 5: S.fill(page, { playlistUuid: "uuid-stress" })
-                missed = S.fill(page, { playlistType: "USER", playlistTitle: "Eine lange Wiedergabeliste",
+                missed = S.fill(page, { playlistType: "USER", playlistEditable: true, playlistTitle: "Eine lange Wiedergabeliste",
                                         playlistDescription: "Eine Beschreibung über mehrere Zeilen.",
                                         playlistDuration: 7322, tracks: S.tracks(25) }); break
         case 6: S.fill(page, { mixId: "mix-stress" })

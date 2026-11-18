@@ -142,10 +142,6 @@ TestCase {
         HorizontalSection { width: 900 }
     }
     Component {
-        id: pageHeaderC
-        PageHeader { width: 500 }
-    }
-    Component {
         id: pillC
         PillButton { }
     }
@@ -279,7 +275,6 @@ TestCase {
             { tag: "SideBar",           c: sidebarC    },
             { tag: "PlayerBar",         c: playerBarC  },
             { tag: "HorizontalSection", c: sectionC    },
-            { tag: "PageHeader",        c: pageHeaderC },
             { tag: "CollectionPage",    c: collectionC },
             { tag: "AlbumPage",         c: albumPageC  },
             { tag: "PlaylistPage",      c: playlistPageC },
@@ -358,7 +353,7 @@ TestCase {
         verify(card, "the card was not created")
         settle(holder)
 
-        card.pinMenu.showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
+        card.ensureMenu().showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
         tryVerify(function () { return card.pinMenu.visible }, 2000, "the card menu did not open")
         verify(sweep(card.pinMenu.contentItem, "the pin menu") > 0,
                "the sweep found no labels at all, so it proved nothing")
@@ -424,7 +419,7 @@ TestCase {
     function test_a_menu_at_the_right_edge_stays_on_screen() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var menu = createTemporaryObject(probeMenuC, holder,
-                                         { longLabel: "Aus der Mediathek entfernen" })
+                                         { longLabel: "Aus der Sammlung entfernen" })
         // Three pixels from the right edge of the window, which is where a
         // right-click on the last column of a list lands.
         menu.popup(holder.width - 3, 40)
@@ -491,7 +486,7 @@ TestCase {
         "album", "artist", "playlist", "mix", "pin", "pin-filled", "grip",
         "speaker", "cast", "queue", "volume-high", "volume-mute",
         // The rest of what a context menu asks for.
-        "next", "plus", "waves", "copy"
+        "next", "plus", "waves", "copy", "folder"
     ]
 
     function markCases() {
@@ -708,9 +703,10 @@ TestCase {
                 var c = kids[i]
                 if (typeof c.radius === "number" && c.children.length === 0
                         && c.width > 0 && c.height > 0) {
-                    var at = c.mapToItem(ind, 0, 0)
-                    out.push({ x: at.x, top: at.y, bottom: at.y + c.height,
-                               w: c.width, h: c.height })
+                    // Both corners mapped: the bars may sit under a transform.
+                    var at = c.mapToItem(ind, 0, 0), end = c.mapToItem(ind, c.width, c.height)
+                    out.push({ x: at.x, top: at.y, bottom: end.y,
+                               w: end.x - at.x, h: end.y - at.y, aa: c.antialiasing })
                 } else {
                     walk(c)
                 }
@@ -849,6 +845,125 @@ TestCase {
             compare(gap, gap0,
                     row.tag + ": gap " + (k - 1) + " is " + gap
                     + " against the first gap at " + gap0)
+        }
+    }
+
+    // The playing mark at the sizes it is drawn at (queue 16x14, track rows
+    // 14x14) on 1x, 1.5x and 2x screens: every bar edge on a whole device
+    // pixel, one bar width and one gap, parked and while moving.
+    function test_the_playing_mark_sits_on_the_pixel_grid_data() {
+        var out = []
+        var sizes = [{ w: 16, h: 14, at: "queue" }, { w: 14, h: 14, at: "track row" }]
+        var dprs = [1, 1.25, 1.5, 2]
+        for (var s = 0; s < sizes.length; ++s)
+            for (var d = 0; d < dprs.length; ++d)
+                for (var m = 0; m < 2; ++m)
+                    out.push({ tag: sizes[s].at + " @" + dprs[d] + "x" + (m ? " moving" : " parked"),
+                               w: sizes[s].w, h: sizes[s].h, dpr: dprs[d], moving: m === 1 })
+        return out
+    }
+
+    function test_the_playing_mark_sits_on_the_pixel_grid(row) {
+        app.setReducedMotionForTest(!row.moving)
+        var holder = createTemporaryObject(holderC, testCase, { width: 200, height: 200 })
+        var probe = createTemporaryObject(playingProbeC, holder, {})
+        verify(probe, "the probe was not created")
+        var ind = probe.indicator
+        ind.dpr = row.dpr
+        ind.width = row.w
+        ind.height = row.h
+        settle(holder)
+
+        // Moving: several samples, so mid-animation heights are checked too.
+        for (var sample = 0; sample < (row.moving ? 6 : 1); ++sample) {
+            if (sample > 0) wait(37)
+            var bars = barsOf(ind)
+            compare(bars.length, 5, row.tag + ": the playing mark is five bars")
+            function whole(v, what) {
+                var dev = v * row.dpr
+                verify(Math.abs(dev - Math.round(dev)) < 0.001,
+                       row.tag + ": " + what + " is at " + dev.toFixed(3)
+                       + " device px, not a whole pixel")
+            }
+            var gap0 = bars[1].x - (bars[0].x + bars[0].w)
+            verify(gap0 * row.dpr >= 0.999, row.tag + ": the bars touch")
+            for (var i = 0; i < bars.length; ++i) {
+                // A feathered edge is a blurred one, even on the grid.
+                verify(!bars[i].aa, row.tag + ": bar " + i + " is antialiased")
+                whole(bars[i].x, "bar " + i + "'s left edge")
+                whole(bars[i].w, "bar " + i + "'s width")
+                whole(bars[i].top, "bar " + i + "'s top")
+                whole(bars[i].bottom, "bar " + i + "'s bottom")
+                fuzzyCompare(bars[i].w, bars[0].w, 0.001,
+                             row.tag + ": bar " + i + " is not as wide as bar 0")
+                if (i > 0)
+                    fuzzyCompare(bars[i].x - (bars[i - 1].x + bars[i - 1].w), gap0, 0.001,
+                                 row.tag + ": gap " + (i - 1) + " differs from the first")
+                verify(bars[i].x >= -0.001 && bars[i].x + bars[i].w <= ind.width + 0.001,
+                       row.tag + ": bar " + i + " reaches outside the box")
+            }
+        }
+    }
+
+    // The same, in pixels, where layouts put the mark: at a fraction of a
+    // pixel. Every bar has to come out equally wide, on one baseline, with
+    // no half-tone edge.
+    Component {
+        id: placedMarkC
+        Rectangle {
+            id: ground
+            property real at: 0
+            // A scale transform stands in for the screen's: the grab is at 1x.
+            property real dpr: 1
+            width: 40 * dpr; height: 40 * dpr
+            color: "white"
+            Item {
+                transform: Scale { xScale: ground.dpr; yScale: ground.dpr }
+                VectorIcon.PlayingIndicator {
+                    x: 10 + ground.at; y: 10 + ground.at
+                    width: 16; height: 14
+                    dpr: ground.dpr
+                    color: "black"
+                }
+            }
+        }
+    }
+
+    function test_the_playing_mark_is_crisp_at_any_offset_data() {
+        var out = [], ats = [0, 0.25, 0.5, 0.75], dprs = [1, 1.5, 2]
+        for (var d = 0; d < dprs.length; ++d)
+            for (var a = 0; a < ats.length; ++a)
+                out.push({ tag: dprs[d] + "x +" + ats[a], at: ats[a], dpr: dprs[d] })
+        return out
+    }
+
+    function test_the_playing_mark_is_crisp_at_any_offset(row) {
+        app.setReducedMotionForTest(true)
+        var holder = createTemporaryObject(holderC, testCase, { width: 100, height: 100 })
+        var probe = createTemporaryObject(placedMarkC, holder, { at: row.at, dpr: row.dpr })
+        verify(probe, "the probe was not created")
+        settle(holder)
+        wait(80)
+        var img = grabImage(probe)
+        var bars = [], half = 0, inBar = false
+        for (var x = 0; x < img.width; ++x) {
+            var top = -1, bottom = -1
+            for (var y = 0; y < img.height; ++y) {
+                var v = img.red(x, y)
+                if (v > 0.1 && v < 0.9) ++half
+                if (v <= 0.5) { if (top < 0) top = y; bottom = y }
+            }
+            if (top >= 0 && !inBar) bars.push({ x: x, w: 0, bottom: bottom })
+            if (top >= 0) { bars[bars.length - 1].w++; inBar = true } else inBar = false
+            if (top >= 0) bars[bars.length - 1].bottom = Math.max(bars[bars.length - 1].bottom, bottom)
+        }
+        compare(half, 0, row.tag + ": " + half + " half-tone pixels, so the edges are soft")
+        compare(bars.length, 5, row.tag + ": " + bars.length + " bars drawn")
+        for (var i = 1; i < bars.length; ++i) {
+            compare(bars[i].w, bars[0].w, row.tag + ": bar " + i + " is not as wide as bar 0")
+            compare(bars[i].bottom, bars[0].bottom, row.tag + ": bar " + i + " is off the baseline")
+            compare(bars[i].x - bars[i - 1].x, bars[1].x - bars[0].x,
+                    row.tag + ": gap " + (i - 1) + " differs from the first")
         }
     }
 
@@ -1015,8 +1130,8 @@ TestCase {
         var card = createTemporaryObject(mediaCardC, holder, {
             title: "Ein Album", subtitle: "Eine Band", pinKind: "album", itemId: "42"
         })
-        card.pinMenu.trackSource = function (cb) { cb([]) }
-        card.pinMenu.removeLabel = "Aus der Mediathek entfernen"
+        card.ensureMenu().trackSource = function (cb) { cb([]) }
+        card.pinMenu.removeLabel = "Aus der Sammlung entfernen"
         settle(holder)
         card.pinMenu.showPin(0, 0, "album", "42", "Ein Album", "Eine Band", "")
         settle(holder)
@@ -1058,9 +1173,7 @@ TestCase {
         return null
     }
 
-    // The queue row's menu is per delegate. Reached through the delegate,
-    // with findChild() for the last step because a Popup is a QObject and
-    // not in any item's children.
+    // The queue has one row menu for every row, opened for a queued row.
     function test_every_entry_of_the_queue_menu_carries_an_icon() {
         var holder = createTemporaryObject(holderC, testCase, { width: 420, height: 700 })
         player.setCurrentTrackForTest(makeTrack())
@@ -1069,12 +1182,16 @@ TestCase {
         var panel = createTemporaryObject(queueC, holder, {})
         settle(holder)
 
-        var row = firstItemNamed(panel, "queueEntry")
-        verify(row, "the queue drew no rows, so nothing was asserted")
-        var menu = findChild(row, "queueRowMenu")
-        verify(menu, "the queue row menu was not found, so nothing was asserted")
-        menu.popup()
+        var row = null
+        for (var i = 0; i < panel.queueList.count && !row; ++i) {
+            var it = panel.queueList.itemAtIndex(i)
+            if (it && it.kind === "manual") row = it
+        }
+        verify(row, "the queue drew no queued row, so nothing was asserted")
+        var menu = panel.rowMenu
+        panel.openRowMenu(row, false)
         settle(holder)
+        verify(menu.visible, "the queue row menu did not open")
         checkEveryEntryCarriesAnIcon(menu, "the queue menu", 1)
         menu.close()
     }
@@ -1094,7 +1211,7 @@ TestCase {
 
         var ico = iconOf(found)
         var label = collectTexts(found, [])[0]
-        compare("" + ico.color, "" + Theme.red,
+        compare("" + ico.color, "" + Theme.redText,
                 '"' + found.text + '" draws its icon in ' + ico.color + ', not the danger red')
         compare("" + ico.color, "" + label.color,
                 "the icon and the label have drifted apart")
@@ -1136,7 +1253,7 @@ TestCase {
         return [
             { tag: "Add to queue",      label: "Zur Warteschlange hinzufügen" },
             { tag: "Remove from queue", label: "Aus der Warteschlange entfernen" },
-            { tag: "Remove from library", label: "Aus der Mediathek entfernen" },
+            { tag: "Remove from collection", label: "Aus der Sammlung entfernen" },
             { tag: "Unfollow artist",   label: "Künstler nicht mehr folgen" },
             { tag: "Unlike",            label: "Gefällt mir nicht mehr" },
             { tag: "Remove from playlist", label: "Aus der Playlist entfernen" },

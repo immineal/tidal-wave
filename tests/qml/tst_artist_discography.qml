@@ -481,7 +481,7 @@ TestCase {
 
         compare(cardTitles(s.albums), ["Nachtfahrt", "Nachtfahrt", "Nachtfahrt", "Morgenrot"])
         compare(cardLines(s.albums),
-                ["2012 • 14 tracks", "13 tracks • Dolby Atmos", "12 tracks • Dolby Atmos", "2021"],
+                ["2012 · 14 tracks", "13 tracks · Dolby Atmos", "12 tracks · Dolby Atmos", "2021"],
                 "what the cards of one title read under it")
     }
 
@@ -504,19 +504,29 @@ TestCase {
         var s = openWith(oneTitleOneCount())
 
         compare(cardLines(s.albums),
-                ["2021 • 14 tracks • 51 min", "2021 • 14 tracks • 58 min", "13 tracks • Dolby Atmos"])
+                ["2021 · 14 tracks · 51 min", "2021 · 14 tracks · 58 min", "13 tracks · Dolby Atmos"])
     }
 
     function test_no_second_line_is_cut_data() {
         return [
-            { tag: "English", language: "en", atmosLine: "13 tracks • Dolby Atmos",
-              lengthLine: "2021 • 14 tracks • 51 min" },
-            { tag: "German",  language: "de", atmosLine: "13 Titel • Dolby Atmos",
-              lengthLine: "2021 • 14 Titel • 51 Min." }
+            { tag: "English", language: "en", atmosLine: "13 tracks · Dolby Atmos",
+              lengthLine: "2021 · 14 tracks · 51 min" },
+            { tag: "German",  language: "de", atmosLine: "13 Titel · Dolby Atmos",
+              lengthLine: "2021 · 14 Titel · 51 Min." }
         ]
     }
 
-    // A card is 160 px wide and cuts its second line with an ellipsis.
+    TextMetrics { id: metrics }
+
+    // How wide `line` is at the size it asks for, in the font it gets.
+    function naturalWidth(line) {
+        metrics.font = line.font
+        metrics.text = line.text
+        return metrics.advanceWidth
+    }
+
+    // A card is 160 px wide. A second line too long for it shrinks, down to
+    // the micro size, and keeps its size when it fits.
     function test_no_second_line_is_cut(row) {
         speak(row.language)
         // Wide enough that every card of the row is drawn.
@@ -530,7 +540,34 @@ TestCase {
             var line = findChild(cards[i], "cardSubtitle")
             verify(!line.truncated, "the second line \"" + line.text + "\" is cut at "
                    + line.width + " px")
+            if (naturalWidth(line) <= line.width)
+                compare(line.fontInfo.pixelSize, Theme.fontMeta,
+                        "\"" + line.text + "\" fits and was shrunk anyway")
         }
+
+        // Whatever the default font: the length card a tenth narrower than
+        // its line, which fits again in a smaller size.
+        var card = cards[4]
+        var wide = findChild(card, "cardSubtitle")
+        card.cardSize = Math.floor(naturalWidth(wide) / 1.1)
+        verify(!wide.truncated, "the second line \"" + wide.text + "\" is cut at "
+               + wide.width + " px")
+        verify(wide.fontInfo.pixelSize < Theme.fontMeta
+               && wide.fontInfo.pixelSize >= Theme.fontMicro,
+               "the line is drawn at " + wide.fontInfo.pixelSize + " px")
+        // The row's cards stay one height.
+        compare(wide.height, findChild(cards[0], "cardSubtitle").height)
+    }
+
+    // Too long even in the micro size: cut with an ellipsis, as before.
+    function test_a_line_too_long_to_shrink_is_cut() {
+        speak("en")
+        var s = openWith(oneTitleThreeTimes().concat(oneTitleOneCount()), 1600)
+        var card = cardsOf(s.albums)[4]
+        var line = findChild(card, "cardSubtitle")
+        card.cardSize = Math.floor(naturalWidth(line) / 1.5)
+        verify(line.truncated, "a line half again too long was not cut")
+        compare(line.fontInfo.pixelSize, Theme.fontMicro)
     }
 
     // The second line is translated words, so a pin stores the year.

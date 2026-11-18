@@ -11,12 +11,14 @@
 #include <QVariantMap>
 
 #include <functional>
+#include <memory>
 
 #include "Models.h"
 
 class TidalClient;
 class TidalBridge;
 class PinStore;
+class QTimer;
 
 // The sidebar's model: every saved playlist, album, artist and mix in one flat
 // list, plus the local search index over them and over songs. Order is the
@@ -28,19 +30,27 @@ class LibraryIndex : public QObject {
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(bool indexing READ indexing NOTIFY indexingChanged)
+    // The last refresh got nothing for a list and had no copy of it on disk,
+    // so an empty sidebar is not an empty library.
+    Q_PROPERTY(bool loadFailed READ loadFailed NOTIFY loadFailedChanged)
 public:
     explicit LibraryIndex(TidalClient *client, PinStore *pins, QObject *parent = nullptr);
     ~LibraryIndex() override;
 
-    // Tidal caps a favourites response at 100 items whatever `limit` asks for.
+    // Playlists page at pageSize. The favourites lists come in one page and
+    // page at these two only when Tidal refuses that page.
     static constexpr int pageSize = 50;
+    static constexpr int trackPageSize = 100;
     // A backstop on paging for an API that sends neither a short page nor a
-    // repeated one.
-    static constexpr int maxPages = 100;
+    // repeated one. Liked songs arrive oldest first, so a low cap loses the newest.
+    static constexpr int maxPages = 2000;
 
     QVariantList entries() const;
     bool loading() const;
     bool indexing() const;
+    bool loadFailed() const { return m_loadFailed; }
+    // The last refresh failed somewhere, or showed the disk copy for a list.
+    bool needsRefresh() const { return m_failedParts != 0 || m_partialRun; }
 
     void setUserId(qint64 uid);
     qint64 userId() const { return m_userId; }
@@ -75,8 +85,7 @@ public:
     // server answered with. Writes what mergePlaylistMeta() copies and
     // nothing else.
     void refreshPlaylistMeta(const Tidal::Playlist &p);
-    // `kind` is album/artist/track/mix. Nothing in the interface unfavourites
-    // a playlist.
+    // `kind` is album/artist/track/mix, or playlist for one the user deleted.
     void removeEntry(const QString &kind, const QString &id);
 
     // The library list filtered by kind, with nothing typed. Empty `kinds`
@@ -100,6 +109,7 @@ signals:
     void entriesChanged();
     void loadingChanged();
     void indexingChanged();
+    void loadFailedChanged();
 
 protected:
     using TracksCb    = std::function<void(QList<Tidal::Track>,    QString)>;
@@ -108,16 +118,22 @@ protected:
     using PlaylistsCb = std::function<void(QList<Tidal::Playlist>, QString)>;
     using MixesCb     = std::function<void(QList<Tidal::Mix>,      QString)>;
 
-    // The only six places this class reaches the network. They forward to
+    // The only places this class reaches the network. They forward to
     // TidalClient; a test subclass overrides them and serves its own pages.
     virtual void fetchPlaylistPage(int offset, int limit, PlaylistsCb cb);
     virtual void fetchAlbumPage   (int offset, int limit, AlbumsCb    cb);
     virtual void fetchArtistPage  (int offset, int limit, ArtistsCb   cb);
     virtual void fetchTrackPage   (int offset, int limit, TracksCb    cb);
+    // The liked songs in the same order by order=INDEX, for paging.
+    virtual void fetchTrackIndexPage(int offset, int limit, TracksCb  cb);
     // Mixes come from a page feed that has no offset, so there is nothing to
     // page through.
     virtual void fetchMixList     (MixesCb cb);
     virtual void fetchAlbumTracklist(qint64 albumId, TracksCb cb);
+
+    // Hands the cache as it stands to the writer thread; costs the GUI
+    // thread a copy of two shared lists. Protected so a test can time it.
+    void saveTrackCache();
 
 private:
     // One row of the sidebar, or one song in the search index. The folded and
@@ -129,6 +145,7 @@ private:
         QString subtitle;
         QString imageUrl;
         QString playlistType;        // playlists: USER / EDITORIAL, see toRow
+        bool    editable = false;    // playlists: made by this account
         QString mixType;             // mixes: DISCOVERY_MIX / TRACK_MIX / ..., see toRow
         qint64  albumId = 0;         // tracks: the saved album holding them
         int     trackCount = 0;      // albums and playlists; QML formats it,
@@ -187,8 +204,13 @@ private:
     // Drops the play times of songs that have left the library.
     void pruneSongPlays();
     void loadTrackCache();
-    void saveTrackCache() const;
+    // Saves within kTrackCacheSaveMs, however many albums land meanwhile.
+    void scheduleTrackCacheSave();
     QString trackCachePath() const;
+    // The five lists as last loaded whole; see FavoritesCache.
+    void saveLibraryCache() const;
+    void fillFromLibraryCache();
+    void setLoadFailed(bool v);
 
     static Entry entryFor(const Tidal::Playlist &p);
     static Entry entryFor(const Tidal::Album &a);
@@ -198,6 +220,11 @@ private:
     static void  finishEntry(Entry &e);
     // One row as QML reads it. `score` is zero outside a search result.
     static QVariantMap toRow(const Entry &e, int score);
+    template <typename T>
+    void land(QList<T> &list, const QList<T> &all, bool whole);
+    // The same for albums and artists, whose fallback paging can lose rows.
+    template <typename T>
+    void land(QList<T> &list, const QList<T> &all, bool whole, bool lossy);
 
     TidalClient *m_client = nullptr;
     PinStore    *m_pins   = nullptr;
@@ -217,6 +244,12 @@ private:
     QHash<QString, qint64> m_recents;            // "kind:id" to ms since epoch
     QHash<qint64, CachedAlbum> m_albumTrackCache;
 
+    // The writer, shared with the thread that writes; see LibraryIndex.cpp.
+    struct TrackCacheStore;
+    std::shared_ptr<TrackCacheStore> m_cacheStore;
+    QTimer *m_cacheTimer = nullptr;
+    bool    m_cacheDirty = false;
+
     QList<qint64> m_indexQueue;
     bool m_loading   = false;
     bool m_indexing  = false;
@@ -226,4 +259,13 @@ private:
     int  m_loadGen   = 0;
     int  m_indexGen  = 0;
     int  m_pending   = 0;
+    // Whether every page of the run in flight arrived.
+    bool m_loadWhole = true;
+    // A row changed here during a run, whose lists may be older than that.
+    bool m_refreshAgain = false;
+    // The run in flight: lists that got nothing (a bit per part, see
+    // LibraryIndex.cpp), and whether any part came in short.
+    int  m_failedParts = 0;
+    bool m_partialRun  = false;
+    bool m_loadFailed  = false;
 };
