@@ -879,11 +879,12 @@ Item {
                         width: ListView.view ? ListView.view.width : 0
                     }
 
-                    // Where the dragged row will land. A child of the list is
-                    // parented to the content item, so this is positioned in
-                    // content coordinates however far the list is scrolled.
+                    // Where the dragged row will land, in content coordinates
+                    // however far the list is scrolled. A ListView keeps a
+                    // declared child as its own, so the parent is said here.
                     Rectangle {
                         objectName: "queueDropIndicator"
+                        parent: list.contentItem
                         visible: (root.dragging && root.dropValid) || root.carrying
                         x: 8
                         width: Math.max(0, list.width - 16)

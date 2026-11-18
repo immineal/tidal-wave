@@ -337,6 +337,29 @@ TestCase {
         verify(!line.visible, "the line outlived the drop")
     }
 
+    // A long history: the queue opens scrolled to the playing row, and the
+    // line still sits in the gap it names.
+    function test_the_line_sits_at_the_gap_in_a_scrolled_queue() {
+        player.setQueueForTest(queueTracks(40, "Ctx"), 30)
+        player.setCurrentTrackForTest(queueTrack(30, "Ctx"))
+        player.setManualForTest(queueTracks(2, "Manual"))
+        player.setPlaybackSource("album", "42", "Life 1")
+        player.resetQueueCallsForTest()
+        var host = show()
+        openQueueByHolding(host)
+        var panel = host.panel
+        verify(panel.queueList.contentY > 100, "the queue did not open scrolled")
+        var second = entryAt(panel, panel.manualAt + 1)
+        var p = second.mapToItem(host.contentItem, second.width / 2, 8)
+        moveTo(host, p)
+        var line = findByName(panel, "queueDropIndicator")
+        verify(line.visible, "no line where the track would land")
+        fuzzyCompare(line.mapToItem(panel, 0, 1).y, second.mapToItem(panel, 0, 0).y, 1,
+                     "the line is not in the gap above the row")
+        mouseRelease(host.contentItem, p.x, p.y + 1)
+        compare(player.queueCalls.join(","), "insertQueueRows 1 manual 1")
+    }
+
     function test_dropped_among_what_the_album_plays_next_it_joins_it() {
         seedQueue()
         var host = show()
