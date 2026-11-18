@@ -353,7 +353,7 @@ TestCase {
         verify(card, "the card was not created")
         settle(holder)
 
-        card.pinMenu.showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
+        card.ensureMenu().showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
         tryVerify(function () { return card.pinMenu.visible }, 2000, "the card menu did not open")
         verify(sweep(card.pinMenu.contentItem, "the pin menu") > 0,
                "the sweep found no labels at all, so it proved nothing")
@@ -1130,7 +1130,7 @@ TestCase {
         var card = createTemporaryObject(mediaCardC, holder, {
             title: "Ein Album", subtitle: "Eine Band", pinKind: "album", itemId: "42"
         })
-        card.pinMenu.trackSource = function (cb) { cb([]) }
+        card.ensureMenu().trackSource = function (cb) { cb([]) }
         card.pinMenu.removeLabel = "Aus der Sammlung entfernen"
         settle(holder)
         card.pinMenu.showPin(0, 0, "album", "42", "Ein Album", "Eine Band", "")

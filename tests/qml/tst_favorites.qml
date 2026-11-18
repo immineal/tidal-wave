@@ -794,7 +794,7 @@ TestCase {
         var page = makeCollection(1)
         var cards = cardsOn(page)
         compare(cards.length, 1, "the albums grid drew no tile")
-        var menu = cards[0].pinMenu
+        var menu = cards[0].ensureMenu()
         verify(menu, "the album tile has no menu")
 
         bridge.setFavoriteOkForTest(false)
@@ -816,7 +816,7 @@ TestCase {
         var cards = cardsOn(page)
         compare(cards.length, 1, "the albums grid drew no tile")
 
-        cards[0].pinMenu.removeItem.triggered()
+        cards[0].ensureMenu().removeItem.triggered()
 
         tryVerify(function () { return cardsOn(page).length === 0 }, 2000,
                   "an accepted removal left the tile in the grid")
@@ -829,7 +829,7 @@ TestCase {
         var page = makeCollection(2)
         var cards = cardsOn(page)
         compare(cards.length, 1, "the artists grid drew no tile")
-        var menu = cards[0].pinMenu
+        var menu = cards[0].ensureMenu()
         verify(menu, "the artist tile has no menu")
 
         bridge.setFavoriteOkForTest(false)
@@ -850,7 +850,7 @@ TestCase {
         var page = makeCollection(2)
         compare(cardsOn(page).length, 1, "the artists grid drew no tile")
 
-        cardsOn(page)[0].pinMenu.removeItem.triggered()
+        cardsOn(page)[0].ensureMenu().removeItem.triggered()
 
         tryVerify(function () { return cardsOn(page).length === 0 }, 2000,
                   "an accepted unfollow left the tile in the grid")
