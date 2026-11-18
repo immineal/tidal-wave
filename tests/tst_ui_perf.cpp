@@ -508,6 +508,9 @@ private slots:
                 [&] { navigate(QStringLiteral("playlist"),
                                QStringLiteral("{ playlistUuid: 'pl-3', playlistTitle: 'Long' }")); },
                 [this] { return eval(QStringLiteral("detailView && detailView.item && detailView.item.tracks.length > 0")).toBool(); });
+        // Kept as a plain array: the reply's own list makes a row's object
+        // again on every read, and the page reads every row several times.
+        QVERIFY(eval(QStringLiteral("Array.isArray(detailView.item.tracks)")).toBool());
         measure(QStringLiteral("playlist -> back"), [this] { eval(QStringLiteral("goBack()")); });
         measure(QStringLiteral("Home -> artist"),
                 [&] { navigate(QStringLiteral("artist"), QStringLiteral("{ artistId: %1 }").arg(L.artists.at(3).id)); });
