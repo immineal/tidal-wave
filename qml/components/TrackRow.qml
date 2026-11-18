@@ -323,14 +323,30 @@ Item {
     signal playRequested()
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
-    // A press that travels drags the row, for a list that can be reordered.
-    // The points are the row's own; the list does the rest.
+    // A press that travels carries the track out (TrackDrag): to a sidebar
+    // playlist, the queue, or in a list that can be reordered, another row.
+    // reorderStarted's point is the row's own; the list's DropArea does the rest.
     property bool reorderable: false
     signal reorderStarted(real x, real y)
-    signal reorderMoved(real x, real y)
-    signal reorderEnded()
     signal reorderCanceled()
+    // This row is the one being carried.
     property bool reordering: false
+    readonly property bool canDragOut: root.trackId > 0 && root.trackData !== null
+
+    function beginDrag(pressAt, at) {
+        root.reordering = true
+        if (root.reorderable) {
+            var from = hov.mapToItem(root, pressAt.x, pressAt.y)
+            root.reorderStarted(from.x, from.y)
+        }
+        var row = root
+        TrackDrag.begin(root, [root.trackData], at, function () {
+            if (!row) return
+            row.reordering = false
+            // The list's own drop has moved it by now; any other end is no move.
+            row.reorderCanceled()
+        })
+    }
 
     // A list is one tab stop and the arrows walk it. In a ListView that is
     // the current row; rows laid out by a Repeater share a rowGroup
@@ -421,7 +437,7 @@ Item {
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusRow
-        // A dragged row is lifted: opaque, so the rows it passes stay under it.
+        // The row being carried stays in its place, marked; the preview travels.
         color: root.reordering ? Theme.surfaceHigh
                : root.isCurrent ? Theme.accentSoft
                : hov.hovered || root.menuOpen ? Theme.hoverFill : "transparent"
@@ -439,30 +455,42 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: root.reordering ? Qt.ClosedHandCursor : Qt.PointingHandCursor
             readonly property bool hovered: rowHover.hovered
-            // A drag on a row moves it rather than scrolling the list; the
-            // wheel and the scroll bar still scroll.
-            preventStealing: root.reorderable
+            // A mouse drag on a row carries the track rather than scrolling
+            // the list; the wheel and the scroll bar still scroll, and a
+            // finger still flicks.
+            preventStealing: root.reorderable || (root.canDragOut && !touchPress)
             property point pressAt
             property bool travelled: false
-            onPressed: (mouse) => { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
+            property bool touchPress: false
+            property bool carried: false
+            onPressed: (mouse) => {
+                pressAt = Qt.point(mouse.x, mouse.y)
+                travelled = false
+                carried = false
+                touchPress = mouse.source !== Qt.MouseEventNotSynthesized
+            }
             onPositionChanged: (mouse) => {
-                var at = hov.mapToItem(root, mouse.x, mouse.y)
-                if (root.reordering) { root.reorderMoved(at.x, at.y); return }
+                var at = hov.mapToItem(null, mouse.x, mouse.y)
+                if (root.reordering) { TrackDrag.move(at); return }
+                if (carried) return
                 if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
                         || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
                     travelled = true
-                if (travelled && root.reorderable && (mouse.buttons & Qt.LeftButton)) {
-                    var from = hov.mapToItem(root, pressAt.x, pressAt.y)
-                    root.reordering = true
-                    root.reorderStarted(from.x, from.y)
-                    root.reorderMoved(at.x, at.y)
+                if (travelled && root.canDragOut && (!touchPress || root.reorderable)
+                        && (mouse.buttons & Qt.LeftButton)) {
+                    carried = true
+                    root.beginDrag(pressAt, at)
                 }
             }
-            onReleased: if (root.reordering) { root.reordering = false; root.reorderEnded() }
-            onCanceled: if (root.reordering) { root.reordering = false; root.reorderCanceled() }
+            onReleased: (mouse) => {
+                if (!root.reordering) return
+                TrackDrag.move(hov.mapToItem(null, mouse.x, mouse.y))
+                TrackDrag.drop()
+            }
+            onCanceled: if (root.reordering) TrackDrag.cancel()
 
             onClicked: (mouse) => {
-                if (travelled && root.reorderable) return
+                if (carried || (travelled && root.reorderable)) return
                 if (mouse.button === Qt.RightButton) {
                     root.openMenu()
                 } else {

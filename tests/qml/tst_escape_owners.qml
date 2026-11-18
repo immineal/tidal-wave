@@ -169,6 +169,25 @@ TestCase {
         escapeClosesOnly(win, menu, "mix", "the output picker")
     }
 
+    // A track carried out of its row: Escape calls the drag off and nothing
+    // else; the next one is the window's again.
+    function test_escape_during_a_track_drag_only_ends_the_drag() {
+        var win = showApp()
+        openPage(win, "mix", { mixId: "mx-esc-1" })
+        var row = firstRow(win)
+        var at = row.mapToItem(win.contentItem, 30, row.height / 2)
+        mousePress(win.contentItem, at.x, at.y)
+        for (var s = 1; s <= 6; ++s) { mouseMove(win.contentItem, at.x + 20 * s, at.y + 30 * s); wait(5) }
+        verify(findNamed(win.contentItem, "trackDragPreview"), "the drag never started")
+        keyClick(Qt.Key_Escape)
+        compare(win.currentPage, "mix", "Escape during a drag also navigated back")
+        verify(!findNamed(win.contentItem, "trackDragPreview"), "Escape left the drag on")
+        mouseRelease(win.contentItem, at.x + 120, at.y + 180)
+        keyClick(Qt.Key_Escape)
+        tryVerify(function () { return win.currentPage === "home" }, 2000,
+                  "after the drag, Escape no longer went back")
+    }
+
     // A field with text in it clears on Escape, as LibraryFinder says. The
     // window's Escape outranked it, so the page went back instead.
     function test_escape_in_the_library_finder_clears_it_and_stays() {

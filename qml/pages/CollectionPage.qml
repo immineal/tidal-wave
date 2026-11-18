@@ -985,10 +985,18 @@ Rectangle {
 
     // Both "New playlist" buttons open the one dialog. Nothing is reloaded on
     // success: the bridge emits favoritePlaylistsChanged and the lists rebuild.
-    // The alias is a test's handle on a Popup, which reparents to the overlay.
+    // The new playlist opens, as it does from the picker. The alias is a
+    // test's handle on a Popup, which reparents to the overlay.
     readonly property alias playlistDialog: newPlaylistDialog
 
-    NewPlaylistDialog { id: newPlaylistDialog }
+    NewPlaylistDialog {
+        id: newPlaylistDialog
+        onPlaylistCreated: (playlist) => {
+            var uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
+            if (uuid.length > 0)
+                root.openPlaylist({ uuid: uuid, title: playlist.title || "", type: "USER" })
+        }
+    }
 
     // Below the tabs, chips and sort, which stay in reach while it loads.
     Skeleton { loading: root.loading || root.tabWaiting; kind: root.activeTab === 0 ? "rows" : "grid"; topInset: viewsTop.y }

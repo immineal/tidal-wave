@@ -599,7 +599,7 @@ ApplicationWindow {
             // An application shortcut outranks an open Popup's own Escape, so
             // this one stands down while any popup holds the keyboard. A field
             // that wants Escape claims it with Keys.onShortcutOverride.
-            enabled: auth.state === 2 && !root.popupHasKeyboard
+            enabled: auth.state === 2 && !root.popupHasKeyboard && !TrackDrag.active
                      && !updatePrompt.visible && !sideBar.settingsPanel.visible
             // Innermost first, so one Escape undoes one thing: the queue
             // overlay, then fullscreen, then the page.

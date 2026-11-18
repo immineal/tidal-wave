@@ -623,6 +623,20 @@ void Player::moveQueueRow(const QString &fromSection, int fromSlot,
     schedulePersist();
 }
 
+void Player::insertQueueRows(const QVariantList &tracks, const QString &section, int slot) {
+    if (tracks.isEmpty()) return;
+    if (section == QLatin1String("manual")) { insertManual(tracks, slot); return; }
+    if (section != QLatin1String("context")) return;
+    const int first = m_index + 1 + m_manualCount;
+    const int at = first + qBound(0, slot, int(m_queue.count()) - first);
+    // Their place in the context's order is the neighbour's, as in moveQueueRow().
+    const int natural = at > 0 ? m_queue.at(at - 1).natural : -1;
+    for (int i = 0; i < tracks.count(); ++i)
+        m_queue.insert(at + i, Entry{ tracks.at(i).toMap(), false, natural });
+    emit queueChanged();
+    schedulePersist();
+}
+
 void Player::clearManual() {
     if (m_manualCount <= 0) return;
     m_queue.remove(m_index + 1, m_manualCount);
