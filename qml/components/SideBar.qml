@@ -155,8 +155,10 @@ Item {
 
     function fillLibModel(next, newKeys) {
         libModel.clear()
-        for (var i = 0; i < next.length; ++i)
-            libModel.append({ key: newKeys[i], entry: next[i] })
+        // One append of the lot: one insert for the view, not one per row.
+        var batch = []
+        for (var i = 0; i < next.length; ++i) batch.push({ key: newKeys[i], entry: next[i] })
+        libModel.append(batch)
     }
 
     // Rows that arrived while a pin was being dragged, held until the pointer
@@ -169,6 +171,7 @@ Item {
             root.deferredRows = next
             return
         }
+        var before = root.rows
         root.rows = next
 
         var i
@@ -201,8 +204,20 @@ Item {
 
         // Every rebuild hands over fresh objects, and a row that kept its key
         // can still have changed: `pinned` flips, a title or a cover url
-        // arrives. So the rows that did not move are handed the new entry too.
-        for (i = 0; i < next.length; ++i) libModel.setProperty(i, "entry", next[i])
+        // arrives. Only those rows are handed the new entry; a write costs.
+        var was = {}
+        for (i = 0; i < before.length; ++i) was[rowKey(before[i])] = before[i]
+        for (i = 0; i < next.length; ++i)
+            if (!sameRow(was[newKeys[i]], next[i])) libModel.setProperty(i, "entry", next[i])
+    }
+
+    // Field by field. The score only placed the row, and nothing shows it.
+    function sameRow(a, b) {
+        if (!a) return false
+        var k
+        for (k in b) if (k !== "score" && a[k] !== b[k]) return false
+        for (k in a) if (!(k in b)) return false
+        return true
     }
 
     readonly property int libraryTravelMs: 170
@@ -670,6 +685,7 @@ Item {
                 clip: true
                 bottomMargin: Theme.space2
                 model: libModel
+                reuseItems: true
                 // This list draws no selection, but a ListView still builds a
                 // highlight item and smooth-resizes it toward the current row,
                 // hanging out of the rail meanwhile. Untracked it stays 0 wide.
