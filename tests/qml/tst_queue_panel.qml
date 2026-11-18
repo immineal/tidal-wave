@@ -79,12 +79,15 @@ TestCase {
         return out
     }
 
-    // Delegates in flat-index order, which is the order the user reads them
-    // in. ListView parents them to contentItem in creation order, not in
-    // index order, so they have to be sorted.
+    // The delegates built, in flat-index order, which is the order the user
+    // reads them in. Asked of the list, not found among its children: a row
+    // taken off the end waits there, culled, in the reuse pool.
     function entries(panel) {
-        var all = collectByName(panel, "queueEntry", [])
-        all.sort(function (a, b) { return a.rowIndex - b.rowIndex })
+        var list = panel.queueList, all = []
+        for (var i = 0; i < list.count; ++i) {
+            var e = list.itemAtIndex(i)
+            if (e) all.push(e)
+        }
         return all
     }
 
@@ -791,13 +794,15 @@ TestCase {
         verify(jump, "there is no jump affordance at all")
         verify(!jump.visible, "the affordance showed before anyone scrolled")
 
-        // Away, by a long way, in both directions.
-        view.contentY = 0
+        // Away, by a long way, in both directions. From originY: a list of
+        // mixed heights only estimates where its far rows are, so its top
+        // moves as it is jumped about.
+        view.contentY = view.originY
         settle(host.contentItem)
         verify(!panel.currentOnScreen, "scrolled to the top and still 'on screen'")
         verify(jump.visible, "scrolling to the top revealed no way back")
 
-        view.contentY = view.contentHeight - view.height
+        view.contentY = view.originY + view.contentHeight - view.height
         settle(host.contentItem)
         verify(jump.visible, "scrolling to the bottom revealed no way back")
 
@@ -811,7 +816,7 @@ TestCase {
                   "the affordance outlived its usefulness")
 
         // It hides on its own too, without being used.
-        view.contentY = 0
+        view.contentY = view.originY
         settle(host.contentItem)
         verify(jump.visible, "the affordance did not come back")
         view.positionViewAtIndex(panel.currentAt, ListView.Center)
@@ -978,5 +983,48 @@ TestCase {
         var host = showHost()
         compare(host.panel.rowCount, 0, "a closed panel built a model anyway")
         compare(host.panel.queueList.count, 0, "a closed panel built a view anyway")
+    }
+
+    // Closed again, the rows stay built and stand still: the queue moves
+    // under them, and they catch up only when the panel opens.
+    function test_a_closed_panel_keeps_its_rows_still_and_catches_up_on_opening() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+        var before = rowTitles(panel).join(",")
+        host.panel.visible = false
+        settle(host.contentItem)
+
+        player.advanceForTest()
+        player.setQueueForTest(makeTracks(5000, "Big"), 2500)
+        settle(host.contentItem)
+        compare(rowTitles(panel).join(","), before, "a closed panel followed the queue")
+        verify(panel.queueList.count < 20, "a closed panel built a model of the new queue")
+
+        panel = openPanel(host)
+        compare(entryAt(panel, panel.currentAt).titleText, "Big 2500", "the panel opened on the old queue")
+        verify(entryAt(panel, panel.currentAt + 1), "the rows were not built around the playing one")
+    }
+
+    // A queue of the same length leaves the model as it is, and the rows
+    // read their tracks again.
+    function test_a_queue_replaced_while_closed_shows_on_opening() {
+        player.setQueueForTest(makeTracks(10, "Old"), 4)
+        var host = showHost()
+        var panel = openPanel(host)
+        compare(entryAt(panel, panel.currentAt).titleText, "Old 4")
+        host.panel.visible = false
+        settle(host.contentItem)
+        player.setQueueForTest(makeTracks(10, "New"), 4)
+        panel = openPanel(host)
+        compare(rowTitles(panel).join(","), "New 0,New 1,New 2,New 3,New 4,New 5,New 6,New 7,New 8,New 9")
+
+        // And an advance alone, which republishes nothing.
+        host.panel.visible = false
+        settle(host.contentItem)
+        player.advanceForTest()
+        panel = openPanel(host)
+        compare(entryAt(panel, panel.currentAt).titleText, "New 5", "the panel opened a row behind the player")
+        compare(panel.playedCount, 5)
     }
 }
