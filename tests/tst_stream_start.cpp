@@ -6,6 +6,7 @@
 
 #include <QTest>
 #include <QElapsedTimer>
+#include <QHash>
 #include <QHostAddress>
 #include <QMediaDevices>
 #include <QMediaPlayer>
@@ -43,7 +44,7 @@ constexpr qint64 kUser = 4242;
 constexpr int    kMediaSegments = 2 * (kProgSegmentCount - 1);
 constexpr qint64 kLengthMs      = 2 * kProgDurationMs;
 
-// Segment n of a lane is at @BASE@<lane>/<n>, the initialization segment at 0.
+// Segment n of a load is at @BASE@<n>, the initialization segment at 0.
 constexpr auto kManifest = R"MPD(<?xml version="1.0" encoding="utf-8"?>
 <MPD type="static" mediaPresentationDuration="PT8.0S">
   <Period id="0">
@@ -136,7 +137,7 @@ QVector<QByteArray> eightSeconds() {
 qint64 now() { QElapsedTimer t; t.start(); return t.msecsSinceReference(); }
 
 // The link. Lane "f" answers at once. Lane "s" delivers segment n at
-// (n + 1) * paceMs after its initialization segment was asked for, a steady
+// (n + 1) * paceMs after the first request of its load came in, a steady
 // rate; segments from stallAt on wait until release().
 class Link : public QTcpServer {
 public:
@@ -153,10 +154,12 @@ public:
         });
     }
 
-    QString manifest(const QString &lane) const {
+    // Each manifest names its own load, <lane>.<number>: the parallel
+    // requests of one load arrive in any order, segment 0 not always first.
+    QString manifest(const QString &lane) {
         QString mpd = QString::fromUtf8(kManifest);
-        mpd.replace(QStringLiteral("@BASE@"),
-                    QStringLiteral("http://127.0.0.1:%1/%2/").arg(serverPort()).arg(lane));
+        mpd.replace(QStringLiteral("@BASE@"), QStringLiteral("http://127.0.0.1:%1/%2.%3/")
+                                                  .arg(serverPort()).arg(lane).arg(++m_loads));
         return mpd;
     }
 
@@ -174,14 +177,17 @@ private:
         if (!sock->canReadLine()) return;
         QObject::disconnect(sock, &QTcpSocket::readyRead, nullptr, nullptr);
         const QList<QByteArray> path = sock->readLine().split(' ').value(1).split('/');
-        const QByteArray lane = path.value(1);
+        const QByteArray load = path.value(1);
         bool ok = false;
         const int n = path.value(2).toInt(&ok);
         if (!ok || n < 0 || n >= segments.size()) { answer(sock, -1); return; }
-        if (lane != "s") { answer(sock, n); return; }
-        if (n == 0) m_laneStart.start();
+        if (!m_loadStart.contains(load)) {
+            m_loadStart[load].start();
+            sentAt.fill(-1, segments.size());
+        }
+        if (!load.startsWith("s.")) { answer(sock, n); return; }
         if (stallAt >= 0 && n >= stallAt) { m_stalled.append({ sock, n }); return; }
-        const qint64 due = qint64(n + 1) * paceMs - m_laneStart.elapsed();
+        const qint64 due = qint64(n + 1) * paceMs - m_loadStart[load].elapsed();
         QPointer<QTcpSocket> guard(sock);
         QTimer::singleShot(int(qMax<qint64>(0, due)), this, [this, guard, n] {
             if (guard) answer(guard, n);
@@ -189,7 +195,6 @@ private:
     }
 
     void answer(QTcpSocket *sock, int n) {
-        if (n == 0) sentAt.fill(-1, segments.size());
         if (n >= 0 && n < sentAt.size()) sentAt[n] = now();
         if (n < 0) {
             sock->write("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n");
@@ -200,7 +205,8 @@ private:
         sock->disconnectFromHost();
     }
 
-    QElapsedTimer m_laneStart;
+    QHash<QByteArray, QElapsedTimer> m_loadStart;
+    int m_loads = 0;
     QList<std::pair<QPointer<QTcpSocket>, int>> m_stalled;
 };
 
