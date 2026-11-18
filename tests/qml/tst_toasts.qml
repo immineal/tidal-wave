@@ -4,6 +4,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import QtTest
 import TidalWave
 
@@ -33,7 +34,13 @@ TestCase {
         Toasts.actionMs = 8000
     }
 
+    function frame() {
+        testCase.Window.window.update()
+        verify(waitForRendering(testCase), "the window drew no frame")
+    }
+
     function clickOn(item) {
+        frame()
         var p = item.mapToItem(testCase, item.width / 2, item.height / 2)
         mouseClick(testCase, p.x, p.y)
     }
@@ -66,9 +73,14 @@ TestCase {
 
     // Undo has to stay in reach while the pointer is on its way to it.
     function test_the_pointer_on_it_holds_it() {
+        // A wider message drawn first, as a slow runner draws the last test's:
+        // the card keeps that size until its next frame, so aim after one.
+        Toasts.show("A message a good deal wider than the one under the pointer")
+        frame()
         Toasts.actionMs = 300
         Toasts.undoable("Gone", function () { })
         tryVerify(function () { return toastHost.card.visible }, 1000)
+        frame()
         var c = toastHost.card
         var p = c.mapToItem(testCase, Theme.space4, c.height / 2)
         mouseMove(testCase, p.x, p.y)

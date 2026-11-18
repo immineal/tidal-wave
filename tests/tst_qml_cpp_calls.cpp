@@ -8,7 +8,9 @@
 #include <QMetaObject>
 #include <QMetaMethod>
 #include <QMetaProperty>
+#include <QDir>
 #include <QDirIterator>
+#include <QHash>
 #include <QRegularExpression>
 #include <QSet>
 #include <QFileInfo>
@@ -135,6 +137,51 @@ private slots:
                      "method, slot, signal or property - QML gets `undefined` "
                      "and the call silently does nothing (add Q_INVOKABLE):\n  %2")
                                 .arg(objectName, missing.join(QStringLiteral("\n  ")))));
+    }
+
+    // Qt 6.5 segfaults on `Edits.someSignal(...)` written outside the singleton;
+    // emitting through a reference works. Other Qt versions take both, so only
+    // a reading of the source catches the direct form before a 6.5 run does.
+    void noQmlSingletonSignalIsCalledFromOutside()
+    {
+        const QDir qmlDir(QStringLiteral(TIDALWAVE_QML_DIR));
+        const QRegularExpression signalDecl(QStringLiteral("^\\s*signal\\s+([A-Za-z_]\\w*)"),
+                                            QRegularExpression::MultilineOption);
+        QHash<QString, QStringList> signalsOf; // singleton type -> its signals
+        for (const QString &file : qmlDir.entryList({ QStringLiteral("*.qml") }, QDir::Files)) {
+            QFile f(qmlDir.filePath(file));
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+            const QString text = QString::fromUtf8(f.readAll());
+            if (!text.contains(QStringLiteral("pragma Singleton"))) continue;
+            auto m = signalDecl.globalMatch(text);
+            while (m.hasNext()) signalsOf[QFileInfo(file).baseName()] << m.next().captured(1);
+        }
+        QVERIFY2(signalsOf.value(QStringLiteral("Edits")).contains(QStringLiteral("playlistChanged")),
+                 "Edits.qml's signals were not found, so this test checks nothing");
+
+        QStringList direct;
+        for (const QString &root : { qmlDir.path(), qmlDir.filePath(QStringLiteral("../tests/qml")) }) {
+            QDirIterator it(root, { QStringLiteral("*.qml") }, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                const QString path = it.next();
+                QFile f(path);
+                if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+                const QString text = QString::fromUtf8(f.readAll());
+                for (auto s = signalsOf.cbegin(); s != signalsOf.cend(); ++s) {
+                    if (QFileInfo(path).baseName() == s.key()) continue;
+                    for (const QString &sig : s.value()) {
+                        const QRegularExpression call(
+                            QStringLiteral("\\b%1\\.%2\\s*\\(").arg(s.key(), sig));
+                        if (call.match(text).hasMatch())
+                            direct << QStringLiteral("%1: %2.%3()").arg(QFileInfo(path).fileName(), s.key(), sig);
+                    }
+                }
+            }
+        }
+        QVERIFY2(direct.isEmpty(),
+                 qPrintable(QStringLiteral("these crash Qt 6.5; emit through a reference, "
+                                           "`var s = Edits.sig; s.call(Edits, arg)`:\n  %1")
+                                .arg(direct.join(QStringLiteral("\n  ")))));
     }
 
     // Pinned by name, so the general check above cannot be weakened unnoticed.
