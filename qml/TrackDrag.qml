@@ -12,6 +12,8 @@ QtObject {
     // The track maps being carried, and the row they came from.
     property var tracks: []
     property Item source: null
+    // Where the row lives, for a target that must not take its own: "queue".
+    property string origin: ""
     readonly property bool active: source !== null
     readonly property int count: tracks.length
 
@@ -39,11 +41,12 @@ QtObject {
 
     // Starts carrying `list` from `row`, the pointer at `at`. ended(landed)
     // is called once, on the drop or when Escape or a lost grab cancels it.
-    function begin(row, list, at, ended) {
+    function begin(row, list, at, ended, origin) {
         if (drag.active) drag.cancel()
         var win = row ? row.Window.window : null
         if (!win || !list || list.length === 0) return false
         drag.tracks = list
+        drag.origin = origin || ""
         drag.source = row
         drag._ended = ended || null
         drag.preview = drag._previewC.createObject(win.contentItem)
@@ -85,6 +88,7 @@ QtObject {
         drag._ended = null
         drag.preview = null
         drag.source = null
+        drag.origin = ""
         drag.tracks = []
         // Hidden at once: destroy() waits for the event loop to come round.
         if (p) { p.visible = false; p.destroy() }
