@@ -138,10 +138,10 @@ jobs:
           CFFIXED_USER_HOME: ${{ runner.temp }}/home
         run: |
           mkdir -p "$CFFIXED_USER_HOME"
-          for i in 1 2 3 4 5 6; do
+          for i in 1 2 3 4 5 6 7 8; do
             echo "== run $i"
             build-tests/tests/tst_stream_start aLosslessTrackSoundsBeforeItsJoinHasLanded 2>&1 \
-              | grep -E 'dash|link|first sound|FAIL|PASS   : TestStreamStart::aL' || true
+              | grep -E 'dash|first sound|FAIL|PASS   : TestStreamStart::aL|ffmpeg' || true
           done
 
       # Every case's output, the passing ones too: no one can run this on a Mac.

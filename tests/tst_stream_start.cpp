@@ -5,7 +5,6 @@
 // where a stream that is still growing differs from a finished file.
 
 #include <QTest>
-#include <QDateTime>
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QMediaDevices>
@@ -148,9 +147,6 @@ public:
     Link() {
         connect(this, &QTcpServer::newConnection, this, [this] {
             while (QTcpSocket *sock = nextPendingConnection()) {
-                qInfo("[link] PROBE accepted %p at %lld", (void *)sock, QDateTime::currentMSecsSinceEpoch() % 100000);
-                connect(sock, &QTcpSocket::disconnected, sock, [sock] {
-                    qInfo("[link] PROBE closed %p at %lld", (void *)sock, QDateTime::currentMSecsSinceEpoch() % 100000); });
                 connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
                 connect(sock, &QTcpSocket::readyRead, sock, [this, sock] { take(sock); });
             }
@@ -181,7 +177,6 @@ private:
         const QByteArray lane = path.value(1);
         bool ok = false;
         const int n = path.value(2).toInt(&ok);
-        qInfo("[link] PROBE %p asked %s/%d at %lld", (void *)sock, lane.constData(), n, QDateTime::currentMSecsSinceEpoch() % 100000);
         if (!ok || n < 0 || n >= segments.size()) { answer(sock, -1); return; }
         if (lane != "s") { answer(sock, n); return; }
         if (n == 0) m_laneStart.start();
@@ -194,7 +189,6 @@ private:
     }
 
     void answer(QTcpSocket *sock, int n) {
-        qInfo("[link] PROBE %p answered %d at %lld", (void *)sock, n, QDateTime::currentMSecsSinceEpoch() % 100000);
         if (n == 0) sentAt.fill(-1, segments.size());
         if (n >= 0 && n < sentAt.size()) sentAt[n] = now();
         if (n < 0) {
