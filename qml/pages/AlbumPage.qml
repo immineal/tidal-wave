@@ -408,12 +408,13 @@ Rectangle {
             readonly property bool startsDisc: root.multiDisc
                 && (index === 0 || root.discOf(root.tracks[index - 1]) !== disc)
 
+            // No height of its own: the Column leaves a hidden one out, and a
+            // height bound to implicitHeight loops on Qt 6.5 and later.
             Text {
                 objectName: "albumDiscHeader"
                 visible: trackDelegate.startsDisc
                 x: tracksList.rowInset + 12
                 width: tracksList.rowWidth - 12
-                height: visible ? implicitHeight : 0
                 topPadding: index === 0 ? Theme.space1 : Theme.space5
                 bottomPadding: Theme.space2
                 text: qsTr("Disc %1", "heading over one disc's tracks on an album page")

@@ -109,6 +109,19 @@ TestCase {
         verify(heads[1].height > 10, "the second header has no height: " + heads[1].height)
     }
 
+    // A header's height followed its own text and looped on Qt 6.5 and
+    // later whenever a disc began.
+    function test_disc_headers_lay_out_without_a_binding_loop() {
+        failOnWarning(/Binding loop detected/)
+        var page = openAlbum(makeTracks([3, 2]))
+        var list = findChild(page, "albumTracksList")
+        compare(shownHeaders(list).length, 2)
+        page.width = 700
+        frame(page)
+        page.width = 960
+        frame(page)
+    }
+
     function test_a_single_disc_album_has_no_header() {
         var page = openAlbum(makeTracks([5]))
         var list = findChild(page, "albumTracksList")
