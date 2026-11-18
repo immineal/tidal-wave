@@ -34,6 +34,7 @@ QtObject {
     readonly property point previewOffset: Qt.point(14, 14)
 
     property Item preview: null
+    property Component _previewC: null
     property var _ended: null
     // Flipped to make the preview move by a hair, so a list that scrolled
     // under a still pointer hands the drop to the row now there.
@@ -49,6 +50,8 @@ QtObject {
         drag.origin = origin || ""
         drag.source = row
         drag._ended = ended || null
+        if (!drag._previewC)
+            drag._previewC = Qt.createComponent(Qt.resolvedUrl("components/TrackDragPreview.qml"))
         drag.preview = drag._previewC.createObject(win.contentItem)
         drag.move(at)
         drag.preview.Drag.active = true
@@ -93,55 +96,5 @@ QtObject {
         // Hidden at once: destroy() waits for the event loop to come round.
         if (p) { p.visible = false; p.destroy() }
         if (ended) ended(landed)
-    }
-
-    property Component _previewC: Component {
-        Rectangle {
-            objectName: "trackDragPreview"
-            // Over the page, the sidebar and the queue; under popups.
-            z: 100000
-            width: Math.min(280, previewRow.implicitWidth + 2 * Theme.space3)
-            height: 32
-            radius: Theme.radiusButton
-            color: Theme.surfaceHigh
-            border.width: 1
-            border.color: Theme.accent
-            opacity: 0.96
-
-            Drag.keys: drag.keys
-            Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-            Drag.proposedAction: Qt.CopyAction
-            Drag.hotSpot: Qt.point(-drag.previewOffset.x, -drag.previewOffset.y)
-
-            Row {
-                id: previewRow
-                x: Theme.space3
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Theme.space2
-                VectorIcon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "track"
-                    width: 16; height: 16
-                    color: Theme.accentText
-                }
-                Text {
-                    objectName: "trackDragPreviewLabel"
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, 280 - 2 * Theme.space3 - 16 - Theme.space2)
-                    text: drag.label
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontMeta
-                    elide: Text.ElideRight
-                }
-            }
-
-            // One Escape, the drag's: the window's own Escape stands down
-            // while a drag is on (Main.qml).
-            Shortcut {
-                sequence: Shortcuts.sequence("escape")
-                context: Qt.WindowShortcut
-                onActivated: drag.cancel()
-            }
-        }
     }
 }
