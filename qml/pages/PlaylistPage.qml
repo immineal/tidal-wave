@@ -329,6 +329,9 @@ Rectangle {
         anchors.fill: parent
         clip: true
         model: root.shownTracks
+        // As on Collection's tracks: rows leaving the view become the ones
+        // coming in, rather than each made anew.
+        reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
         // The rows' 16 px inset: a vertical ListView puts its delegates at
         // x 0 whatever x they ask for, so the view's margins inset them. The

@@ -266,11 +266,13 @@ class TestUiPerf : public QObject {
         return nullptr;
     }
 
-    void scroll(const QString &what, const QString &viewName, int px, int n) {
-        scroll(what, visibleNamed(m_win->contentItem(), viewName), px, n);
+    struct Flick { double median = 0, worst = 0; int slow = 0, built = 0, made = 0; };
+    Flick scroll(const QString &what, const QString &viewName, int px, int n) {
+        return scroll(what, visibleNamed(m_win->contentItem(), viewName), px, n);
     }
-    void scroll(const QString &what, QQuickItem *view, int px, int n) {
-        QVERIFY2(view, qPrintable(what));
+    Flick scroll(const QString &what, QQuickItem *view, int px, int n) {
+        Flick r;
+        if (!view) { qWarning() << "no view for" << what; return r; }
         view->setProperty("contentY", view->property("originY"));
         QCoreApplication::processEvents();
         grab();
@@ -278,6 +280,7 @@ class TestUiPerf : public QObject {
         QSet<QQuickItem *> before;
         collect(m_win->contentItem(), before);
         g_imageRequests = 0;
+        g_made = 0;
         for (int i = 0; i < n; ++i) {
             QElapsedTimer t;
             t.start();
@@ -295,12 +298,14 @@ class TestUiPerf : public QObject {
         for (QQuickItem *i : std::as_const(after)) if (!before.contains(i)) ++built;
         std::sort(f.begin(), f.end());
         const int slow = int(std::count_if(f.begin(), f.end(), [](double v) { return v > 16.0; }));
+        r = Flick{f[f.size() / 2], f.last(), slow, built, int(g_made)};
         if (m_print)
-            qInfo().noquote() << QStringLiteral("  %1 median %2  p95 %3  worst %4  slow %5/%6  built %7  covers %8")
+            qInfo().noquote() << QStringLiteral("  %1 median %2  p95 %3  worst %4  slow %5/%6  built %7  made %8  covers %9")
                 .arg(what, -34).arg(f[f.size() / 2], 5, 'f', 1).arg(f[f.size() * 95 / 100], 5, 'f', 1)
-                .arg(f.last(), 5, 'f', 1).arg(slow).arg(n).arg(built).arg(int(g_imageRequests));
+                .arg(f.last(), 5, 'f', 1).arg(slow).arg(n).arg(built).arg(r.made).arg(int(g_imageRequests));
         view->setProperty("contentY", view->property("originY"));
         QCoreApplication::processEvents();
+        return r;
     }
 
     void navigate(const QString &page, const QString &params = QStringLiteral("{}")) {
@@ -562,7 +567,7 @@ private slots:
         navigate(QStringLiteral("collection"));
         eval(QStringLiteral("collectionLoader.item.activeTab = 0"));
         QTest::qWait(400);
-        scroll(QStringLiteral("liked tracks"), QStringLiteral("collectionTracksList"), 60, 120);
+        const Flick liked = scroll(QStringLiteral("liked tracks"), QStringLiteral("collectionTracksList"), 60, 120);
         eval(QStringLiteral("collectionLoader.item.activeTab = 1"));
         QTest::qWait(400);
         scroll(QStringLiteral("saved albums"), QStringLiteral("collectionAlbumsGrid"), 60, 120);
@@ -571,7 +576,7 @@ private slots:
         scroll(QStringLiteral("followed artists"), QStringLiteral("collectionArtistsGrid"), 60, 120);
         navigate(QStringLiteral("playlist"), QStringLiteral("{ playlistUuid: 'pl-4', playlistTitle: 'Long' }"));
         QTest::qWait(600);
-        scroll(QStringLiteral("playlist of 6000"), QStringLiteral("playlistTracksList"), 60, 120);
+        const Flick playlist = scroll(QStringLiteral("playlist of 6000"), QStringLiteral("playlistTracksList"), 60, 120);
         navigate(QStringLiteral("home"));
         QTest::qWait(400);
         scroll(QStringLiteral("Home"), eval(QStringLiteral(
@@ -584,6 +589,11 @@ private slots:
         scroll(QStringLiteral("queue of 6000"), QStringLiteral("queuePanelList"), 60, 120);
         eval(QStringLiteral("queueOpen = false"));
         QTest::qWait(600);
+        // A playlist's rows are the liked tracks' rows: reused as they
+        // scroll out of view, a flick makes no more of them.
+        QVERIFY2(playlist.made <= liked.made * 2,
+                 qPrintable(QStringLiteral("the playlist made %1 objects, the liked tracks %2")
+                            .arg(playlist.made).arg(liked.made)));
     }
 };
 
