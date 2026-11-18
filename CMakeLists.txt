@@ -124,6 +124,7 @@ set(HEADERS
     src/ui/TidalLink.h
     src/ui/TrackNotifier.h
     src/ui/RowFilter.h
+    src/api/Fold.h
     src/api/LibraryIndex.h
     src/api/FavoritesCache.h
     src/api/PageEverything.h

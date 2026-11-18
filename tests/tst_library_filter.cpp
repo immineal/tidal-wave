@@ -25,6 +25,7 @@
 #include <memory>
 
 #include "BenchLibrary.h"
+#include "api/Fold.h"
 #include "TestStubs.h"
 #include "api/LibraryIndex.h"
 #include "api/TidalBridge.h"
@@ -301,10 +302,10 @@ class TestLibraryFilter : public QObject {
     // The bridge's own search, in the page's order.
     QStringList expectedIds(int tab, const QString &q, QObject *trackSort) {
         if (tab == 4) {
-            const QString lq = q.toLower();
+            const QString lq = foldForMatch(q);
             QStringList out;
             for (const Mix &m : L.mixes)
-                if (lq.isEmpty() || m.title.toLower().contains(lq) || m.subTitle.toLower().contains(lq))
+                if (lq.isEmpty() || foldForMatch(m.title).contains(lq) || foldForMatch(m.subTitle).contains(lq))
                     out << m.id;
             return out;
         }
@@ -411,8 +412,9 @@ private slots:
     }
 
     // ── what the field matches, pinned ───────────────────────────────────
-    // Lower case on both sides and a plain substring: no accent folding, no
-    // trimming, and a decomposed letter is not its precomposed twin.
+    // Folded on both sides as the sidebar's finder folds: case and accents do
+    // not count, a decomposed letter is its precomposed twin and a sharp s is
+    // "ss". Not trimmed, unlike the finder: a leading space is typed on purpose.
     void collection_matches_data() {
         QTest::addColumn<int>("tab");
         QTest::addColumn<QString>("query");
@@ -423,27 +425,25 @@ private slots:
             return out;
         };
         QTest::newRow("albums: title or artist") << 1 << QStringLiteral("quasar") << range(390000, 390007);
-        QTest::newRow("albums: case only")  << 1 << QStringLiteral("QUASAR CAFÉ") << QStringList{QStringLiteral("390000")};
-        QTest::newRow("albums: no folding") << 1 << QStringLiteral("quasar cafe")
-                                            << QStringList{QStringLiteral("390001"), QStringLiteral("390002")};
-        QTest::newRow("albums: sharp s")    << 1 << QStringLiteral("quasarstraße") << QStringList{QStringLiteral("390003")};
-        QTest::newRow("albums: ss")         << 1 << QStringLiteral("QUASARSTRASSE") << QStringList{QStringLiteral("390004")};
+        QTest::newRow("albums: case and accent") << 1 << QStringLiteral("QUASAR CAFÉ") << range(390000, 390002);
+        QTest::newRow("albums: e finds é")  << 1 << QStringLiteral("quasar cafe") << range(390000, 390002);
+        QTest::newRow("albums: sharp s")    << 1 << QStringLiteral("quasarstraße") << range(390003, 390004);
+        QTest::newRow("albums: ss")         << 1 << QStringLiteral("QUASARSTRASSE") << range(390003, 390004);
         QTest::newRow("albums: artist")     << 1 << QStringLiteral("nadia quist") << range(390000, 390007, 390005);
         QTest::newRow("albums: band")       << 1 << QStringLiteral("quasar band") << QStringList{QStringLiteral("390005")};
         QTest::newRow("albums: two spaces") << 1 << QStringLiteral("quasar  d") << QStringList{QStringLiteral("390006")};
         QTest::newRow("albums: one space")  << 1 << QStringLiteral("quasar d") << QStringList{};
         QTest::newRow("albums: not trimmed") << 1 << QStringLiteral(" quasar") << QStringList{QStringLiteral("390007")};
         QTest::newRow("albums: dotted I")   << 1 << QStringLiteral("İSTANBUL") << QStringList{QStringLiteral("390007")};
-        QTest::newRow("albums: dotless")    << 1 << QStringLiteral("istanbul quasar") << QStringList{};
+        QTest::newRow("albums: plain i")    << 1 << QStringLiteral("istanbul quasar") << QStringList{QStringLiteral("390007")};
         QTest::newRow("tracks: three fields") << 0 << QStringLiteral("quasar") << range(1900000, 1900002);
         QTest::newRow("tracks: title")      << 0 << QStringLiteral("quasar lied") << QStringList{QStringLiteral("1900000")};
         QTest::newRow("tracks: album")      << 0 << QStringLiteral("quasar café") << QStringList{QStringLiteral("1900001")};
         QTest::newRow("tracks: artist")     << 0 << QStringLiteral("QUASAR BAND") << QStringList{QStringLiteral("1900002")};
-        QTest::newRow("tracks: no folding") << 0 << QStringLiteral("quasar cafe") << QStringList{};
+        QTest::newRow("tracks: e finds é")  << 0 << QStringLiteral("quasar cafe") << QStringList{QStringLiteral("1900001")};
         QTest::newRow("artists: name")      << 2 << QStringLiteral("quasar") << range(290000, 290002);
-        QTest::newRow("artists: umlaut")    << 2 << QStringLiteral("quasar bänd") << QStringList{QStringLiteral("290001")};
-        QTest::newRow("artists: decomposed") << 2 << QStringLiteral("quasar ba")
-                                             << QStringList{QStringLiteral("290000"), QStringLiteral("290002")};
+        QTest::newRow("artists: umlaut")    << 2 << QStringLiteral("quasar bänd") << range(290000, 290002);
+        QTest::newRow("artists: a finds ä") << 2 << QStringLiteral("quasar ba") << range(290000, 290002);
         QTest::newRow("artists: upper")     << 2 << QStringLiteral("QUIST") << QStringList{QStringLiteral("290003")};
         QTest::newRow("playlists: newest first") << 3 << QStringLiteral("Quasar abend")
                                                  << QStringList{QStringLiteral("pin-pl-0"), QStringLiteral("pin-pl-1")};
