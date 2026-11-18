@@ -330,6 +330,39 @@ Item {
         pins.move(fromPin, toPin)
     }
 
+    // ── tracks carried in from a list ────────────────────────────────────
+
+    // Through Edits, as the picker adds: the duplicate question, the notice
+    // once Tidal shows it, and Undo.
+    function addCarried(uuid, title) {
+        var ids = TrackDrag.tracks.map(function (t) { return Number(t.id) })
+            .filter(function (id) { return id > 0 })
+        if (uuid.length > 0 && ids.length > 0) Edits.addTracksToPlaylist(uuid, title, ids)
+    }
+
+    // A carried track held near the list's top or bottom edge scrolls it,
+    // so a playlist out of sight can still be reached.
+    Timer {
+        id: carryScroll
+        interval: 16
+        repeat: true
+        running: TrackDrag.active && root.visible
+        readonly property real band: 32
+        onTriggered: {
+            var p = libList.mapFromItem(null, TrackDrag.scenePos.x, TrackDrag.scenePos.y)
+            if (p.x < 0 || p.x > libList.width || p.y < -band || p.y > libList.height + band) return
+            var step = p.y < band ? -Math.ceil((band - p.y) / 4)
+                     : p.y > libList.height - band ? Math.ceil((p.y - (libList.height - band)) / 4) : 0
+            if (step === 0) return
+            var lo = libList.originY
+            var hi = lo + Math.max(0, libList.contentHeight - libList.height)
+            var next = Math.max(lo, Math.min(hi, libList.contentY + step))
+            if (next === libList.contentY) return
+            libList.contentY = next
+            TrackDrag.refresh()
+        }
+    }
+
     // ── the pin menu ─────────────────────────────────────────────────────
 
     readonly property alias pinMenu: pinContextMenu
@@ -1015,12 +1048,23 @@ Item {
 
     SettingsPanel { id: settingsPopup }
 
-    // Nothing is done with the answer here: the bridge raises playlistCreated,
-    // LibraryIndex adds the row and it arrives through `library.entries` like
-    // every other. The alias is a test's only handle on the reparented Popup.
+    // The row arrives on its own: the bridge raises playlistCreated, and
+    // LibraryIndex adds it through `library.entries` like every other. The
+    // new playlist opens, as it does from the picker. The alias is a test's
+    // only handle on the reparented Popup.
     readonly property alias playlistDialog: newPlaylistDialog
 
-    NewPlaylistDialog { id: newPlaylistDialog }
+    NewPlaylistDialog {
+        id: newPlaylistDialog
+        onPlaylistCreated: (playlist) => root.openCreated(playlist)
+    }
+
+    function openCreated(playlist) {
+        var uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
+        if (uuid.length > 0)
+            root.navigate("playlist", { playlistUuid: uuid, playlistTitle: playlist.title || "",
+                                        coverUrl: "", playlistType: "USER" })
+    }
 
     // ── inline components ────────────────────────────────────────────────
 
@@ -1061,6 +1105,7 @@ Item {
         readonly property bool draggable: pinned && !root.searching
                                           && root.pinnedCount > 1 && root.showsWide
         readonly property bool dragging:  root.pinDragging && root.pinDragFrom === index
+        readonly property bool takesTracks: kind === "playlist" && modelData.editable === true
 
         width: ListView.view ? ListView.view.width : 0
         height: root.libRowHeight + (blockBreak ? 11 : 0)
@@ -1119,10 +1164,12 @@ Item {
             anchors.rightMargin: root.rowInset
             height: root.libRowHeight
             radius: Theme.radiusRow
-            // Marked while its menu is open too, so the menu says which row.
-            color: rowItem.dragging || rowHov.hovered || rowItem.menuOpen
+            // Marked while its menu is open too, so the menu says which row,
+            // and while tracks carried over it would land in it.
+            color: trackDrop.containsDrag ? Theme.accentSoft
+                   : rowItem.dragging || rowHov.hovered || rowItem.menuOpen
                    ? Theme.hoverFill : "transparent"
-            border.width: rowItem.activeFocus || rowItem.dragging ? 2 : 0
+            border.width: rowItem.activeFocus || rowItem.dragging || trackDrop.containsDrag ? 2 : 0
             border.color: Theme.accent
             // The lift. A transform rather than a y offset, because the row's
             // y belongs to the ListView.
@@ -1130,6 +1177,20 @@ Item {
 
             HoverHandler { id: rowHov; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData) }
+
+            // Tracks dropped here go in, as Add to playlist puts them; only a
+            // playlist this account made takes them, as in the picker.
+            DropArea {
+                id: trackDrop
+                objectName: "libraryRowTrackDrop"
+                anchors.fill: parent
+                keys: TrackDrag.keys
+                enabled: rowItem.takesTracks
+                onDropped: (drop) => {
+                    root.addCarried(rowItem.itemId, rowItem.title)
+                    drop.accept(Qt.CopyAction)
+                }
+            }
 
             // Right button only, so the tap handler above keeps every
             // left-click. Declared before the cover and the grip, so a

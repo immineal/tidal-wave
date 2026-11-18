@@ -205,6 +205,9 @@ public:
     // section; a row dropped in the other section joins it.
     Q_INVOKABLE void moveQueueRow(const QString &fromSection, int fromSlot,
                                   const QString &toSection, int toSlot);
+    // Puts tracks in at `slot` of "manual" or "context", for tracks dropped
+    // on the queue; in the context they join it, as a moved row does.
+    Q_INVOKABLE void insertQueueRows(const QVariantList &tracks, const QString &section, int slot);
     Q_INVOKABLE void clearManual ();
     // Play a row now. jumpToManual drops the rows it skipped past;
     // jumpToContext and jumpToPlayed only move the cursor.

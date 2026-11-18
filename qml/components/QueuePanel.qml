@@ -377,13 +377,15 @@ Item {
 
     // Content y of the top of flat row i, worked out from the dragged row:
     // every track row is rowHeight tall and every heading headerHeight.
-    function flatY(i) {
+    function flatY(i) { return flatYFrom(dragFlat, dragRowY, i) }
+    // The same from any built row: `fromY` is flat row `from`'s content y.
+    function flatYFrom(from, fromY, i) {
         var heads = [playedHeaderAt, nowHeaderAt, manualHeaderAt, contextHeaderAt]
-        var a = Math.min(i, dragFlat), b = Math.max(i, dragFlat), between = 0
+        var a = Math.min(i, from), b = Math.max(i, from), between = 0
         for (var k = 0; k < heads.length; ++k)
             if (heads[k] >= a && heads[k] < b) between++
         var d = (b - a) * rowHeight - between * (rowHeight - headerHeight)
-        return dragRowY + (i >= dragFlat ? d : -d)
+        return fromY + (i >= from ? d : -d)
     }
 
     function beginDrag(kind, slot, flat, rowY, pressY) {
@@ -452,6 +454,71 @@ Item {
         else player.moveQueueRow(kind, from, toKind, to)
     }
 
+    // ── tracks carried in from a page ────────────────────────────────────
+    // A TrackDrag over the list: a gap in what is to come, as for a row
+    // dragged inside it, and below the playing row when nothing is queued.
+    property string carryKind: ""
+    property int  carryGap:   -1
+    property real carryLineY: 0
+    property real carryViewX: 0
+    property real carryViewY: 0
+    readonly property bool carrying: carryKind !== ""
+
+    function aimCarry(viewX, viewY) {
+        carryViewX = viewX
+        carryViewY = viewY
+        var kind = "", gap = -1, lineY = 0
+        var cy = list.contentY + viewY
+        var it = list.itemAt(Math.max(0, Math.min(list.width - 1, viewX)), cy)
+        if (!it && rowCount > 0) {
+            var last = list.itemAtIndex(rowCount - 1)
+            if (last && cy >= last.y + last.height) it = last
+        }
+        if (!it) {
+            // Nothing in the queue: the tracks start it.
+            if (rowCount === 0) { kind = "manual"; gap = 0 }
+        } else {
+            var fy = function (i) { return root.flatYFrom(it.rowIndex, it.y, i) }
+            var manualTop = manualHeaderAt >= 0 ? fy(manualHeaderAt) : -1
+            var contextTop = contextHeaderAt >= 0 ? fy(contextHeaderAt) : -1
+            var split = contextTop >= 0 ? contextTop + headerHeight / 2 : Infinity
+            if (manualTop >= 0 && cy >= manualTop && cy < split) {
+                kind = "manual"
+                gap = Math.max(0, Math.min(manualCount,
+                                           Math.floor((cy - fy(manualAt)) / rowHeight + 0.5)))
+                lineY = fy(manualAt) + gap * rowHeight
+            } else if (contextTop >= 0 && cy >= Math.min(split, contextTop)
+                       && (manualTop < 0 || cy >= split)) {
+                kind = "context"
+                gap = Math.max(0, Math.min(contextCount,
+                                           Math.floor((cy - fy(contextAt)) / rowHeight + 0.5)))
+                lineY = fy(contextAt) + gap * rowHeight
+            } else if (hasCurrent && cy >= fy(currentAt) + rowHeight / 2) {
+                // The playing row's lower half: next, ahead of anything queued.
+                kind = "manual"
+                gap = 0
+                lineY = manualTop >= 0 ? fy(manualAt) : fy(currentAt) + rowHeight
+            }
+        }
+        carryKind = kind
+        carryGap = gap
+        carryLineY = lineY
+    }
+    function clearCarry() {
+        carryKind = ""
+        carryGap = -1
+    }
+    function dropCarried(viewX, viewY) {
+        aimCarry(viewX, viewY)
+        var kind = carryKind, gap = carryGap, tracks = TrackDrag.tracks
+        clearCarry()
+        if (kind === "" || tracks.length === 0) return false
+        player.insertQueueRows(tracks, kind, gap)
+        Toasts.show(qsTranslate("TrackRow", "%Ln track(s) added to queue", "queue confirmation",
+                                tracks.length))
+        return true
+    }
+
     // A track ending or the queue changing under a drag moves the rows it
     // was aimed at; the drag is dropped rather than landing a row off by one.
     onPlayIndexChanged: if (dragging) cancelDrag()
@@ -467,9 +534,9 @@ Item {
         id: edgeScroll
         interval: 16
         repeat: true
-        running: root.dragging
+        running: root.dragging || root.carrying
         onTriggered: {
-            var y = root.dragViewY, step = 0
+            var y = root.dragging ? root.dragViewY : root.carryViewY, step = 0
             if (y < root.edgeBand) step = -Math.ceil((root.edgeBand - y) / 4)
             else if (y > list.height - root.edgeBand)
                 step = Math.ceil((y - (list.height - root.edgeBand)) / 4)
@@ -479,7 +546,8 @@ Item {
             var to = Math.max(top, Math.min(end, list.contentY + step))
             if (to === list.contentY) return
             list.contentY = to
-            root.moveDrag(root.dragViewX, root.dragViewY)
+            if (root.dragging) root.moveDrag(root.dragViewX, root.dragViewY)
+            else root.aimCarry(root.carryViewX, root.carryViewY)
         }
     }
 
@@ -643,6 +711,13 @@ Item {
         acceptedButtons: Qt.AllButtons
         onClicked: root.dismissed()
         onWheel: (wheel) => wheel.accepted = true
+    }
+    // And any carried track: the page behind takes no drop while it is dimmed.
+    DropArea {
+        anchors.fill: parent
+        enabled: root.open
+        keys: TrackDrag.keys
+        onDropped: (drop) => { drop.accepted = false }
     }
 
     Rectangle {
@@ -809,14 +884,15 @@ Item {
                     // content coordinates however far the list is scrolled.
                     Rectangle {
                         objectName: "queueDropIndicator"
-                        visible: root.dragging && root.dropValid
+                        visible: (root.dragging && root.dropValid) || root.carrying
                         x: 8
                         width: Math.max(0, list.width - 16)
                         height: 2
                         radius: height / 2
                         z: 3
                         color: Theme.accent
-                        y: !root.dropValid ? 0
+                        y: root.carrying ? root.carryLineY - 1
+                           : !root.dropValid ? 0
                            : root.flatY((root.dropKind === "manual" ? root.manualAt : root.contextAt)
                                         + root.dropGap) - 1
                     }
@@ -827,6 +903,20 @@ Item {
                     onContentHeightChanged: root.scheduleCurrentPosition()
                     onCountChanged:         root.scheduleCurrentPosition()
                     onHeightChanged:        root.scheduleCurrentPosition()
+                }
+
+                // Tracks carried in from a page land at the line.
+                DropArea {
+                    objectName: "queueTrackDrop"
+                    anchors.fill: list
+                    keys: TrackDrag.keys
+                    onEntered: (drag) => root.aimCarry(drag.x, drag.y)
+                    onPositionChanged: (drag) => root.aimCarry(drag.x, drag.y)
+                    onExited: root.clearCarry()
+                    onDropped: (drop) => {
+                        if (root.dropCarried(drop.x, drop.y)) drop.accept(Qt.CopyAction)
+                        else drop.accepted = false
+                    }
                 }
 
                 // Outside the list: a child of a ListView is parented to its

@@ -38,6 +38,8 @@ Rectangle {
     // the speaker, the readout and the flyout are what tst_output_picker.qml
     // drives.
     readonly property alias queueButton:  queueBtn
+    // How long a carried track waits over the queue button before it opens.
+    property int queueSpringMs: 600
     readonly property alias volumeButton:      volBtn
     readonly property alias volumePercentText: volPct
     // The two of them as one object. The group's width is measured from here:
@@ -463,7 +465,31 @@ Rectangle {
                 label: qsTr("Queue", "noun, opens the play queue")
                 icon: "queue"; size: 20
                 iconColor: Theme.textSec
+                active: queueDrop.containsDrag
+                lit: queueDrop.containsDrag
                 onClicked: root.showQueue()
+
+                // A track carried here goes to the end of the queue; held
+                // here a moment, it opens the queue to be dropped in place.
+                DropArea {
+                    id: queueDrop
+                    objectName: "playerBarQueueDrop"
+                    anchors.fill: parent
+                    keys: TrackDrag.keys
+                    onDropped: (drop) => {
+                        var tracks = TrackDrag.tracks
+                        player.addToQueue(tracks)
+                        Toasts.show(qsTranslate("TrackRow", "%Ln track(s) added to queue",
+                                                "queue confirmation", tracks.length))
+                        drop.accept(Qt.CopyAction)
+                    }
+                }
+                Timer {
+                    interval: root.queueSpringMs
+                    running: queueDrop.containsDrag
+                             && !(queueBtn.Window.window && queueBtn.Window.window.queueOpen === true)
+                    onTriggered: root.showQueue()
+                }
             }
         }
     }

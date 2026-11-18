@@ -70,6 +70,12 @@ struct Rig {
     Rig() { QTest::qWait(30); }
 };
 
+// Through the meta-object, the way the queue panel's drop calls it.
+bool insertRows(Player &p, const QVariantList &tracks, const char *section, int slot) {
+    return QMetaObject::invokeMethod(&p, "insertQueueRows", Q_ARG(QVariantList, tracks),
+                                     Q_ARG(QString, QString::fromLatin1(section)), Q_ARG(int, slot));
+}
+
 } // namespace
 
 class TestQueueModel : public QObject {
@@ -602,6 +608,60 @@ private slots:
         // Past the end of the section is its end.
         p.moveQueueRow(QStringLiteral("context"), 0, QStringLiteral("context"), 99);
         QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1003, 1002}));
+        verify(p);
+    }
+
+    // ── tracks dropped on the queue from a page ─────────────────────────────
+
+    void tracksDroppedAmongTheQueuedOnesLandAtTheGap() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 4), 0);
+        p.addToQueue(one(9001));
+        p.addToQueue(one(9002));
+        QSignalSpy queueSpy(&p, &Player::queueChanged);
+
+        QVERIFY2(insertRows(p, one(9003) + one(9004), "manual", 1), "no insertQueueRows to call");
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001, 9003, 9004, 9002}));
+        QCOMPARE(p.manualCount(), 4);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 1002, 1003}));
+        QCOMPARE(queueSpy.count(), 1);
+        verify(p);
+
+        // Past the end is the end.
+        QVERIFY(insertRows(p, one(9005), "manual", 99));
+        QCOMPARE(ids(p.queueManual()).last(), 9005);
+        verify(p);
+    }
+
+    void tracksDroppedAmongTheContextJoinIt() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 4), 0);
+        p.addToQueue(one(9001));
+
+        QVERIFY2(insertRows(p, one(9003), "context", 1), "no insertQueueRows to call");
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1001, 9003, 1002, 1003}));
+        verify(p);
+
+        // Not the user's queue: a new album replaces it with the rest.
+        p.playTracks(contextOf(2000, 2), 0);
+        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QVERIFY(!ids(p.queueTracks()).contains(9003));
+        verify(p);
+    }
+
+    void aDropNowhereChangesNothing() {
+        Rig rig;
+        auto &p = rig.player;
+        p.playTracks(contextOf(1000, 3), 0);
+        QSignalSpy queueSpy(&p, &Player::queueChanged);
+        QVERIFY2(insertRows(p, QVariantList{}, "manual", 0), "no insertQueueRows to call");
+        QVERIFY(insertRows(p, one(9001), "played", 0));
+        QVERIFY(insertRows(p, one(9001), "current", 0));
+        QCOMPARE(queueSpy.count(), 0);
+        QCOMPARE(p.queueCount(), 3);
         verify(p);
     }
 
