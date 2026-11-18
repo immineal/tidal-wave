@@ -63,19 +63,19 @@ Item {
     }
 
     // ── the model ────────────────────────────────────────────────────────
-    // One list and two boundaries, all gated on `visible` so a closed panel
-    // holds no copy of the queue.
-    readonly property var rows:        visible ? player.queueTracks : []
+    // A length and two boundaries, all gated on `visible`. The rows are read
+    // one at a time by the delegates in view: the whole queue as one JS list
+    // cost 80 ms to make for 6000 tracks.
+    readonly property int totalCount:  visible ? player.queueCount : 0
     readonly property int playIndex:   visible ? player.queueIndex  : -1
     readonly property int manualTotal: visible ? player.manualCount : 0
     readonly property string contextName: visible ? player.contextName : ""
     readonly property string contextType: visible ? player.contextType : ""
 
-    readonly property int  totalCount: rows.length
     readonly property bool hasCurrent: playIndex >= 0 && playIndex < totalCount
 
-    // Clamped against `rows` rather than trusted, because the two ints and the
-    // list arrive on three different signals and a frame caught between them
+    // Clamped against the length rather than trusted, because the three ints
+    // arrive on three different signals and a frame caught between them
     // must not index off the end.
     readonly property int playedCount:  Math.max(0, Math.min(playIndex, totalCount))
     readonly property int manualCount:  Math.max(0, Math.min(manualTotal,
@@ -219,7 +219,9 @@ Item {
 
     function trackAt(kind, slot) {
         var q = queueIndexOf(kind, slot)
-        return (q >= 0 && q < rows.length) ? rows[q] : null
+        // queueCount is read for its notifier: it signals every change to the
+        // queue, so a row whose slot now holds another track reads again.
+        return (q >= 0 && q < player.queueCount && root.visible) ? player.queueTrackAt(q) : null
     }
 
     function headerLabelOf(kind) {
@@ -419,7 +421,10 @@ Item {
     // A track ending or the queue changing under a drag moves the rows it
     // was aimed at; the drag is dropped rather than landing a row off by one.
     onPlayIndexChanged: if (dragging) cancelDrag()
-    onRowsChanged: if (dragging) cancelDrag()
+    Connections {
+        target: player
+        function onQueueChanged() { if (root.dragging) root.cancelDrag() }
+    }
 
     // Held near the top or bottom edge, the list scrolls under the row,
     // faster the closer the pointer is to the edge.
