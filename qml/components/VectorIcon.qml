@@ -31,6 +31,13 @@ Item {
     // painted as SVG, which is clipped like an image.
     readonly property bool _software: GraphicsInfo.api === GraphicsInfo.Software
 
+    // Set the first time the icon is shown, and kept: a row's play glyph or a
+    // card's placeholder is hidden most of its life and draws nothing until
+    // then, and one that was drawn is not built again for a page coming back.
+    property bool _shown: false
+    onVisibleChanged: if (visible) _shown = true
+    Component.onCompleted: if (visible) _shown = true
+
     // The Shape is built anew each time the icon enters a scene. Qt 6.4's
     // software renderer crashes on one that left a scene and came back, as
     // every glyph in a menu does when the menu reopens.
@@ -40,7 +47,7 @@ Item {
         width: 24
         height: 24
         anchors.centerIn: parent
-        active: root.Window.window !== null && !root._software
+        active: root.Window.window !== null && !root._software && root._shown && !root.isSnappedBars
 
         transform: Scale {
             origin.x: 12
@@ -87,7 +94,7 @@ Item {
 
     Loader {
         anchors.fill: parent
-        active: root._software && !root.isSnappedBars
+        active: root._software && !root.isSnappedBars && root._shown
         sourceComponent: SvgGlyph { svg: root._svg() }
     }
 
@@ -130,7 +137,7 @@ Item {
         readonly property var halfUnits: [3, 6.5, 4, 9, 5, 7.5, 2.5]
 
         Repeater {
-            model: 7
+            model: root.isSnappedBars && root._shown ? 7 : 0
             Rectangle {
                 required property int index
                 objectName: "trackBar"
@@ -389,6 +396,10 @@ Item {
         opacity: animate ? 1 : 0.45
         Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
 
+        property bool _shown: false
+        onVisibleChanged: if (visible) _shown = true
+        Component.onCompleted: if (visible) _shown = true
+
         // The bars are laid out in device pixels, scaled down by dpr. In
         // logical units a bar's y and height are fractions, and the software
         // renderer rounds each on its own, a device pixel apart at 2x.
@@ -400,14 +411,15 @@ Item {
             Repeater {
                 // Heights as fractions of the box, so the figure is the same
                 // at any size. The resting row is uneven on purpose: five
-                // bars of one height read as a bar chart.
-                model: [
+                // bars of one height read as a bar chart. Built when first
+                // shown: every track row has an indicator, one row shows it.
+                model: ind._shown ? [
                     { rest: 0.45, peak: 1.00, trough: 0.20, ms: 420 },
                     { rest: 0.80, peak: 0.55, trough: 1.00, ms: 320 },
                     { rest: 0.30, peak: 0.90, trough: 0.15, ms: 500 },
                     { rest: 0.65, peak: 0.35, trough: 0.95, ms: 360 },
                     { rest: 0.50, peak: 0.85, trough: 0.25, ms: 460 }
-                ]
+                ] : []
 
                 delegate: Rectangle {
                     id: bar
