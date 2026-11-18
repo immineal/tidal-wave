@@ -741,6 +741,9 @@ Item {
                     // 5000 track queue is never copied into one JS list.
                     model: root.rowCount
                     cacheBuffer: 240
+                    // Opening builds the rows at the top, then jumps to the
+                    // playing one; reused, the top rows become those.
+                    reuseItems: true
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                     // No drag to scroll: a press on a row's title or artist

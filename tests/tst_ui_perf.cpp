@@ -33,9 +33,26 @@
 using namespace Tidal;
 using namespace bench;
 
+// Qt's own object-creation hook, the one GammaRay uses: counts every QObject
+// made, including the ones a step makes and throws away again.
+extern quintptr Q_CORE_EXPORT qtHookData[];
+
 namespace {
 
 constexpr qint64 kUid = 4242;
+
+std::atomic<int> g_made{0};
+using AddHook = void (*)(QObject *);
+AddHook g_nextAdd = nullptr;
+void countMade(QObject *o) {
+    g_made.fetch_add(1, std::memory_order_relaxed);
+    if (g_nextAdd) g_nextAdd(o);
+}
+void installMadeCounter() {
+    if (qtHookData[3] == reinterpret_cast<quintptr>(&countMade)) return;
+    g_nextAdd = reinterpret_cast<AddHook>(qtHookData[3]);
+    qtHookData[3] = reinterpret_cast<quintptr>(&countMade);
+}
 
 double ms(qint64 ns) { return double(ns) / 1e6; }
 
@@ -133,6 +150,7 @@ struct Step {
     int    slow = 0;        // of those, over 16 ms
     int    built = 0;       // items that were not in the scene before
     int    covers = 0;      // cover requests the step made
+    int    made = 0;        // QObjects constructed, kept or not
     double total() const { return action + first; }
 };
 
@@ -203,6 +221,7 @@ class TestUiPerf : public QObject {
         QSet<QQuickItem *> before;
         collect(m_win->contentItem(), before);
         g_imageRequests = 0;
+        g_made = 0;
         Step s;
         s.what = what;
         QElapsedTimer t;
@@ -216,25 +235,26 @@ class TestUiPerf : public QObject {
         collect(m_win->contentItem(), after);
         for (QQuickItem *i : std::as_const(after)) if (!before.contains(i)) ++s.built;
         s.covers = g_imageRequests;
+        s.made = g_made;
         m_steps << s;
         if (m_print)
-            qInfo().noquote() << QStringLiteral("  %1 %2 %3 %4 %5 %6 %7 %8 %9")
+            qInfo().noquote() << QStringLiteral("  %1 %2 %3 %4 %5 %6 %7 %8 %9 %10")
                 .arg(s.what, -34).arg(s.action, 8, 'f', 1).arg(s.first, 7, 'f', 1)
                 .arg(s.total(), 7, 'f', 1).arg(s.worst, 7, 'f', 1)
                 .arg(QStringLiteral("%1/%2").arg(s.slow).arg(s.frames), 7)
-                .arg(s.built, 6).arg(s.covers, 6).arg(s.settled, 7, 'f', 0);
+                .arg(s.built, 6).arg(s.made, 6).arg(s.covers, 6).arg(s.settled, 7, 'f', 0);
         return s;
     }
 
     void header(const QString &title) {
         if (!m_print) return;
         qInfo().noquote() << QStringLiteral("\n%1 (idle frame %2 ms)").arg(title).arg(m_idle, 0, 'f', 1);
-        qInfo().noquote() << QStringLiteral("  %1 %2 %3 %4 %5 %6 %7 %8 %9")
+        qInfo().noquote() << QStringLiteral("  %1 %2 %3 %4 %5 %6 %7 %8 %9 %10")
             .arg(QStringLiteral("step"), -34).arg(QStringLiteral("action"), 8)
             .arg(QStringLiteral("frame"), 7).arg(QStringLiteral("total"), 7)
             .arg(QStringLiteral("worst"), 7).arg(QStringLiteral("slow"), 7)
-            .arg(QStringLiteral("built"), 6).arg(QStringLiteral("covers"), 6)
-            .arg(QStringLiteral("settle"), 7);
+            .arg(QStringLiteral("built"), 6).arg(QStringLiteral("made"), 6)
+            .arg(QStringLiteral("covers"), 6).arg(QStringLiteral("settle"), 7);
     }
 
     // A flick: `px` a frame, `n` frames, each timed with the work it caused.
@@ -289,6 +309,7 @@ class TestUiPerf : public QObject {
 
 private slots:
     void initTestCase() {
+        installMadeCounter();
         QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_ui_perf"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -450,6 +471,9 @@ private slots:
             const Step open = measure(QStringLiteral("open"), [this] { eval(QStringLiteral("queueOpen = true")); },
                                       [&] { return openness() >= 1; });
             m_queueOpen[size] = qMin(m_queueOpen.value(size, 1e9), open.action);
+            // The jump to the playing row lands inside the slide.
+            if (qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+                QVERIFY2(open.worst < 100, qPrintable(QStringLiteral("a %1 ms frame in the slide").arg(open.worst)));
             // Each new count rebuilds every row in view, so opening must
             // give the list its count once.
             QCOMPARE(resets.count(), 1);
