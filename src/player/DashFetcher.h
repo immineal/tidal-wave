@@ -263,7 +263,7 @@ private:
         const int waitMs = limited ? secs * 1000 : kRetryBaseMs << m_tries[index];
         if (limited && m_holdUntil.remainingTime() < waitMs) m_holdUntil = QDeadlineTimer(waitMs);
         ++m_tries[index];
-        qInfo() << "[dash] segment" << index << "failed with" << httpStatus
+        qInfo() << "[dash] segment" << index << "failed with" << httpStatus << a.error
                 << "- asking again in" << waitMs << "ms";
         std::weak_ptr<char> alive = m_alive;
         QTimer::singleShot(waitMs, m_client, [this, alive, index] {

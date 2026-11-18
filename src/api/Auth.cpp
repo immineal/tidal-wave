@@ -307,10 +307,14 @@ void Auth::fetchSession() {
     });
 }
 
-// Under XDG_CONFIG_HOME where the desktop has one. Up to 0.4 the file was
-// always under ~/.config, so that copy is read when there is no other.
+// Under XDG_CONFIG_HOME where the desktop has one, and in the app's folder in
+// ~/Library/Application Support on macOS. Up to 0.4 the file was always under
+// ~/.config, so that copy is read when there is no other.
 QString Auth::credentialsPath() {
-#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
+#if defined(Q_OS_MACOS)
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+         + QStringLiteral("/credentials.json");
+#elif defined(Q_OS_UNIX)
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
          + QStringLiteral("/tidal-wave/credentials.json");
 #else
