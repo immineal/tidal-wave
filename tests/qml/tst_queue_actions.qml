@@ -60,7 +60,7 @@ TestCase {
     // A MenuItem reports visible: false while its menu is shut, so whether it
     // is offered has to be asked of an open menu.
     function openCardMenu(card) {
-        card.pinMenu.showPin(10, 10, card.pinKind, card.itemId,
+        card.ensureMenu().showPin(10, 10, card.pinKind, card.itemId,
                              card.title, card.subtitle, card.coverUrl)
         tryVerify(function () { return card.pinMenu.visible }, 2000, "the card menu did not open")
         return card.pinMenu
@@ -297,7 +297,7 @@ TestCase {
             mediaType: data.kind, itemId: "42", title: "Glass Orchard"
         })
         settle(holder)
-        compare(card.pinMenu.trackSource !== null, data.queueable,
+        compare(card.ensureMenu().trackSource !== null, data.queueable,
                 data.kind + " tile: wrong idea of whether it has tracks")
     }
 
@@ -305,7 +305,7 @@ TestCase {
     // still has to go in, in order, whenever it lands.
     function test_a_late_tracklist_is_queued_whole_and_in_order() {
         var card = makeCard()
-        card.pinMenu.trackSource = function (cb) {
+        card.ensureMenu().trackSource = function (cb) {
             lateAnswer.deliver = function () { cb(testCase.makeTracks(3)) }
             lateAnswer.restart()
         }
