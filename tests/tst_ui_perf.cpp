@@ -445,12 +445,20 @@ private slots:
         measure(QStringLiteral("Home -> Search"), [this] { navigate(QStringLiteral("search")); });
         measure(QStringLiteral("search \"the\""), [this] { eval(QStringLiteral("searchLoader.item.searchFor('the')")); });
         static const char *const names[] = {"all", "tracks", "albums", "artists", "playlists", "mixes"};
+        QList<Step> again;
         for (int round = 0; round < 2; ++round)
-            for (int tab : {1, 2, 3, 4, 5, 0})
-                measure(QStringLiteral("-> %1%2").arg(QLatin1String(names[tab]),
-                                                      round == 0 ? QStringLiteral(" (first)") : QString()),
-                        [this, tab] { eval(QStringLiteral("searchLoader.item.activeTab = %1").arg(tab)); });
+            for (int tab : {1, 2, 3, 4, 5, 0}) {
+                const Step s = measure(QStringLiteral("-> %1%2").arg(QLatin1String(names[tab]),
+                                                                     round == 0 ? QStringLiteral(" (first)") : QString()),
+                                       [this, tab] { eval(QStringLiteral("searchLoader.item.activeTab = %1").arg(tab)); });
+                if (round == 1) again << s;
+            }
         navigate(QStringLiteral("home"));
+        // A tab seen once for these results is kept, as Collection's are.
+        for (const Step &s : std::as_const(again)) {
+            QVERIFY2(s.built == 0, qPrintable(QStringLiteral("%1 built %2 items").arg(s.what).arg(s.built)));
+            QVERIFY2(s.covers == 0, qPrintable(QStringLiteral("%1 asked for %2 covers").arg(s.what).arg(s.covers)));
+        }
     }
 
     // ── the queue panel ──────────────────────────────────────────────────
