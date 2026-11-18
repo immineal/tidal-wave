@@ -179,9 +179,9 @@ TestCase {
 
     // A line too long shrinks before it is cut, as the plain line does.
     function test_a_long_line_shrinks_as_before() {
-        var long = [{ id: 11, name: "Rundfunk-Tanzorchester Salzwiesen" },
+        var lengthy = [{ id: 11, name: "Rundfunk-Tanzorchester Salzwiesen" },
                     { id: 22, name: "Gastsängerin" }]
-        var host = albumCard(long)
+        var host = albumCard(lengthy)
         var sub = findChild(host.card, "cardSubtitle")
         verify(sub.fontInfo.pixelSize < Theme.fontMeta, "the fixture does not shrink")
         hoverLine(host)
