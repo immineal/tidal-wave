@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include "TidalBridge.h"
+#include "Fold.h"
 #include "FavoritesCache.h"
 #include "PageEverything.h"
 #include "RecordVersions.h"
@@ -1197,12 +1198,12 @@ void TidalBridge::fetchTrackCredits(qlonglong trackId, QJSValue cb) {
 
 QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
     QVariantList list;
-    QString lowered = query.toLower();
+    const QString needle = foldForMatch(query);
     for (const auto &t : m_favoriteTracks) {
-        if (lowered.isEmpty() ||
-            t.title.toLower().contains(lowered) ||
-            t.artistNames().toLower().contains(lowered) ||
-            t.album.title.toLower().contains(lowered)) {
+        if (needle.isEmpty() ||
+            foldForMatch(t.title).contains(needle) ||
+            foldForMatch(t.artistNames()).contains(needle) ||
+            foldForMatch(t.album.title).contains(needle)) {
             list.append(trackToMap(t));
         }
     }
@@ -1211,11 +1212,11 @@ QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
 
 QVariantList TidalBridge::searchFavoriteAlbums(const QString &query) const {
     QVariantList list;
-    QString lowered = query.toLower();
+    const QString needle = foldForMatch(query);
     for (const auto &a : m_favoriteAlbums) {
-        if (lowered.isEmpty() ||
-            a.title.toLower().contains(lowered) ||
-            a.artistNames().toLower().contains(lowered)) {
+        if (needle.isEmpty() ||
+            foldForMatch(a.title).contains(needle) ||
+            foldForMatch(a.artistNames()).contains(needle)) {
             list.append(albumToMap(a));
         }
     }
@@ -1224,10 +1225,10 @@ QVariantList TidalBridge::searchFavoriteAlbums(const QString &query) const {
 
 QVariantList TidalBridge::searchFavoriteArtists(const QString &query) const {
     QVariantList list;
-    QString lowered = query.toLower();
+    const QString needle = foldForMatch(query);
     for (const auto &a : m_favoriteArtists) {
-        if (lowered.isEmpty() ||
-            a.name.toLower().contains(lowered)) {
+        if (needle.isEmpty() ||
+            foldForMatch(a.name).contains(needle)) {
             list.append(artistToMap(a));
         }
     }
@@ -1236,10 +1237,10 @@ QVariantList TidalBridge::searchFavoriteArtists(const QString &query) const {
 
 QVariantList TidalBridge::searchFavoritePlaylists(const QString &query) const {
     QList<Playlist> playlists;
-    QString lowered = query.toLower();
+    const QString needle = foldForMatch(query);
     for (const auto &p : m_favoritePlaylists) {
-        if (lowered.isEmpty() ||
-            p.title.toLower().contains(lowered)) {
+        if (needle.isEmpty() ||
+            foldForMatch(p.title).contains(needle)) {
             playlists.append(p);
         }
     }
