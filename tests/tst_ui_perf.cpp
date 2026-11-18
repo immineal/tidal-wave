@@ -456,6 +456,12 @@ private slots:
             measure(QStringLiteral("close"), [this] { eval(QStringLiteral("queueOpen = false")); },
                     [&] { return openness() <= 0; });
         }
+        // Only the rows in view are made, so a long queue opens as fast as a
+        // short one. Timed, so checked on request only.
+        if (size == 6000 && qEnvironmentVariableIntValue("TW_BENCH_ASSERT"))
+            QVERIFY2(m_queueOpen[6000] < m_queueOpen[500] + 30,
+                     qPrintable(QStringLiteral("6000 rows open in %1 ms, 500 in %2")
+                                .arg(m_queueOpen[6000]).arg(m_queueOpen[500])));
     }
 
     // ── pages, and back ──────────────────────────────────────────────────
