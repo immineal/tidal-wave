@@ -562,8 +562,8 @@ Rectangle {
                 }
 
                 Repeater {
-                    model: root.onStaffPicks ? [] : root.feedRuns[0]
-                    delegate: feedRowC
+                    model: root.feedRuns[0]
+                    delegate: FeedRow { visible: !root.onStaffPicks }
                 }
 
                 HorizontalSection {
@@ -577,8 +577,8 @@ Rectangle {
                 }
 
                 Repeater {
-                    model: root.onStaffPicks ? [] : root.feedRuns[1]
-                    delegate: feedRowC
+                    model: root.feedRuns[1]
+                    delegate: FeedRow { visible: !root.onStaffPicks }
                 }
 
                 HorizontalSection {
@@ -617,13 +617,14 @@ Rectangle {
                 }
 
                 Repeater {
-                    model: root.onStaffPicks ? [] : root.feedRuns[2]
-                    delegate: feedRowC
+                    model: root.feedRuns[2]
+                    delegate: FeedRow { visible: !root.onStaffPicks }
                 }
 
+                // Built on the first visit and kept, as the For you rows are.
                 Repeater {
-                    model: root.onStaffPicks ? root.staffRows : []
-                    delegate: feedRowC
+                    model: root.staffFeedAsked ? root.staffRows : []
+                    delegate: FeedRow { visible: root.onStaffPicks }
                 }
             }
 
@@ -633,20 +634,18 @@ Rectangle {
 
     // One of Tidal's rows. Its cards are of one kind or, in a "recent" row,
     // each of its own; Tidal's own pages behind "View all" are not built.
-    Component {
-        id: feedRowC
-        HorizontalSection {
-            required property var modelData
-            objectName: "homeFeedRow_" + modelData.id
-            Layout.fillWidth: true
-            title: modelData.title
-            subtitle: modelData.subtitle
-            items: modelData.items
-            mediaType: modelData.mediaType
-            showViewAll: false
-            onItemClicked: (idx, item) => root.openEntry(item)
-            onItemPlayClicked: (idx, item) => root.playEntry(item)
-        }
+    // Both tabs' rows stay built, so a switch only shows and hides them.
+    component FeedRow: HorizontalSection {
+        required property var modelData
+        objectName: "homeFeedRow_" + modelData.id
+        Layout.fillWidth: true
+        title: modelData.title
+        subtitle: modelData.subtitle
+        items: modelData.items
+        mediaType: modelData.mediaType
+        showViewAll: false
+        onItemClicked: (idx, item) => root.openEntry(item)
+        onItemPlayClicked: (idx, item) => root.playEntry(item)
     }
 
     function navigateTo(page, params) {

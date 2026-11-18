@@ -28,7 +28,10 @@ Item {
     // Set by a host whose subtitle is a translated label for another kind.
     property var storedSubtitle: undefined
 
-    readonly property alias pinMenu: cardMenu
+    // Built the first time it is asked for: its entries outweigh the card,
+    // and a page of cards seldom opens one. ensureMenu() builds it unopened.
+    readonly property alias pinMenu: menuLoader.item
+    function ensureMenu() { menuLoader.active = true; return menuLoader.item }
 
     // The destructive entry on the tile's own menu, if the host offers one.
     // Empty on most pages. See ContextMenu.removeLabel.
@@ -93,8 +96,8 @@ Item {
         }
     }
     function openMenu(x, y) {
-        cardMenu.showPin(x, y, root.pinKind, root.itemId,
-                         root.title, root.pinSubtitle, root.coverUrl)
+        ensureMenu().showPin(x, y, root.pinKind, root.itemId,
+                             root.title, root.pinSubtitle, root.coverUrl)
     }
     Accessible.role: Accessible.Button
     Accessible.name: root.subtitle.length > 0
@@ -284,11 +287,17 @@ Item {
         }
     }
 
-    ContextMenu {
-        id: cardMenu
-        objectName: "cardPinMenu"
-        trackSource: root.canQueue ? root.fetchTracks : null
-        removeLabel: root.removeLabel
-        onRemoveRequested: root.removeRequested()
+    Loader {
+        id: menuLoader
+        active: false
+        // Parented to the card, as it was when declared here, rather than to
+        // this zero-sized Loader.
+        sourceComponent: ContextMenu {
+            parent: root
+            objectName: "cardPinMenu"
+            trackSource: root.canQueue ? root.fetchTracks : null
+            removeLabel: root.removeLabel
+            onRemoveRequested: root.removeRequested()
+        }
     }
 }

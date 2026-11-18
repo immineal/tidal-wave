@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "LibraryIndex.h"
+#include "Fold.h"
 #include "FavoritesCache.h"
 #include "PageEverything.h"
 
@@ -59,25 +60,9 @@ QString legacyPlaylistRecentsKey(qint64 uid) {
     return QStringLiteral("user_%1/playlists/lastPlayed").arg(uid);
 }
 
-// Case- and accent-insensitive form used for matching: decomposed, with the
-// combining marks dropped.
-QString fold(const QString &s) {
-    const QString decomposed = s.normalized(QString::NormalizationForm_D);
-    QString out;
-    out.reserve(decomposed.size());
-    for (const QChar c : decomposed) {
-        switch (c.category()) {
-        case QChar::Mark_NonSpacing:
-        case QChar::Mark_SpacingCombining:
-        case QChar::Mark_Enclosing:
-            continue;
-        default:
-            out.append(c);
-        }
-    }
-    // Case folding leaves the sharp s alone.
-    return out.toCaseFolded().replace(QChar(0x00DF), QLatin1String("ss"));
-}
+// Case- and accent-insensitive form used for matching; the Collection field
+// folds the same way.
+QString fold(const QString &s) { return foldForMatch(s); }
 
 // The sort key: a title files under its first word after the article.
 QString stripLeadingArticle(const QString &title) {
