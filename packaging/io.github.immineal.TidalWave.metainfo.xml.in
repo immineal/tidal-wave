@@ -136,17 +136,21 @@
          Only the newest release takes its version from project(). -->
     <release version="@PROJECT_VERSION@" date="2026-11-17">
       <description>
-        <p>Synced lyrics from other sites, plain lyrics timed on your own machine, and favourites that follow changes made on another device.</p>
+        <p>Gapless playback, even loudness, scrobbling, playlists that can be reordered and deleted, and Tidal's own rows on Home.</p>
         <ul>
-          <li>Settings has a new Experimental section with three switches for lyrics</li>
-          <li>A track that Tidal has no synced lyrics for is looked up on lrclib.net, on by default. NetEase Cloud Music, KuGou and Genius can be switched on as well</li>
-          <li>Plain lyrics are timed against the track's audio on this machine, on by default. Timings it is unsure of are not shown, and the ones shown are marked</li>
-          <li>Plain lyrics that do not fit the panel have a scroll bar</li>
-          <li>Synced lyrics follow the song again when a scroll ends exactly on the sung line, and no line is lit before the first one is sung</li>
-          <li>Likes, saved albums and artists, playlists and saved mixes changed on another device reach a running app. 0.4.2 read them only at sign-in</li>
-          <li>Liked songs, albums and artists are read in one request per list, so none are skipped any more and every liked song shows its heart</li>
-          <li>Liked songs load newest first, and the sidebar and its search know all of them. 0.4.2's sidebar often stopped after the first few dozen</li>
-          <li>A click in a scrolled Settings panel no longer also reaches the page beneath it</li>
+          <li>The next track follows the last one without a gap, with an optional crossfade. Both need Qt 6.5 or newer</li>
+          <li>Tracks play at an even loudness, on by default, and similar tracks can play on when the queue ends</li>
+          <li>The quality badge shows the format that plays, such as 24-bit / 96 kHz FLAC</li>
+          <li>Synced lyrics from LRCLIB and, if you switch them on, three more sites. Plain lyrics are timed against the audio on your own machine</li>
+          <li>Scrobbling to ListenBrainz and Last.fm, off until you connect an account</li>
+          <li>Removing a track from a playlist works. 0.4.2 sent a request that Tidal always refused</li>
+          <li>Playlists you made can be reordered by drag and deleted, and tracks can be dragged onto a playlist or into the queue</li>
+          <li>Ctrl+Z and an Undo button take back likes, saves and playlist changes once Tidal shows them</li>
+          <li>Home shows the rows of Tidal's own apps, Staff picks, and what you played lately on any device</li>
+          <li>Track lists have column headings that sort, and albums and playlists can be downloaded whole</li>
+          <li>Playback controls in the tray menu and on the command line, tidal:// links, and media keys on Windows and macOS</li>
+          <li>Lists, sliders and the queue work from the keyboard, and screen readers can name and press the controls</li>
+          <li>Changes to your favourites made on another device reach a running app, and no liked track goes missing</li>
         </ul>
       </description>
     </release>
