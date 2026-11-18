@@ -542,6 +542,7 @@ Rectangle {
                     cardSize: root.gridCardSize(albumsGrid.cellWidth)
                     title: modelData.title
                     subtitle: modelData.artists
+                    artistList: modelData.artistList || []
                     coverUrl: modelData.coverUrl
                     mediaType: "album"
                     itemId: "" + modelData.id

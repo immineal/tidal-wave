@@ -210,6 +210,33 @@ MenuBase {
         function onChanged() { root.refreshPinned() }
     }
 
+    // ── the artists ──────────────────────────────────────────────────────
+    // Go to artist, as a track row's menu has it: [{id, name}], every id
+    // usable. Empty on menus that stand for no one record's artists. The host
+    // navigates, because a popup that is not shown has no window.
+    property var artistCredits: []
+    signal artistRequested(real artistId)
+
+    // The row that opens the artists' submenu, built from this delegate with
+    // the submenu's title as its text. Hidden for one artist or none.
+    delegate: Entry {
+        id: artistSubRow
+        objectName: "goToArtistSubMenuRow"
+        iconName: "artist"
+        visible: root.artistCredits.length > 1
+        height: visible ? implicitHeight : 0
+        // Room for the arrow, which the style draws beside the content item.
+        rightPadding: Theme.space3 + Theme.space5
+        arrow: VectorIcon {
+            visible: artistSubRow.subMenu
+            x: artistSubRow.width - width - 12
+            y: (artistSubRow.height - height) / 2
+            width: 14; height: 14
+            name: "chevron-right"
+            color: artistSubRow.ink
+        }
+    }
+
     // ── taking it away ───────────────────────────────────────────────────
     // The destructive entry. The host supplies the wording, because only it
     // knows what removing means. Empty means the row is not there.
@@ -278,7 +305,34 @@ MenuBase {
         onTriggered: root.addToPlaylist()
     }
     Separator {
-        shown: root.trackSource !== null && root.canPin
+        shown: root.trackSource !== null && (root.canPin || root.artistCredits.length > 0)
+    }
+
+    // First in its group, where a track row's menu has its Go to rows.
+    Entry {
+        id: goToArtistEntry
+        objectName: "goToArtistMenuItem"
+        visible: root.artistCredits.length === 1
+        height: visible ? implicitHeight : 0
+        text: qsTranslate("TrackRow", "Go to artist")
+        iconName: "artist"
+        onTriggered: if (root.artistCredits.length === 1) root.artistRequested(root.artistCredits[0].id)
+    }
+    MenuBase {
+        id: artistSubMenu
+        objectName: "goToArtistSubMenu"
+        title: qsTranslate("TrackRow", "Go to artist")
+        // Not a Repeater, which a Menu would take for an entry of its own.
+        Instantiator {
+            model: root.artistCredits
+            delegate: Entry {
+                objectName: "goToArtistCreditItem"
+                text: modelData.name
+                onTriggered: root.artistRequested(modelData.id)
+            }
+            onObjectAdded: (index, object) => artistSubMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
+        }
     }
 
     Entry {

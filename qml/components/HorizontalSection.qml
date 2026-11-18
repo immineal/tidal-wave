@@ -182,6 +182,7 @@ Item {
                     title:     modelData.title     || ""
                     subtitle:  modelData.subtitle  || ""
                     storedSubtitle: modelData.pinSubtitle
+                    artistList: modelData.artistList || []
                     // A row of mixed kinds names each item's own.
                     mediaType: modelData.kind || root.mediaType
                     // What a right-click pins. Playlists are keyed by uuid,
