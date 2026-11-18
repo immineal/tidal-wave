@@ -89,7 +89,7 @@ Rectangle {
         if (activeTab === 2 && bridge.artistsLoading) return ""
         if (activeTab === 3 && bridge.playlistsLoading) return ""
         if (tabUnavailable) return "failed"
-        if (searchPattern.length > 0) return "filter"
+        if (searchPattern.trim().length > 0) return "filter"
         return "empty"
     }
 
@@ -848,7 +848,7 @@ Rectangle {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: qsTr("Nothing matches \"%1\"").arg(root.searchPattern)
+                    text: qsTr("Nothing matches \"%1\"").arg(root.searchPattern.trim())
                     color: Theme.textPrimary; font.pixelSize: Theme.fontSection; font.bold: true
                 }
                 Text {

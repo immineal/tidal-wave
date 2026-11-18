@@ -302,7 +302,7 @@ class TestLibraryFilter : public QObject {
     // The bridge's own search, in the page's order.
     QStringList expectedIds(int tab, const QString &q, QObject *trackSort) {
         if (tab == 4) {
-            const QString lq = foldForMatch(q);
+            const QString lq = foldForMatch(q.trimmed());
             QStringList out;
             for (const Mix &m : L.mixes)
                 if (lq.isEmpty() || foldForMatch(m.title).contains(lq) || foldForMatch(m.subTitle).contains(lq))
@@ -414,7 +414,7 @@ private slots:
     // ── what the field matches, pinned ───────────────────────────────────
     // Folded on both sides as the sidebar's finder folds: case and accents do
     // not count, a decomposed letter is its precomposed twin and a sharp s is
-    // "ss". Not trimmed, unlike the finder: a leading space is typed on purpose.
+    // "ss". Spaces at either end do not count, as in the finder; inside, they do.
     void collection_matches_data() {
         QTest::addColumn<int>("tab");
         QTest::addColumn<QString>("query");
@@ -433,7 +433,7 @@ private slots:
         QTest::newRow("albums: band")       << 1 << QStringLiteral("quasar band") << QStringList{QStringLiteral("390005")};
         QTest::newRow("albums: two spaces") << 1 << QStringLiteral("quasar  d") << QStringList{QStringLiteral("390006")};
         QTest::newRow("albums: one space")  << 1 << QStringLiteral("quasar d") << QStringList{};
-        QTest::newRow("albums: not trimmed") << 1 << QStringLiteral(" quasar") << QStringList{QStringLiteral("390007")};
+        QTest::newRow("albums: trimmed")    << 1 << QStringLiteral(" quasar ") << range(390000, 390007);
         QTest::newRow("albums: dotted I")   << 1 << QStringLiteral("İSTANBUL") << QStringList{QStringLiteral("390007")};
         QTest::newRow("albums: plain i")    << 1 << QStringLiteral("istanbul quasar") << QStringList{QStringLiteral("390007")};
         QTest::newRow("tracks: three fields") << 0 << QStringLiteral("quasar") << range(1900000, 1900002);
@@ -441,6 +441,7 @@ private slots:
         QTest::newRow("tracks: album")      << 0 << QStringLiteral("quasar café") << QStringList{QStringLiteral("1900001")};
         QTest::newRow("tracks: artist")     << 0 << QStringLiteral("QUASAR BAND") << QStringList{QStringLiteral("1900002")};
         QTest::newRow("tracks: e finds é")  << 0 << QStringLiteral("quasar cafe") << QStringList{QStringLiteral("1900001")};
+        QTest::newRow("tracks: trimmed")    << 0 << QStringLiteral("  quasar lied ") << QStringList{QStringLiteral("1900000")};
         QTest::newRow("artists: name")      << 2 << QStringLiteral("quasar") << range(290000, 290002);
         QTest::newRow("artists: umlaut")    << 2 << QStringLiteral("quasar bänd") << range(290000, 290002);
         QTest::newRow("artists: a finds ä") << 2 << QStringLiteral("quasar ba") << range(290000, 290002);
