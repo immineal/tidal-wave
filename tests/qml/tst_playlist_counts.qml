@@ -347,7 +347,7 @@ TestCase {
         bridge.setPlaylistTracksForTest([makeTrack()])
         var host = showPane(1200)
         var page = showPlaylistPage(host)
-        compare(page.tracks.length, 1, "the page did not load its one track")
+        compare(page.trackRows.length, 1, "the page did not load its one track")
 
         var row = firstTrackRow(host)
         verify(row, "the playlist page built no track row")
@@ -360,7 +360,7 @@ TestCase {
         compare(bridge.lastRemovedPlaylistForTest(), "p-tape",
                 "the removal was sent for the wrong playlist")
         compare(bridge.lastRemovedIndexForTest(), 0, "the removal was sent for the wrong row")
-        compare(page.tracks.length, 1, "a refused removal took the song off the page anyway")
+        compare(page.trackRows.length, 1, "a refused removal took the song off the page anyway")
         compare(row.lastConfirmation,
                 qsTr("Could not remove the track from the playlist"),
                 "a refused removal said nothing, so it reads as a click that missed")
@@ -400,7 +400,7 @@ TestCase {
         settle(host.contentItem)
 
         compare(bridge.removeFromPlaylistCallsForTest(), 1, "the removal never went out")
-        compare(page.tracks.length, 0, "an accepted removal left the song on the page")
+        compare(page.trackRows.length, 0, "an accepted removal left the song on the page")
         compare(bridge.playlistHeaderReadsForTest(), 1,
                 "an accepted removal did not repair the cached counts")
     }
@@ -621,7 +621,7 @@ TestCase {
         row.removeFromPlaylistRequested(0)
         settle(host.contentItem)
 
-        compare(page.tracks.length, 0, "the removal did not take the song off the page")
+        compare(page.trackRows.length, 0, "the removal did not take the song off the page")
         compare(page.playlistDuration, 0,
                 "the hero still reports the length the playlist had before the removal")
     }
@@ -679,7 +679,7 @@ TestCase {
                                     type: "USER" })
         var host = showPane(1200)
         var page = showPlaylistPage(host)
-        compare(page.tracks.length, 1, "the page did not load its one track")
+        compare(page.trackRows.length, 1, "the page did not load its one track")
         var fetchesAtLoad = bridge.playlistTracksFetchesForTest()
 
         // The endpoint will answer two tracks next time, and the header says two.
@@ -693,7 +693,7 @@ TestCase {
         bridge.addTracksToPlaylist("p-tape", 9002, function (ok) {})
         settle(host.contentItem)
 
-        compare(page.tracks.length, 2,
+        compare(page.trackRows.length, 2,
                 "a song added to the playlist on screen never appeared on it")
         compare(bridge.playlistTracksFetchesForTest(), fetchesAtLoad + 1,
                 "the page asked for its tracklist "
@@ -719,7 +719,7 @@ TestCase {
         row.removeFromPlaylistRequested(0)
         settle(host.contentItem)
 
-        compare(page.tracks.length, 0, "the removal did not take the song off the page")
+        compare(page.trackRows.length, 0, "the removal did not take the song off the page")
         compare(bridge.playlistTracksFetchesForTest(), fetchesAtLoad,
                 "a removal re-fetched the whole tracklist although the page had "
                 + "already spliced it to match")

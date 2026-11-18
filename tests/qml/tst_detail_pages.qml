@@ -227,15 +227,15 @@ TestCase {
 
     // ── the filter inside a playlist ────────────────────────────────────
 
+    // The rows the list holds, top to bottom. Not a walk of the children: a
+    // row the filter took out waits, still visible, in the list's reuse pool.
     function playlistRows(p) {
+        var list = findByName(p, "playlistTracksList")
         var out = []
-        function walk(item) {
-            if (!item) return
-            if (item.objectName === "playlistTrackRow" && item.visible) out.push(item)
-            for (var i = 0; i < item.children.length; ++i) walk(item.children[i])
+        for (var i = 0; i < list.count; ++i) {
+            var r = list.itemAtIndex(i)
+            if (r) out.push(r)
         }
-        walk(p)
-        out.sort(function (a, b) { return a.y - b.y })
         return out
     }
 
@@ -253,7 +253,7 @@ TestCase {
         var s = page(playlistC, { playlistUuid: "0c1d2e3f-aaaa-bbbb-cccc-000000000002",
                                   playlistTitle: "Liste", playlistEditable: true })
         tryCompare(s.page, "loading", false)
-        compare(s.page.tracks.length, 5)
+        compare(s.page.trackRows.length, 5)
         frame(s.host.contentItem)
         return s
     }
@@ -296,10 +296,10 @@ TestCase {
 
         // Removing the second copy sends its own place and takes that row.
         rows[1].removeFromPlaylistRequested(rows[1].trackItemIndex)
-        tryCompare(s.page.tracks, "length", 4)
+        tryCompare(s.page.trackRows, "length", 4)
         compare(bridge.lastRemovedIndexForTest(), 4, "the removal was sent for the first copy")
-        compare(s.page.tracks[1].title, "Café am Hafen", "the first copy was taken")
-        compare(s.page.tracks[3].artists, "Jürgen Beispiel")
+        compare(s.page.trackRows.sourceAt(1).title, "Café am Hafen", "the first copy was taken")
+        compare(s.page.trackRows.sourceAt(3).artists, "Jürgen Beispiel")
     }
 
     // A filter that matches nothing says so and how to get the list back,

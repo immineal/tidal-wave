@@ -185,9 +185,9 @@ TestCase {
         compare(row.title, "Mittag")
         compare(row.trackItemIndex, 0)
         row.removeFromPlaylistRequested(row.trackItemIndex)
-        tryCompare(s.page.tracks, "length", names.length - 1)
+        tryCompare(s.page.trackRows, "length", names.length - 1)
         compare(bridge.lastRemovedIndexForTest(), 0)
-        compare(titlesOf(s.page.tracks), "abend,Zug,Bahn,Café am Hafen,Mittag", "the playlist lost another row")
+        compare(titlesOf(s.page.trackRows.list()), "abend,Zug,Bahn,Café am Hafen,Mittag", "the playlist lost another row")
         var r = rows(s)
         compare(titlesOf(r), "abend,Bahn,Café am Hafen,Mittag,Zug", "the rest are no longer sorted")
         compare(r.map(function (x) { return x.trackNum }).join(","), "1,3,4,5,2",
