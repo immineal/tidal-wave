@@ -92,6 +92,10 @@ void Player::initAudio() {
     m_standTimer = new QTimer(this);
     m_standTimer->setInterval(kStandCheckMs);
     connect(m_standTimer, &QTimer::timeout, this, &Player::wakeStandingBackend);
+#else
+    m_stillTimer = new QTimer(this);
+    m_stillTimer->setInterval(kStillCheckMs);
+    connect(m_stillTimer, &QTimer::timeout, this, &Player::renewStandingOutput);
 #endif
     wirePlayer(m_player);
 
@@ -127,6 +131,11 @@ void Player::wirePlayer(QMediaPlayer *mp) {
         // A seek moved it, and the watch counts from where it is now.
         backendStands();
         m_standTimer->start();
+    });
+#else
+    // A renewal's own transport churn starts no new watch.
+    connect(mp, &QMediaPlayer::playbackStateChanged, this, [this, mp] {
+        if (mp == m_player && !m_rebinding) watchBackend();
     });
 #endif
 }
@@ -1137,6 +1146,37 @@ void Player::refuseStart(const QString &why) {
     // Cleared first, so that a repeat is told again.
     setLoadError(QString());
     setLoadError(why);
+}
+#else
+void Player::watchBackend() {
+    m_stillPos      = m_player->position();
+    m_stillLooks    = 0;
+    m_stillRenewals = 0;
+    if (m_player->playbackState() == QMediaPlayer::PlayingState) m_stillTimer->start();
+    else                                                          m_stillTimer->stop();
+}
+
+void Player::renewStandingOutput() {
+    if (m_player->playbackState() != QMediaPlayer::PlayingState) return;
+    const QMediaPlayer::MediaStatus status = m_player->mediaStatus();
+    // Only a track with its data at hand can stand: a load or a stream that
+    // waits for bytes is still on its way.
+    const bool hasData = status == QMediaPlayer::BufferedMedia || status == QMediaPlayer::LoadedMedia;
+    const qint64 pos   = m_player->position();
+    const bool   moved = qAbs(pos - m_stillPos) >= kStillMovedMs;
+    if (moved) m_stillRenewals = 0;
+    if (moved || !hasData || casting() || m_rebinding || m_swapping || streamGrowing()) {
+        m_stillPos   = pos;
+        m_stillLooks = 0;
+        return;
+    }
+    // Counted in looks, so that a stall of the whole process is one look.
+    if (++m_stillLooks < kStillLooks || m_stillRenewals >= kStillRenewals) return;
+    m_stillLooks = 0;
+    ++m_stillRenewals;
+    qInfo("Player: the track stood still at %lld ms while playing and gets a new output",
+          qlonglong(pos));
+    rebindAudioOutput(m_audioOut ? m_audioOut->device() : resolveAudioDevice());
 }
 #endif
 
@@ -3232,6 +3272,8 @@ void Player::handOver(int fadeMs, qint64 oldLeftMs) {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     backendStands();
     m_standTimer->start();
+#else
+    watchBackend();
 #endif
 
     if (fadeMs > 0) {

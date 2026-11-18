@@ -550,6 +550,21 @@ private:
     void leaveAheadOfALostSoundEngine();
     // Whether a sink was asked for in this run, so that Qt has that engine.
     bool m_sinkAsked = false;
+#else
+    // When the sound server stops taking the audio, Qt plays on without a word
+    // and the track stands still for good. A new output is a new stream.
+    void renewStandingOutput();
+    // Watches a playing backend from where it is now, and stops otherwise.
+    void watchBackend();
+    static constexpr int    kStillCheckMs  = 1000;
+    static constexpr qint64 kStillMovedMs  = 20;
+    // Looks without movement before a renewal, and renewals per standstill.
+    static constexpr int    kStillLooks    = 3;
+    static constexpr int    kStillRenewals = 2;
+    QTimer              *m_stillTimer    = nullptr;
+    qint64               m_stillPos      = -1;
+    int                  m_stillLooks    = 0;
+    int                  m_stillRenewals = 0;
 #endif
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
