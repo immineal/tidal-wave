@@ -81,6 +81,7 @@ set(SOURCES
     src/ui/RemoteControl.cpp
     src/ui/TidalLink.cpp
     src/ui/TrackNotifier.cpp
+    src/ui/RowFilter.cpp
     src/api/LibraryIndex.cpp
     src/api/FavoritesCache.cpp
     src/scrobble/PlayTracker.cpp
@@ -122,6 +123,7 @@ set(HEADERS
     src/ui/RemoteControl.h
     src/ui/TidalLink.h
     src/ui/TrackNotifier.h
+    src/ui/RowFilter.h
     src/api/LibraryIndex.h
     src/api/FavoritesCache.h
     src/api/PageEverything.h

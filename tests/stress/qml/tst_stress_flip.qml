@@ -52,8 +52,8 @@ TestCase {
         case 1: S.fill(page, { query: "suche", tracks: S.tracks(20), albums: S.albums(12),
                                artists: S.artists(12), playlists: S.playlists(12) }); break
         case 2: S.fill(page, { activeTab: 0 })
-                S.fill(page, { filteredTracks: S.tracks(20), filteredAlbums: S.albums(12),
-                               filteredArtists: S.artists(12), filteredPlaylists: S.playlists(12),
+                S.fill(page, { savedTracks: S.tracks(20), savedAlbums: S.albums(12),
+                               savedArtists: S.artists(12), savedPlaylists: S.playlists(12),
                                mixes: S.mixes(8) }); break
         case 3: S.fill(page, { albumId: 42 })
                 S.fill(page, { albumData: { title: "Album", artists: "Interpret", year: "2019",

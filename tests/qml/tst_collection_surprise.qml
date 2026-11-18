@@ -150,7 +150,7 @@ TestCase {
         compare(b.icon, "shuffle")
 
         filter(host, "lied")
-        compare(host.page.filteredTracks.length, 3)
+        compare(host.page.trackRows.count, 3)
         press(b)
         verify(player.shuffle, "the tracks were not played shuffled")
         compare(player.queueCount, 3, "the queue is not the shown tracks")

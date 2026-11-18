@@ -541,12 +541,12 @@ TestCase {
     // ── CollectionPage, all five tabs ───────────────────────────────────────
 
     function fillCollection(page, tab) {
-        page.activeTab = tab           // this calls updateFilteredContent(), which
-        page.filteredTracks    = makeTracks(8)     // wipes the lists, so fill after
-        page.filteredAlbums    = makeAlbums(12)
-        page.filteredArtists   = makeArtists(12)
-        page.filteredPlaylists = makePlaylists(12)
-        page.mixes             = makeMixes(10)
+        page.activeTab = tab
+        page.savedTracks    = makeTracks(8)
+        page.savedAlbums    = makeAlbums(12)
+        page.savedArtists   = makeArtists(12)
+        page.savedPlaylists = makePlaylists(12)
+        page.mixes          = makeMixes(10)
     }
 
     function test_collection_page_fits() {
@@ -876,7 +876,7 @@ TestCase {
         var live = createTemporaryObject(collectionC, holder, {})
         verify(live, "the page was not created")
         live.activeTab = 1
-        live.filteredAlbums = makeAlbums(48)
+        live.savedAlbums = makeAlbums(48)
         settle(holder)
 
         var grid = findByName(live, "collectionAlbumsGrid")
@@ -1142,7 +1142,7 @@ TestCase {
                                          { width: row.w, height: 900 })
         var page = createTemporaryObject(collectionC, host)
         page.activeTab = 1
-        page.filteredAlbums = makeAlbums(60)
+        page.savedAlbums = makeAlbums(60)
         settle(page)
 
         var grid = findByName(page, "collectionAlbumsGrid")

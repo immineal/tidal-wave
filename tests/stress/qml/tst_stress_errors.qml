@@ -130,7 +130,7 @@ TestCase {
 
         var page = collectionC.createObject(holder, {})
         S.fill(page, { activeTab: 0 })
-        S.fill(page, { filteredTracks: mixed })
+        S.fill(page, { savedTracks: mixed })
         waitForRendering(holder, 20000)
         verify(page.width > 0, "CollectionPage collapsed on a malformed payload")
         page.destroy()

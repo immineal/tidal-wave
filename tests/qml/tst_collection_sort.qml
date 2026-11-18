@@ -63,7 +63,7 @@ TestCase {
 
     function titlesOf(grid) {
         var out = []
-        for (var i = 0; i < grid.model.length; i++) out.push(grid.model[i].title)
+        for (var i = 0; i < grid.model.count; i++) out.push(grid.model.get(i).title)
         return out.join(",")
     }
 

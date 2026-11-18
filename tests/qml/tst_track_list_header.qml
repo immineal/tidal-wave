@@ -504,7 +504,7 @@ TestCase {
         var list = findByName(page, "collectionTracksList")
         var title = findByName(head, "trackListHeadingTitle")
         mouseClick(title, 10, title.height / 2)
-        compare(titles(list.model), "abend,Bahn,Mittag,Zug")
+        compare(titles(list.model.rows()), "abend,Bahn,Mittag,Zug")
         tryVerify(function () { return list.itemAtIndex(1) !== null })
         list.itemAtIndex(1).playRequested()
         compare(titles(player.queueTracks), "abend,Bahn,Mittag,Zug", "the queue is not the order shown")

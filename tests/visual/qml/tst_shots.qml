@@ -693,10 +693,10 @@ TestCase {
         verify(win)
         win.page.activeTab = 1
         win.page.sortMode = 1
-        win.page.filteredTracks = S.tracks(6)
-        win.page.filteredAlbums = S.albums(8)
-        win.page.filteredArtists = S.artists(5)
-        win.page.filteredPlaylists = S.playlists(4)
+        win.page.savedTracks = S.tracks(6)
+        win.page.savedAlbums = S.albums(8)
+        win.page.savedArtists = S.artists(5)
+        win.page.savedPlaylists = S.playlists(4)
         win.page.mixes = S.mixes(3)
         settle(win.contentItem, 500)
         shot(win.page, "chips_" + row.theme)
@@ -784,10 +784,10 @@ TestCase {
         var win = collectionTallC.createObject(testCase)
         verify(win)
         win.page.activeTab = 0
-        win.page.filteredTracks = S.tracks(6)
-        win.page.filteredAlbums = S.albums(8)
-        win.page.filteredArtists = S.artists(5)
-        win.page.filteredPlaylists = S.playlists(4)
+        win.page.savedTracks = S.tracks(6)
+        win.page.savedAlbums = S.albums(8)
+        win.page.savedArtists = S.artists(5)
+        win.page.savedPlaylists = S.playlists(4)
         settle(win.contentItem, 500)
         shot(win.page, "collection_tracks_" + row.theme)
         win.destroy()
@@ -1047,7 +1047,7 @@ TestCase {
         var w3 = collectionTallC.createObject(testCase)
         verify(w3)
         w3.page.activeTab = 1
-        w3.page.filteredAlbums = []
+        w3.page.savedAlbums = []
         settle(w3.contentItem, 500)
         shot(w3.page, "loading_collection_" + row.theme)
         w3.destroy()
