@@ -395,6 +395,8 @@ works differently now, the entry says what 0.4.2 did.
   tracks needs Qt 6.6. The .deb on Debian 12 and Ubuntu 24.04 uses their Qt
   6.4, so there tracks change with a short pause and lossless tracks wait for
   the whole file, as in 0.4.2. The AppImage includes a newer Qt.
+- A seek in a lossless track that is still downloading waits until the
+  download is complete. On a long track that can take several seconds.
 - Search still lists each quality of a record separately. Only the explicit
   and clean versions are combined, by the new setting.
 - The other known issues listed under 0.4.2 are unchanged.
