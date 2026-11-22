@@ -35,12 +35,9 @@
 #include <numeric>
 #include <utility>
 #include <QRandomGenerator>
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
 #include <QAudioSink>
 #include <QElapsedTimer>
-#include <QMutex>
 #include <QThread>
-#include <QWaitCondition>
 #include <cstdio>
 #include <cstdlib>
 
@@ -53,7 +50,6 @@ struct Player::SinkTrial {
 
     bool isDone() { QMutexLocker lock(&mutex); return done; }
 };
-#endif
 
 Player::Player(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
@@ -88,15 +84,18 @@ void Player::initAudio() {
     connect(m_devices, &QMediaDevices::audioOutputsChanged,
             this, &Player::onAudioOutputsChanged);
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    m_standTimer = new QTimer(this);
-    m_standTimer->setInterval(kStandCheckMs);
-    connect(m_standTimer, &QTimer::timeout, this, &Player::wakeStandingBackend);
-#else
-    m_stillTimer = new QTimer(this);
-    m_stillTimer->setInterval(kStillCheckMs);
-    connect(m_stillTimer, &QTimer::timeout, this, &Player::renewStandingOutput);
-#endif
+    // One watch for a track that stands still, the one of the Qt that runs.
+    if (qtBelow(6, 5)) {
+        m_standTimer = new QTimer(this);
+        m_standTimer->setObjectName(QStringLiteral("standstillWake"));
+        m_standTimer->setInterval(kStandCheckMs);
+        connect(m_standTimer, &QTimer::timeout, this, &Player::wakeStandingBackend);
+    } else {
+        m_stillTimer = new QTimer(this);
+        m_stillTimer->setObjectName(QStringLiteral("standstillRenewal"));
+        m_stillTimer->setInterval(kStillCheckMs);
+        connect(m_stillTimer, &QTimer::timeout, this, &Player::renewStandingOutput);
+    }
     wirePlayer(m_player);
 
     applySpectrumTap();
@@ -123,21 +122,21 @@ void Player::wirePlayer(QMediaPlayer *mp) {
     connect(mp, &QMediaPlayer::durationChanged, this, [this, mp] {
         if (mp == m_player) emit durationChanged(duration());
     });
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    connect(mp, &QMediaPlayer::playbackStateChanged, this,
-            [this, mp](QMediaPlayer::PlaybackState state) {
-        if (mp != m_player) return;
-        if (state != QMediaPlayer::PlayingState) { m_standTimer->stop(); return; }
-        // A seek moved it, and the watch counts from where it is now.
-        backendStands();
-        m_standTimer->start();
-    });
-#else
-    // A renewal's own transport churn starts no new watch.
-    connect(mp, &QMediaPlayer::playbackStateChanged, this, [this, mp] {
-        if (mp == m_player && !m_rebinding) watchBackend();
-    });
-#endif
+    if (qtBelow(6, 5)) {
+        connect(mp, &QMediaPlayer::playbackStateChanged, this,
+                [this, mp](QMediaPlayer::PlaybackState state) {
+            if (mp != m_player) return;
+            if (state != QMediaPlayer::PlayingState) { m_standTimer->stop(); return; }
+            // A seek moved it, and the watch counts from where it is now.
+            backendStands();
+            m_standTimer->start();
+        });
+    } else {
+        // A renewal's own transport churn starts no new watch.
+        connect(mp, &QMediaPlayer::playbackStateChanged, this, [this, mp] {
+            if (mp == m_player && !m_rebinding) watchBackend();
+        });
+    }
 }
 
 void Player::onPositionChanged(qint64 pos) {
@@ -154,11 +153,11 @@ void Player::onPositionChanged(qint64 pos) {
         m_positionSaved.start();
         schedulePersist();
     }
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
-    // A queue that ended is at its start for all who ask position(). The
-    // backend's reports from before the end can still arrive after it.
-    if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && followingIndex() < 0) return;
-#endif
+    // Below 6.6 a queue that ended is at its start for all who ask position().
+    // The backend's reports from before the end can still arrive after it.
+    if (qtBelow(6, 6) && m_player->mediaStatus() == QMediaPlayer::EndOfMedia
+        && followingIndex() < 0)
+        return;
     // Only while it plays: a paused track may never be played on.
     // duration(): a growing stream has no length of its own.
     if (duration() > 0 && pos >= kPreloadAfterMs
@@ -186,9 +185,7 @@ Player::~Player() {
     dropAudioFile(m_mpdTempFile);
     for (QTemporaryFile *f : std::as_const(m_heldDropped)) { f->remove(); delete f; }
     m_heldDropped.clear();
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    leaveAheadOfALostSoundEngine();
-#endif
+    if (qtBelow(6, 5)) leaveAheadOfALostSoundEngine();
     // Detach and delete the output here: one destroyed after its player, by
     // QObject's child cleanup, calls back into an object that is already gone.
     if (m_player) m_player->setAudioOutput(nullptr);
@@ -386,11 +383,9 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 
     const AudioState state = captureAudioState();
     m_rebinding = true;
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4 must not be playing when it gets the output: it opens a sink
     // for it, and the start that follows asks first whether one can open.
-    if (state.playing) m_player->pause();
-#endif
+    if (qtBelow(6, 5) && state.playing) m_player->pause();
 
     auto *fresh = new QAudioOutput(device, this);
     fresh->setVolume(float(qMin(1.0, outputVolume(state.volume) * m_gain * m_fade)));
@@ -428,10 +423,9 @@ qint64 Player::position() const {
     // A position owed to media that is not loaded yet: a restored session,
     // or a seek that raced the stream fetch.
     if (m_pendingSeek > 0) return m_pendingSeek;
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
-    // The queue ended and the backend stayed at its end. Play starts over.
-    if (m_player && m_player->mediaStatus() == QMediaPlayer::EndOfMedia) return 0;
-#endif
+    // Below 6.6 the queue ended and the backend stayed at its end. Play starts over.
+    if (qtBelow(6, 6) && m_player && m_player->mediaStatus() == QMediaPlayer::EndOfMedia)
+        return 0;
     return m_player ? m_player->position() : 0;
 }
 qint64 Player::duration() const {
@@ -899,10 +893,9 @@ void Player::startOver(bool heldPaused) {
         emit seeked();
         return;
     }
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
     // Qt 6.5 does not start a track over once it stopped at its end, so the
     // file it has is opened again.
-    if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia) {
+    if (qtBelow(6, 6) && m_player->mediaStatus() == QMediaPlayer::EndOfMedia) {
         const QUrl file = m_player->source();
         m_restorePaused = heldPaused;
         m_loadPlays     = !heldPaused;
@@ -913,7 +906,6 @@ void Player::startOver(bool heldPaused) {
         emit seeked();
         return;
     }
-#endif
     setPlayerPosition(0);
     emit positionChanged(0);
     emit seeked();
@@ -983,10 +975,9 @@ void Player::seek(qint64 ms) {
 
 void Player::setPlayerPosition(qint64 ms) {
     const QScopedValueRollback<bool> seeking(m_seeking, true);
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4 stops reading a file once it has read to its end, and a seek
     // while playing does not start it again. Resuming from a pause does.
-    if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+    if (qtBelow(6, 5) && m_player->playbackState() == QMediaPlayer::PlayingState) {
         m_seekToggling = true;
         m_player->pause();
         m_player->setPosition(ms);
@@ -996,11 +987,9 @@ void Player::setPlayerPosition(qint64 ms) {
         if (!m_rebinding) tellPlaying();
         return;
     }
-#endif
     m_player->setPosition(ms);
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
 bool Player::backendStands() {
     const qint64 pos = m_player->position();
     if (qAbs(pos - m_standPos) < kStandMovedMs) return true;
@@ -1147,7 +1136,7 @@ void Player::refuseStart(const QString &why) {
     setLoadError(QString());
     setLoadError(why);
 }
-#else
+
 void Player::watchBackend() {
     m_stillPos      = m_player->position();
     m_stillLooks    = 0;
@@ -1178,7 +1167,6 @@ void Player::renewStandingOutput() {
           qlonglong(pos));
     rebindAudioOutput(m_audioOut ? m_audioOut->device() : resolveAudioDevice());
 }
-#endif
 
 void Player::setVolume(double v) {
     m_pendingVolume = qBound(0.0, v, 1.0);
@@ -1596,7 +1584,7 @@ void Player::joinProgress(DashFetcher *fetcher, qint64 bytes, int segments) {
 }
 
 bool Player::serveJoin(DashFetcher *fetcher, bool plays) {
-    if (!kStreamsJoins) return false;
+    if (m_qt < kStreamsJoinsFrom) return false;
     if (!m_stream) m_stream = new GrowingFileServer(this);
     const QString url = m_stream->serve(fetcher->tempFilePath(), QStringLiteral("audio/mp4"),
                                         fetcher->bytesReady());
@@ -1983,17 +1971,15 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         m_handoffSettling = false;
         // The next track waits loaded and starts now, late but without a load.
         if (otherFits()) { fireHandover(true); break; }
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
         // track over once it was stopped at its end. The last track of a queue
         // is left there, where position() answers with the start.
-        if (followingIndex() < 0) {
+        if (qtBelow(6, 6) && followingIndex() < 0) {
             setStopped(true);
             emit positionChanged(0);
             if (autoplayOn()) requestAutoplay(true);
             break;
         }
-#endif
         trackEnded();
         break;
     case QMediaPlayer::InvalidMedia:
@@ -2895,12 +2881,10 @@ void Player::beginPlayback() {
     if (m_restorePaused) {
         // Pause was pressed while it loaded.
         m_restorePaused = false;
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-        // A paused backend opens its sink too, and none without the sound
-        // server. The trial is also what makes Qt's link to it, on a thread
-        // that ends, away from the render thread.
-        if (!sinkOpens()) return;
-#endif
+        // On Qt 6.4 a paused backend opens its sink too, and none without the
+        // sound server. The trial is also what makes Qt's link to it, on a
+        // thread that ends, away from the render thread.
+        if (qtBelow(6, 5) && !sinkOpens()) return;
         m_player->pause();
         return;
     }
@@ -2908,21 +2892,17 @@ void Player::beginPlayback() {
 }
 
 bool Player::startBackend(bool sinkHeld) {
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4 writes into the sink it opens for a track without looking
     // whether one opened, and with no device none does.
-    if (QMediaDevices::audioOutputs().isEmpty()) {
+    if (qtBelow(6, 5) && QMediaDevices::audioOutputs().isEmpty()) {
         refuseStart(tr("No audio device was found. Check the sound settings of your system."));
         return false;
     }
     // Nor does one open once the sound server went away, back or not.
-    if (!sinkHeld && !sinkOpens()) {
+    if (qtBelow(6, 5) && !sinkHeld && !sinkOpens()) {
         refuseStart(tr("The sound output was lost. Restart Tidal Wave to get it back."));
         return false;
     }
-#else
-    Q_UNUSED(sinkHeld);
-#endif
     m_player->play();
     return true;
 }
@@ -3032,11 +3012,9 @@ void Player::notePassedOver(const QString &title, bool runEnded) {
 void Player::armOther() {
     if (m_otherRole != Other::Idle || !m_player || !m_audioOut || casting()) return;
     if (!m_preloadReady || !m_preloadTempFile || m_preloadAdoptedBy) return;
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4 opens a sink by the name of an output that may be gone by the
     // time it plays, and waits on it for good: the change goes the old way.
-    return;
-#endif
+    if (qtBelow(6, 5)) return;
     const int next = followingIndex();
     if (next < 0 || next == m_index || next != m_preloadIndex
         || !rowAheadIs(next, m_preloadTrackId))
@@ -3269,12 +3247,12 @@ void Player::handOver(int fadeMs, qint64 oldLeftMs) {
     emit durationChanged(duration());
     emit positionChanged(0);
     tellPlaying();
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    backendStands();
-    m_standTimer->start();
-#else
-    watchBackend();
-#endif
+    if (qtBelow(6, 5)) {
+        backendStands();
+        m_standTimer->start();
+    } else {
+        watchBackend();
+    }
 
     if (fadeMs > 0) {
         m_fadeMs = fadeMs;

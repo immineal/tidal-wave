@@ -9,6 +9,7 @@
 #include <QVersionNumber>
 
 #include "QtRuntimeAs.h"
+#include "player/Player.h"
 #include "ui/Application.h"
 
 namespace {
@@ -104,6 +105,24 @@ private slots:
         const QStringList after = engine.importPathList();
         if (added) QCOMPARE(after.value(0), kEmbedded);
         else       QCOMPARE(after, before);
+    }
+
+    void aJoinIsStreamedFromQt66On_data() {
+        QTest::addColumn<QString>("qt");
+        QTest::addColumn<bool>("streams");
+        QTest::newRow("this Qt") << QString() << (QLibraryInfo::version() >= QVersionNumber(6, 6));
+        QTest::newRow("Qt 6.4.2") << QStringLiteral("6.4.2") << false;
+        QTest::newRow("Qt 6.5.3") << QStringLiteral("6.5.3") << false;
+        QTest::newRow("Qt 6.6.0") << QStringLiteral("6.6.0") << true;
+        QTest::newRow("Qt 6.10.2") << QStringLiteral("6.10.2") << true;
+    }
+
+    // Below 6.6 the FFmpeg backend opens a source on the thread that serves it.
+    void aJoinIsStreamedFromQt66On() {
+        QFETCH(QString, qt);
+        QFETCH(bool, streams);
+        const QtRuntimeAs as(qt);
+        QCOMPARE(Player::streamsJoins(), streams);
     }
 };
 
