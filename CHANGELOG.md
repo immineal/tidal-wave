@@ -349,7 +349,9 @@ works differently now, the entry says what 0.4.2 did.
   from the red used for errors. Sea and Pine have new greens for lossless. On
   the dark themes, quiet text such as track numbers and lengths is lighter and
   easier to read, and so is accent text. The rainbow behind "Let the colour
-  in" now looks like glass.
+  in" now looks like glass. It flows in behind the knob when switched on and
+  its light drifts slowly while on. With reduced motion it switches at once
+  and stands still.
 - Labels are in sentence case. The English says track, collection, Log in and
   Show all throughout, says My for your own things (My mixes, My playlists, My
   account) and spells Favourite with a u. German says Sammlung everywhere, and
