@@ -2,6 +2,7 @@
 
 #pragma once
 #include <QObject>
+#include "QtRuntime.h"
 #include <QQmlEngine>
 #include <QRect>
 #include <QSettings>
@@ -104,7 +105,10 @@ public:
     bool    autoplay() const          { return m_autoplay; }
     bool    crossfade() const         { return m_crossfade; }
     int     crossfadeSeconds() const  { return m_crossfadeSeconds; }
-    bool    crossfadeAvailable() const { return QT_VERSION >= QT_VERSION_CHECK(6, 5, 0); }
+    // Crossfade needs the second backend, which the Player keeps off Qt 6.4.
+    bool    crossfadeAvailable() const {
+        return QtRuntime::version() >= QT_VERSION_CHECK(6, 5, 0);
+    }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);

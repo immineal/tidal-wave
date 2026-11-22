@@ -4,7 +4,10 @@
 
 #include <QTest>
 #include <QByteArray>
+#include <QLibraryInfo>
+#include <QVersionNumber>
 
+#include "QtRuntimeAs.h"
 #include "ui/Application.h"
 
 namespace {
@@ -34,30 +37,49 @@ class TstQmlGc : public QObject {
     Q_OBJECT
 
 private slots:
+    // By the Qt that runs, not the one built against: a .deb built on 6.4
+    // runs on 6.8 and later too, and has the collector there.
+    void the_app_turns_the_incremental_collector_off_data() { runningQts(); }
     void the_app_turns_the_incremental_collector_off() {
+        QFETCH(QString, qt);
+        QFETCH(bool, incremental);
+        const QtRuntimeAs as(qt);
         ScopedEnv unset("QV4_GC_TIMELIMIT", QByteArray());
         Application::useWholeHeapQmlCollector();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-        QCOMPARE(qgetenv("QV4_GC_TIMELIMIT"), QByteArray("0"));
-#else
-        QVERIFY2(!qEnvironmentVariableIsSet("QV4_GC_TIMELIMIT"),
-                 "Qt before 6.8 has no incremental collector to turn off");
-#endif
+        if (incremental)
+            QCOMPARE(qgetenv("QV4_GC_TIMELIMIT"), QByteArray("0"));
+        else
+            QVERIFY2(!qEnvironmentVariableIsSet("QV4_GC_TIMELIMIT"),
+                     "Qt before 6.8 has no incremental collector to turn off");
     }
 
     // Qt reads an empty value as its default step, which is the buggy one.
+    void an_empty_time_limit_counts_as_unset_data() { runningQts(); }
     void an_empty_time_limit_counts_as_unset() {
+        QFETCH(QString, qt);
+        QFETCH(bool, incremental);
+        const QtRuntimeAs as(qt);
         ScopedEnv empty("QV4_GC_TIMELIMIT", QByteArray(""));
         Application::useWholeHeapQmlCollector();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-        QCOMPARE(qgetenv("QV4_GC_TIMELIMIT"), QByteArray("0"));
-#endif
+        if (incremental) QCOMPARE(qgetenv("QV4_GC_TIMELIMIT"), QByteArray("0"));
     }
 
     void a_time_limit_set_by_the_user_wins() {
         ScopedEnv user("QV4_GC_TIMELIMIT", "3");
         Application::useWholeHeapQmlCollector();
         QCOMPARE(qgetenv("QV4_GC_TIMELIMIT"), QByteArray("3"));
+    }
+
+private:
+    static void runningQts() {
+        QTest::addColumn<QString>("qt");
+        QTest::addColumn<bool>("incremental");
+        QTest::newRow("this Qt") << QString()
+            << (QLibraryInfo::version() >= QVersionNumber(6, 8));
+        QTest::newRow("Qt 6.4.2") << QStringLiteral("6.4.2")  << false;
+        QTest::newRow("Qt 6.7.3") << QStringLiteral("6.7.3")  << false;
+        QTest::newRow("Qt 6.8.0") << QStringLiteral("6.8.0")  << true;
+        QTest::newRow("Qt 6.10.2") << QStringLiteral("6.10.2") << true;
     }
 };
 

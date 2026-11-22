@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLibraryInfo>
 #include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QProcess>
@@ -20,10 +21,14 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
+#include <QTimer>
 #include <QUrl>
 #include <QVector>
+#include <QVersionNumber>
 #include <QtEndian>
+#include <utility>
 
+#include "QtRuntimeAs.h"
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "player/DashFetcher.h"
@@ -167,11 +172,9 @@ private slots:
         QVERIFY(m_dir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
         // The backend the app selects on this Qt.
-        if (qEnvironmentVariableIsEmpty("QT_MEDIA_BACKEND"))
+        if (runningQt64() && qEnvironmentVariableIsEmpty("QT_MEDIA_BACKEND"))
             qputenv("QT_MEDIA_BACKEND", QByteArrayLiteral("ffmpeg"));
-#endif
 
         QVector<QByteArray> packaged, tidal;
         for (int i = 0; i < kProgSegmentCount; ++i) {
@@ -196,13 +199,18 @@ private slots:
             if (!track.isEmpty()) QFile::remove(track);
     }
 
-    void aSeekWhilePlayingPlaysOnToTheEndOfTheTrack_data() { layouts(); }
+    void aSeekWhilePlayingPlaysOnToTheEndOfTheTrack_data() { layoutsAndWatches(); }
 
-    // Twice, because the second seek is the one made after a seek.
+    // Twice, because the second seek is the one made after a seek. Qt 6.4's
+    // seek pauses and resumes the backend.
     void aSeekWhilePlayingPlaysOnToTheEndOfTheTrack()
     {
         QFETCH(QString, track);
+        QFETCH(QString, qt);
         if (const char *why = obstacle(track)) QSKIP(why);
+        if (!qt.isEmpty() && runningQt64())
+            QSKIP("Qt 6.4's reader stops at the end of the file without the pause around a seek");
+        const QtRuntimeAs as(qt);
         TidalApi    api;
         TidalClient client{&api};
         Player      player{&client};
@@ -258,14 +266,18 @@ private slots:
         QTRY_VERIFY2_WITH_TIMEOUT(watch.ended, "the track never reached its end", 10000);
     }
 
-    void aTrackThatStandsStillWhilePlayingIsWoken_data() { layouts(); }
+    void aTrackThatStandsStillWhilePlayingIsWoken_data() { layoutsAndWatches(); }
 
     // The seek is made past the Player. On Qt 6.4 that leaves the reader
     // asleep once it has read the file: the backend plays and nothing moves.
     void aTrackThatStandsStillWhilePlayingIsWoken()
     {
         QFETCH(QString, track);
+        QFETCH(QString, qt);
         if (const char *why = obstacle(track)) QSKIP(why);
+        if (!qt.isEmpty() && runningQt64())
+            QSKIP("Qt 6.4's reader sleeps through anything but its own watch's wake");
+        const QtRuntimeAs as(qt);
         TidalApi    api;
         TidalClient client{&api};
         Player      player{&client};
@@ -356,13 +368,38 @@ private slots:
         QVERIFY(player.playing());
     }
 
+    void theStandstillWatchIsTheRunningQtsOwn_data() { watches(); }
+
+    // Exactly one watch runs while a track plays, chosen by the Qt that runs:
+    // a build for Qt 6.4 also runs on 6.8 and later, which need the other.
+    void theStandstillWatchIsTheRunningQtsOwn()
+    {
+        QFETCH(QString, qt);
+        QFETCH(bool, wakes);
+        if (const char *why = obstacle(m_wav)) QSKIP(why);
+        const QtRuntimeAs as(qt);
+        TidalApi    api;
+        TidalClient client{&api};
+        Player      player{&client};
+        QMediaPlayer *mp = startPlaying(player, m_wav);
+        QVERIFY(mp);
+        QTRY_VERIFY_WITH_TIMEOUT(mp->position() >= 300, 10000);
+
+        auto *wake    = player.findChild<QTimer *>(QStringLiteral("standstillWake"));
+        auto *renewal = player.findChild<QTimer *>(QStringLiteral("standstillRenewal"));
+        QVERIFY2(bool(wake) == wakes, wakes ? "Qt 6.4's wake is missing"
+                                            : "Qt 6.4's wake runs on a later Qt");
+        QVERIFY2(bool(renewal) == !wakes, wakes ? "the renewal runs on Qt 6.4"
+                                                : "the renewal is missing");
+        QVERIFY((wakes ? wake : renewal)->isActive());
+    }
+
     // The sound server stops taking the track's audio for good, as when it
     // cannot activate the stream's links. It pauses this process's stream only.
     void aTrackTheSoundServerLetGoOfPlaysToItsEnd()
     {
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-        QSKIP("Qt 6.4's own watch wakes the reader and makes no new stream");
-#endif
+        if (runningQt64())
+            QSKIP("Qt 6.4's own watch wakes the reader and makes no new stream");
         if (const char *why = obstacle(m_tidal)) QSKIP(why);
         TidalApi    api;
         TidalClient client{&api};
@@ -415,9 +452,10 @@ private:
     }
 
     // Why this Qt on this machine cannot run these tests on a track, or null.
+    // Asked of the Qt that runs, which a build for Qt 6.4 may find newer.
     const char *obstacle(const QString &track) const
     {
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        if (!runningQt64()) return nullptr;
         // With no audio device one backend crashes in play() and the other
         // runs through the track unpaced.
         if (QMediaDevices::audioOutputs().isEmpty())
@@ -425,9 +463,6 @@ private:
         // ffmpeg's packager writes no mehd box, so its file states no duration.
         if (track == m_packaged && qgetenv("QT_MEDIA_BACKEND") != "ffmpeg")
             return "Qt 6.4's GStreamer backend cannot seek in fragments that state no duration";
-#else
-        Q_UNUSED(track)
-#endif
         return nullptr;
     }
 
@@ -437,6 +472,37 @@ private:
         QTest::addColumn<QString>("track");
         QTest::newRow("as ffmpeg packages it") << m_packaged;
         QTest::newRow("as Tidal packages it")  << m_tidal;
+    }
+
+    static bool runningQt64() { return QLibraryInfo::version() < QVersionNumber(6, 5); }
+
+    // The Player as on the Qt that runs, and as on a Qt with the other watch,
+    // whose paths then run on this Qt where they can.
+    static QString otherWatchQt()
+    {
+        return runningQt64() ? QStringLiteral("6.8.2") : QStringLiteral("6.4.2");
+    }
+
+    void watches()
+    {
+        QTest::addColumn<QString>("qt");
+        QTest::addColumn<bool>("wakes");
+        QTest::newRow("this Qt") << QString() << runningQt64();
+        QTest::newRow(qPrintable(QStringLiteral("as on Qt ") + otherWatchQt()))
+            << otherWatchQt() << !runningQt64();
+    }
+
+    void layoutsAndWatches()
+    {
+        QTest::addColumn<QString>("track");
+        QTest::addColumn<QString>("qt");
+        for (const auto &[name, track] : { std::pair{"as ffmpeg packages it", m_packaged},
+                                           std::pair{"as Tidal packages it", m_tidal} }) {
+            QTest::newRow(name) << track << QString();
+            const QString other = QStringLiteral("%1, as on Qt %2")
+                                      .arg(QLatin1String(name), otherWatchQt());
+            QTest::newRow(qPrintable(other)) << track << otherWatchQt();
+        }
     }
 
     // Serves the segments and has DashFetcher join them, as the app does for

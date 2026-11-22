@@ -673,8 +673,8 @@ private:
     // Rows that stream the track before its file lands need the join streamed.
     static const char *streamObstacle(bool streamFirst)
     {
-        if (streamFirst && !Player::kStreamsJoins)
-            return "below Qt 6.6 the Player does not stream a join (Player::kStreamsJoins)";
+        if (streamFirst && !Player::streamsJoins())
+            return "below Qt 6.6 the Player does not stream a join (Player::streamsJoins())";
         return nullptr;
     }
 

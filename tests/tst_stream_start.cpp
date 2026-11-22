@@ -592,7 +592,7 @@ private slots:
 
     // Where the Player does not stream a join, the track waits for all of it.
     void aTrackPlaysFromItsFileWhereNoJoinIsStreamed() {
-        if (Player::kStreamsJoins) QSKIP("this Qt streams a join; the cases above cover it");
+        if (Player::streamsJoins()) QSKIP("this Qt streams a join; the cases above cover it");
         if (const char *why = obstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
@@ -604,10 +604,10 @@ private slots:
     }
 
 private:
-    // The cases that need a join streamed, which Player::kStreamsJoins gates.
+    // The cases that need a join streamed, which Player::streamsJoins() gates.
     static const char *streamObstacle() {
-        if (!Player::kStreamsJoins)
-            return "below Qt 6.6 the Player does not stream a join (Player::kStreamsJoins)";
+        if (!Player::streamsJoins())
+            return "below Qt 6.6 the Player does not stream a join (Player::streamsJoins())";
         return obstacle();
     }
 

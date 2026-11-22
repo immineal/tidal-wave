@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QHostAddress>
+#include <QLibraryInfo>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSet>
@@ -17,8 +18,10 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QVersionNumber>
 #include <memory>
 
+#include "QtRuntimeAs.h"
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "player/DashFetcher.h"
@@ -215,10 +218,26 @@ private slots:
         QCOMPARE(slowSrv.answered, 91);
     }
 
+    void mediaFetchesStayOffHttp2OnOlderQt_data()
+    {
+        QTest::addColumn<QString>("qt");
+        QTest::addColumn<bool>("http2");
+        QTest::newRow("this Qt") << QString()
+            << (QLibraryInfo::version() >= QVersionNumber(6, 8));
+        QTest::newRow("Qt 6.4.2") << QStringLiteral("6.4.2")  << false;
+        QTest::newRow("Qt 6.7.3") << QStringLiteral("6.7.3")  << false;
+        QTest::newRow("Qt 6.8.0") << QStringLiteral("6.8.0")  << true;
+        QTest::newRow("Qt 6.10.2") << QStringLiteral("6.10.2") << true;
+    }
+
     // Qt before 6.8 cannot keep an HTTP/2 connection to the audio CDN alive
     // past a few segment requests, so media fetches there stay on HTTP/1.1.
+    // Decided by the Qt that runs, which can be newer than the build's.
     void mediaFetchesStayOffHttp2OnOlderQt()
     {
+        QFETCH(QString, qt);
+        QFETCH(bool, http2);
+        const QtRuntimeAs as(qt);
         SegmentServer srv;
         QVERIFY(srv.listen(QHostAddress::LocalHost));
         srv.body = QByteArray(16, 'x');
@@ -231,14 +250,13 @@ private slots:
         QVERIFY(reply);
         const QVariant allowed =
             reply->request().attribute(QNetworkRequest::Http2AllowedAttribute);
-#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-        QVERIFY2(allowed.isValid() && !allowed.toBool(),
-                 "a media fetch on this Qt may negotiate HTTP/2, which the audio "
-                 "CDN drops after a few requests");
-#else
-        QVERIFY2(!allowed.isValid() || allowed.toBool(),
-                 "HTTP/2 is switched off for media fetches on a Qt that handles it");
-#endif
+        if (!http2)
+            QVERIFY2(allowed.isValid() && !allowed.toBool(),
+                     "a media fetch on this Qt may negotiate HTTP/2, which the audio "
+                     "CDN drops after a few requests");
+        else
+            QVERIFY2(!allowed.isValid() || allowed.toBool(),
+                     "HTTP/2 is switched off for media fetches on a Qt that handles it");
         QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
     }
 };

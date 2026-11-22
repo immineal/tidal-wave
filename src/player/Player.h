@@ -2,6 +2,7 @@
 
 #pragma once
 #include <QObject>
+#include "QtRuntime.h"
 #include <QMediaPlayer>
 #include <QAudioOutput>
 #include <QAudioDevice>
@@ -89,10 +90,10 @@ public:
     QString     audioFormat() const;
     // The badge text for a stream: format, bit depth and rate, or bit rate.
     static QString formatLabel(const StreamManifest &info);
-    // Whether a lossless track plays from the front of its join. Below 6.6 the
-    // FFmpeg backend opens a source inside setSource(), on the thread that
-    // GrowingFileServer answers on, so the open would wait for good.
-    static constexpr bool kStreamsJoins = QT_VERSION >= QT_VERSION_CHECK(6, 6, 0);
+    // Whether a lossless track plays from the front of its join, on the Qt
+    // that runs. Below 6.6 the FFmpeg backend opens a source inside setSource(),
+    // on the thread that GrowingFileServer answers on, so the open would wait.
+    static bool streamsJoins() { return QtRuntime::version() >= kStreamsJoinsFrom; }
     // The loudness factor applied to the current track, 1.0 for none.
     double      trackGain() const;
     int          queueCount()    const { return m_queue.count(); }
@@ -511,9 +512,15 @@ private:
     // A seek moved the track while the backend ran, and the backend answered
     // that the track is loaded. Buffering it reports after that is no load.
     bool                 m_seekedLoaded  = false;
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    // Qt 6.4's reader thread can sleep through the call that resumes it. The
-    // backend then plays and stands still until its state changes again.
+    // The Qt that runs, read once, picks the workarounds below: a build for
+    // Qt 6.4 runs on newer Qt as well, and these depend on Qt's behaviour.
+    const int            m_qt            = QtRuntime::version();
+    bool qtBelow(int major, int minor) const { return m_qt < QT_VERSION_CHECK(major, minor, 0); }
+    static constexpr int kStreamsJoinsFrom = QT_VERSION_CHECK(6, 6, 0);
+
+    // Qt 6.4's watch: its reader thread can sleep through the call that
+    // resumes it. The backend then plays and stands still until its state
+    // changes again.
     void wakeStandingBackend();
     // Whether the backend is where it was when last looked at.
     bool backendStands();
@@ -550,9 +557,10 @@ private:
     void leaveAheadOfALostSoundEngine();
     // Whether a sink was asked for in this run, so that Qt has that engine.
     bool m_sinkAsked = false;
-#else
-    // When the sound server stops taking the audio, Qt plays on without a word
-    // and the track stands still for good. A new output is a new stream.
+
+    // The watch of Qt 6.5 and later: when the sound server stops taking the
+    // audio, Qt plays on without a word and the track stands still for good.
+    // A new output is a new stream.
     void renewStandingOutput();
     // Watches a playing backend from where it is now, and stops otherwise.
     void watchBackend();
@@ -565,7 +573,6 @@ private:
     qint64               m_stillPos      = -1;
     int                  m_stillLooks    = 0;
     int                  m_stillRenewals = 0;
-#endif
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
 

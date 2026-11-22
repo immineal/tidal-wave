@@ -4,9 +4,12 @@
 
 #include <QTest>
 #include <QColor>
+#include <QLibraryInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QVersionNumber>
 
+#include "QtRuntimeAs.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
 
@@ -391,6 +394,25 @@ private slots:
         QVERIFY(!p.appVersion().isEmpty());
         // Never the hardcoded placeholder string.
         QVERIFY(p.appVersion() != QLatin1String("v0.1-alpha"));
+    }
+
+    void crossfadeIsOfferedByTheQtThatRuns_data() {
+        QTest::addColumn<QString>("qt");
+        QTest::addColumn<bool>("offered");
+        QTest::newRow("this Qt") << QString() << (QLibraryInfo::version() >= QVersionNumber(6, 5));
+        QTest::newRow("Qt 6.4.2") << QStringLiteral("6.4.2") << false;
+        QTest::newRow("Qt 6.5.0") << QStringLiteral("6.5.0") << true;
+        QTest::newRow("Qt 6.8.2") << QStringLiteral("6.8.2") << true;
+    }
+
+    // Crossfade needs the second backend, which the Player keeps off Qt 6.4.
+    // A build for 6.4 offers it where it runs on a newer Qt.
+    void crossfadeIsOfferedByTheQtThatRuns() {
+        QFETCH(QString, qt);
+        QFETCH(bool, offered);
+        const QtRuntimeAs as(qt);
+        Prefs p;
+        QCOMPARE(p.crossfadeAvailable(), offered);
     }
 
 private:
