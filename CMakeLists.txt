@@ -51,6 +51,7 @@ endif()
 # Everything except main.cpp lives in the tidalwave_qml library (see below), so
 # both the app and the test binaries get the same C++ *and* the same QML module.
 set(SOURCES
+    src/QtRuntime.cpp
     src/api/TidalApi.cpp
     src/api/Auth.cpp
     src/api/TidalClient.cpp
@@ -94,6 +95,7 @@ set(SOURCES
 )
 
 set(HEADERS
+    src/QtRuntime.h
     src/api/Models.h
     src/api/TidalApi.h
     src/api/Auth.h

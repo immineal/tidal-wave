@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "Application.h"
+#include "QtRuntime.h"
 #include "ui/SignalWatcher.h"
 #include "ui/I18n.h"
 #include "ui/PinStore.h"
@@ -464,13 +465,20 @@ bool Application::scaleWasChosenAutomatically() const {
 double Application::activeScaleFactor() const { return g_scaleFactor; }
 
 void Application::useWholeHeapQmlCollector() {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-    // Qt's incremental collector can sweep objects of a component still being
-    // built, which crashes the window now and then; 0 turns it off. Not filed
-    // yet, nearest: https://bugreports.qt.io/browse/QTBUG-143167
-    if (qEnvironmentVariableIsEmpty("QV4_GC_TIMELIMIT"))
+    // Qt's incremental collector (6.8 on) can sweep objects of a component
+    // still being built, which crashes the window now and then; 0 turns it
+    // off. Not filed yet, nearest: https://bugreports.qt.io/browse/QTBUG-143167
+    if (QtRuntime::version() >= QT_VERSION_CHECK(6, 8, 0)
+        && qEnvironmentVariableIsEmpty("QV4_GC_TIMELIMIT"))
         qputenv("QV4_GC_TIMELIMIT", QByteArrayLiteral("0"));
-#endif
+}
+
+void Application::preferFfmpegMediaBackend() {
+    // Qt below 6.5 defaults to GStreamer, which crashes on a system without its
+    // plugins. The FFmpeg plugin ships inside the Qt multimedia package.
+    if (QtRuntime::version() < QT_VERSION_CHECK(6, 5, 0)
+        && qEnvironmentVariableIsEmpty("QT_MEDIA_BACKEND"))
+        qputenv("QT_MEDIA_BACKEND", QByteArrayLiteral("ffmpeg"));
 }
 
 void Application::applyScaleFactor() {
@@ -568,12 +576,11 @@ void Application::applyQuickControlsStyle() {
 void Application::addEmbeddedQmlImportPath(QQmlEngine *engine) {
     if (!engine)
         return;
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // "qrc:/qt/qml" became a built-in import path in Qt 6.5. On 6.4 the
     // module's qmldir is not found without it and no QML type resolves.
     // On 6.5+ addImportPath() would only move it ahead of Qt's own modules.
-    engine->addImportPath(QStringLiteral("qrc:/qt/qml"));
-#endif
+    if (QtRuntime::version() < QT_VERSION_CHECK(6, 5, 0))
+        engine->addImportPath(QStringLiteral("qrc:/qt/qml"));
 }
 
 bool Application::reallyQuit() const {

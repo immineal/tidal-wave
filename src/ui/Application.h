@@ -193,6 +193,10 @@ public:
     // QV4_GC_TIMELIMIT holds a value. Call from main() before any QML engine.
     static void useWholeHeapQmlCollector();
 
+    // Names the FFmpeg media backend when Qt 6.4 runs, unless QT_MEDIA_BACKEND
+    // holds one. Call from main() before the QApplication exists.
+    static void preferFfmpegMediaBackend();
+
     // The UI font stack, most specific first, without families that are not
     // installed: the first missing name makes Qt build its alias table on
     // every launch. Needs a QGuiApplication.
