@@ -108,7 +108,7 @@ modules:
         # Flathub wants the commit the tag resolved to, so the source cannot
         # move under a re-cut tag: git rev-parse v0.5.0^{commit}. It must be a
         # commit whose metainfo carries <screenshots>.
-        commit: afa36669f9dfc6a86308eb3caf2a5b751b26538c
+        commit: 2bd341232eb1b54a57f6892b4a1dcb8acfbb941a
     post-install:
       # Flatpak exports only files named after the app id, so the icons get a
       # second copy under the id and the desktop entry points at it. The
