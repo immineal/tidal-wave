@@ -5,7 +5,7 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
-## [0.5.0] - 2026-11-18
+## [0.5.0] - 2026-11-22
 
 The biggest release so far, so this section is sorted by topic. Where something
 works differently now, the entry says what 0.4.2 did.
