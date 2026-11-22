@@ -342,12 +342,25 @@ var albumRows = [
         ["Wedding Song", 242]]]
 ]
 
-// The album the player is on in every scene, and the one the album page opens.
+// The album the player is on in every scene but Now playing, and the one the
+// album page opens.
 var heroAlbum = 6
 var heroPlaying = 1
-// Never drawn: a track with lyrics is what puts the Lyrics chip on its cover.
-// Not the song's words, which do not belong in this repository.
-var heroLyrics = [{ ms: 0, text: "Lyrics" }]
+// The album page's record, playing: a cover with colour for the header.
+var albumScene = 5
+var albumScenePlaying = 1
+
+// The records Tidal has in hi-res: their listed quality still says LOSSLESS
+// and a media tag carries the rest, as on the real catalogue.
+var hiResAlbums = [0, 11, 15]
+// The hi-res record now playing is drawn on, for the badge with its tier.
+var hiResHero = 0
+
+function isHiRes(i) { return hiResAlbums.indexOf(i) >= 0 }
+
+// What Player::audioQuality and audioFormat say for a stream of the album.
+function streamQuality(i) { return isHiRes(i) ? "HI_RES_LOSSLESS" : "LOSSLESS" }
+function streamFormat(i) { return isHiRes(i) ? "24-bit / 96 kHz FLAC" : "16-bit / 44.1 kHz FLAC" }
 
 function trackCount(i) { return albumRows[i][4].length }
 
@@ -361,7 +374,10 @@ function album(i) {
         artistList: [{ id: by.id, name: by.name }],
         year: row[3].slice(0, 4), releaseDate: row[3],
         coverUrl: albumCover(i), coverUrl640: albumCover(i),
-        type: "ALBUM", numTracks: trackCount(i), quality: "LOSSLESS"
+        type: "ALBUM", numTracks: trackCount(i), quality: "LOSSLESS",
+        explicit_: false, audioModes: ["STEREO"],
+        mediaTags: isHiRes(i) ? ["LOSSLESS", "HIRES_LOSSLESS"] : ["LOSSLESS"],
+        section: "a", featured: false, titleShared: false, upc: ""
     }
 }
 
@@ -384,7 +400,9 @@ function track(i, j) {
         artistList: credits, artistId: a.artistId,
         albumTitle: a.title, albumId: a.id,
         albumCover: a.coverUrl, coverUrl: a.coverUrl, coverUrl80: a.coverUrl,
+        coverUrl1280: a.coverUrl, version: "", explicit_: false,
         duration: row[1], durationStr: clock(row[1]), trackNumber: j + 1,
+        volumeNumber: 1, isrc: "", streamable: true, trackMixId: "", addedAt: 0,
         popularity: 40 + (i * 11 + j * 17) % 55, quality: "LOSSLESS"
     }
 }
@@ -406,12 +424,22 @@ function albumHeader(i) {
     return a
 }
 
-// Two tracks in three, across the whole library: the songs that were liked.
+// A fixed clock, so every date the shots print is the same on every run:
+// 2026-11-20 18:00 UTC.
+var now = 1795197600000
+var day = 86400000
+
+// Two tracks in three, across the whole library: the songs that were liked,
+// newest first, a few a week.
 function likedTracks() {
     var out = []
     for (var i = 0; i < albumRows.length; ++i)
         for (var j = 0; j < trackCount(i); ++j)
-            if ((i + j) % 3 !== 0) out.push(track(i, j))
+            if ((i + j) % 3 !== 0) {
+                var t = track(i, j)
+                t.addedAt = now - Math.round(out.length * 2.3 * day) - (out.length * 3779000) % day
+                out.push(t)
+            }
     return out
 }
 
@@ -441,7 +469,7 @@ function playlist(i) {
     return {
         id: 4000 + i, uuid: "store-playlist-" + (i + 1), title: row[0],
         description: "", coverUrl: "store/playlist/" + tiles.join("+"),
-        numTracks: row[1], duration: row[1] * 214, type: "USER"
+        numTracks: row[1], duration: row[1] * 214, type: "USER", editable: true
     }
 }
 
@@ -453,22 +481,23 @@ function playlists() {
 
 // ── mixes ───────────────────────────────────────────────────────────────────
 
-// Title, subtitle, and the artist whose photo is the cover, as Tidal does it.
+// Title, subtitle, the artist whose photo is the cover, and Tidal's mixType.
 var mixRows = [
-    ["Daily Discovery", "New and familiar, picked for today",                   7],
-    ["New Arrivals",    "LARY, Grizzly, Ben Wendel and more",                   5],
-    ["My Mix 1",        "The Postal Service, Hello=Fire, Midaircondo and more", 0],
-    ["My Mix 2",        "Allison Crowe, Josh Woodward and more",                3],
-    ["My Mix 3",        "Midaircondo, Baby Jey and more",                       4],
-    ["My Mix 4",        "Ben Wendel, The Brian Landrus Kaleidoscope and more",  1],
-    ["My Mix 5",        "Grizzly, LARY and more",                               6],
-    ["My Mix 6",        "Josh Woodward, Allison Crowe and more",                2]
+    ["My Daily Discovery", "New and familiar, picked for today",                   7, "DISCOVERY_MIX"],
+    ["My New Arrivals",    "LARY, Grizzly, Ben Wendel and more",                   5, "NEW_RELEASE_MIX"],
+    ["My Mix 1",           "The Postal Service, Hello=Fire, Midaircondo and more", 0, "DAILY_MIX"],
+    ["My Mix 2",           "Allison Crowe, Josh Woodward and more",                3, "DAILY_MIX"],
+    ["My Mix 3",           "Midaircondo, Baby Jey and more",                       4, "DAILY_MIX"],
+    ["My Mix 4",           "Ben Wendel, The Brian Landrus Kaleidoscope and more",  1, "DAILY_MIX"],
+    ["My Mix 5",           "Grizzly, LARY and more",                               6, "DAILY_MIX"],
+    ["My Mix 6",           "Josh Woodward, Allison Crowe and more",                2, "DAILY_MIX"]
 ]
 
+// TidalBridge::mixToMap's shape, which is what fetchHomeMixes answers.
 function mix(i) {
     var row = mixRows[i]
     return { id: "store-mix-" + (i + 1), title: row[0], subtitle: row[1],
-             coverUrl: artist(row[2]).coverUrl, mixType: "" }
+             coverUrl: artist(row[2]).coverUrl, mixType: row[3] }
 }
 
 function mixes() {
@@ -477,12 +506,53 @@ function mixes() {
     return out
 }
 
-// The tile shape HomePage builds out of a fetched mix.
-function homeMixes() {
-    return mixes().map(function (m) {
-        return { id: m.id, title: m.title, subtitle: m.subtitle,
-                 coverUrl: m.coverUrl, type: "mix", mixType: m.mixType }
-    })
+// ── Tidal's own Home ────────────────────────────────────────────────────────
+
+// When the feed was fetched. Plays here after it lead Recently played.
+var feedFetchedAt = now - 2 * 3600000
+
+function feedItem(kind, map) { map.kind = kind; return map }
+
+// What TidalBridge::homeFeedToMap makes of v2/home/feed/static: the rows in
+// the order Tidal sends them (see tests/fixtures/home_feed_static_*.json).
+// Home's own rows stand where their counterparts are and carry no cards,
+// except the history, which Home merges with the plays here.
+function homeFeed() {
+    function row(id, title, own, items, context) {
+        var kinds = {}
+        items.forEach(function (it) { kinds[it.kind] = true })
+        var k = Object.keys(kinds)
+        return { id: id, title: title, context: context || "", ownRow: own || "",
+                 mediaType: k.length === 1 ? k[0] : "recent", items: items }
+    }
+    function albumsOf(list) { return list.map(function (i) { return feedItem("album", album(i)) }) }
+    function playlistsOf(list) {
+        return list.map(function (i) {
+            var p = playlist(i)
+            return feedItem("playlist", { uuid: p.uuid, title: p.title, description: "",
+                                          numTracks: p.numTracks, duration: p.duration,
+                                          coverUrl: p.coverUrl, type: p.type, editable: true })
+        })
+    }
+    return {
+        tabs: [{ name: "For you", feed: "static" }, { name: "Staff Picks", feed: "editorial" }],
+        fetchedAt: feedFetchedAt,
+        modules: [
+            row("DAILY_MIXES", "Custom mixes", "mixes", []),
+            // Played on other devices: Tidal's history, newest first.
+            row("CONTINUE_LISTEN_TO", "Recently played", "recent", [
+                feedItem("mix", mix(2)), feedItem("artist", artist(1)),
+                albumsOf([11])[0], playlistsOf([3])[0], albumsOf([5])[0],
+                feedItem("artist", artist(5)), albumsOf([15])[0], feedItem("mix", mix(0)),
+                albumsOf([12])[0]]),
+            row("NEW_ALBUM_SUGGESTIONS", "Suggested new albums for you", "", albumsOf([16, 9, 19, 17, 21, 14])),
+            row("BECAUSE_YOU_LISTENED_TO_ALBUM", "Because you listened to", "",
+                albumsOf([13, 20, 18, 7, 3]), "Give Up"),
+            row("YOUR_FAVORITE_ARTISTS", "Your favorite artists", "artists", []),
+            row("MY_PLAYLISTS", "Your top playlists", "playlists", []),
+            row("HISTORY_MIXES", "Your listening history", "", [])
+        ].filter(function (m) { return m.ownRow.length > 0 || m.items.length > 0 })
+    }
 }
 
 // ── the sidebar ─────────────────────────────────────────────────────────────
@@ -490,13 +560,15 @@ function homeMixes() {
 function playlistEntry(i, pinned) {
     var p = playlist(i)
     return { kind: "playlist", id: p.uuid, title: p.title, subtitle: "",
-             imageUrl: p.coverUrl, pinned: pinned === true, trackCount: p.numTracks }
+             imageUrl: p.coverUrl, pinned: pinned === true, trackCount: p.numTracks,
+             type: p.type, editable: true }
 }
 
-function albumEntry(i, pinned) {
+function albumEntry(i, pinned, lastPlayed) {
     var a = album(i)
     return { kind: "album", id: "" + a.id, title: a.title, subtitle: a.artists,
-             imageUrl: a.coverUrl, pinned: pinned === true, trackCount: a.numTracks }
+             imageUrl: a.coverUrl, pinned: pinned === true, trackCount: a.numTracks,
+             lastPlayed: lastPlayed || 0 }
 }
 
 function artistEntry(i) {
@@ -508,16 +580,17 @@ function artistEntry(i) {
 function mixEntry(i) {
     var m = mix(i)
     return { kind: "mix", id: m.id, title: m.title, subtitle: m.subtitle,
-             imageUrl: m.coverUrl, pinned: false, trackCount: 0 }
+             imageUrl: m.coverUrl, pinned: false, trackCount: 0, mixType: m.mixType }
 }
 
 // Pinned rows first, which is the order the library index guarantees.
 function libraryEntries() {
     return [
-        playlistEntry(0, true), albumEntry(heroAlbum, true),
+        // Give Up plays in every scene, so the index has stamped its play.
+        playlistEntry(0, true), albumEntry(heroAlbum, true, feedFetchedAt + 3600000),
         playlistEntry(1), albumEntry(1), artistEntry(1), playlistEntry(2),
         mixEntry(2), albumEntry(10), playlistEntry(4), artistEntry(5),
-        albumEntry(4), playlistEntry(6), artistEntry(3), albumEntry(7),
+        albumEntry(4), playlistEntry(6), artistEntry(3), albumEntry(7, false, feedFetchedAt + 1800000),
         playlistEntry(3), albumEntry(18)
     ]
 }
@@ -561,4 +634,9 @@ function searchTracks() {
 
 function searchAlbums() {
     return [album(7), album(20), album(13), album(18)]
+}
+
+// Tidal's own best match, which the All tab puts first.
+function searchTopHit() {
+    return { kind: "artist", item: artist(2) }
 }

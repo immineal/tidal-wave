@@ -47,24 +47,37 @@ TestCase {
         auth.setUsernameForTest("Robin")
         cast.setDevicesForTest([{ id: "d1", name: "Living Room" }])
 
-        var queue = D.albumTracks(D.heroAlbum)
-        var now = queue[D.heroPlaying]
-        player.setPlaybackSource("album", "" + D.album(D.heroAlbum).id,
-                                 D.album(D.heroAlbum).title)
-        player.setQueueForTest(queue, D.heroPlaying)
-        player.setCurrentTrackForTest(now)
-        player.setAudioQualityForTest("LOSSLESS")
-        player.setDurationForTest(now.duration * 1000)
-        player.setPlayingForTest(true)
+        play(D.heroAlbum, D.heroPlaying)
         player.setVolume(0.85)
 
         bridge.setFavoriteTracksListForTest(D.likedTracks())
         bridge.setFavoriteAlbumsForTest(D.albums())
         bridge.setFavoriteArtistsForTest(D.artists())
         bridge.setUserPlaylistsForTest(D.playlists())
-        bridge.setTrackFavoriteForTest(now.id, true)
         library.setEntriesForTest(D.libraryEntries())
         pins.setItemsForTest(D.pinItems())
+        // What Home fetches as it mounts, from Tidal's answers' shapes.
+        bridge.setHomeMixesForTest(D.mixes())
+        bridge.setHomeFeedForTest("static", D.homeFeed())
+        // Never drawn: a track with lyrics is what puts the Lyrics chip on
+        // the cover. Not the song's words, which do not belong here.
+        bridge.setLyricsForTest("[00:00.00]Lyrics", true)
+    }
+
+    // The album's track `index` in the player, its stream described as the
+    // real Player describes it once the stream has said its format.
+    function play(albumIndex, index) {
+        var queue = D.albumTracks(albumIndex)
+        var now = queue[index]
+        player.setPlaybackSource("album", "" + D.album(albumIndex).id,
+                                 D.album(albumIndex).title)
+        player.setQueueForTest(queue, index)
+        player.setCurrentTrackForTest(now)
+        player.setAudioQualityForTest(D.streamQuality(albumIndex))
+        player.setAudioFormatForTest(D.streamFormat(albumIndex))
+        player.setDurationForTest(now.duration * 1000)
+        player.setPlayingForTest(true)
+        bridge.setTrackFavoriteForTest(now.id, true)
     }
 
     function cleanup() {
@@ -143,6 +156,55 @@ TestCase {
         }, 8000, "the page did not come back to rest at the top")
     }
 
+    // Every item under `item` with that objectName.
+    function findAllNamed(item, name, out) {
+        out = out || []
+        if (!item) return out
+        if (item.objectName === name) out.push(item)
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) findAllNamed(kids[i], name, out)
+        return out
+    }
+
+    // Whether the item is drawn: it and every parent visible.
+    function shown(item) {
+        if (!item) return false
+        for (var it = item; it; it = it.parent)
+            if (!it.visible || it.opacity === 0) return false
+        return true
+    }
+
+    // ── what 0.5.0 shows ─────────────────────────────────────────────────
+    // Each scene checks the features its picture is meant to show, so a scene
+    // whose stub data stops feeding them fails instead of drawing an old UI.
+
+    // The badges in the window: the stream's real format, never the tier alone.
+    function checkBadges(win, withTier) {
+        var texts = findAllNamed(win.contentItem, "qualityBadgeText").filter(shown)
+        verify(texts.length > 0, "no quality badge is shown")
+        for (var i = 0; i < texts.length; ++i) {
+            verify(/\d+-bit \/ [\d.]+ kHz FLAC$/.test(texts[i].text),
+                   "the quality badge says \"" + texts[i].text + "\", not the stream's format")
+            if (withTier)
+                verify(texts[i].text.indexOf(" · ") > 0,
+                       "the quality badge has no tier in front: " + texts[i].text)
+        }
+        return texts
+    }
+
+    // The hero's colour came from its cover, not the accent wash.
+    function checkHeroTint(page) {
+        var gradient = findNamed(page, "heroGradient")
+        verify(gradient && shown(gradient), "no hero gradient on the page")
+        var hero = gradient.parent
+        var tint = null
+        for (var i = 0; i < hero.data.length; ++i)
+            if (hero.data[i].objectName === "heroCoverTint") tint = hero.data[i]
+        verify(tint, "the hero has no cover tint")
+        tryVerify(function () { return tint.hasColor }, 4000,
+                  "the hero never took its colour from the cover")
+    }
+
     // `scrolled` is the view to put through scrollOnce(), where a page has one.
     function shoot(win, name, scrolled) {
         verify(shotOutDir.length > 0, "TW_SHOT_OUT was not set")
@@ -172,12 +234,34 @@ TestCase {
         var win = open(42000)
         var page = findWith(win.contentItem, "greeting")
         verify(page, "no home page in the window")
-        // The stub bridge serves no mixes, and the greeting follows the clock.
-        page.mixes = D.homeMixes()
+        // The greeting follows the clock.
         page.greeting = page.greetingFor(15)
         // What the page does when the favourites change under it.
         page.refreshRows()
         verify(page.recentAlbums.length > 0, "the saved albums never reached the home page")
+        compare(page.mixes.length, D.mixes().length)
+
+        // Tidal's feed as two tabs on the greeting's line, the first chosen.
+        var tabs = findNamed(page, "homeTabsRow")
+        verify(tabs && shown(tabs), "Home shows no feed tabs")
+        compare(tabs.model.length, 2)
+        compare(tabs.model[0], "For you")
+        compare(tabs.model[1], "Staff picks")
+        compare(tabs.currentIndex, 0)
+        verify(shown(findNamed(page, "homeContinue")), "Home does not show the playing track")
+        // Recently played first, its cards above the player bar.
+        var recent = findNamed(page, "homeRecentlyPlayed")
+        verify(recent && shown(recent), "Home shows no Recently played row")
+        verify(recent.items.length >= 8, "Recently played has " + recent.items.length + " cards")
+        compare(recent.items[0].title, D.album(D.heroAlbum).title)
+        var bottom = recent.mapToItem(win.contentItem, 0, recent.height).y
+        var bar = findWith(win.contentItem, "showNowPlaying")
+        verify(bar, "no player bar in the window")
+        var barTop = bar.mapToItem(win.contentItem, 0, 0).y
+        verify(bottom <= barTop, "Recently played ends at " + bottom + ", under the player bar at " + barTop)
+        // Tidal's own rows, under the titles it gives them.
+        verify(findNamed(page, "homeFeedRow_NEW_ALBUM_SUGGESTIONS"), "Home has none of Tidal's rows")
+        checkBadges(win, false)
         shoot(win, fileName("store_home"))
     }
 
@@ -186,35 +270,43 @@ TestCase {
         win.navigate("collection", { activeTab: 1 })
         var page = findWith(win.contentItem, "savedAlbums")
         verify(page, "no collection page in the window")
-        page.mixes = D.mixes()
+        compare(page.mixes.length, D.mixes().length)
         compare(page.savedAlbums.length, D.albums().length)
         var grid = findNamed(page, "collectionAlbumsGrid")
         verify(grid, "no album grid on the collection page")
+        checkBadges(win, false)
         shoot(win, fileName("store_collection"), grid)
     }
 
     function test_album() {
+        play(D.albumScene, D.albumScenePlaying)
         var win = open(87000)
-        var id = D.album(D.heroAlbum).id
-        bridge.setAlbumForTest(D.albumHeader(D.heroAlbum), D.albumTracks(D.heroAlbum))
+        var id = D.album(D.albumScene).id
+        bridge.setAlbumForTest(D.albumHeader(D.albumScene), D.albumTracks(D.albumScene))
         bridge.setAlbumFavoriteForTest(id, true)
         win.navigate("album", { albumId: id })
         var page = findWith(win.contentItem, "albumData")
         verify(page, "no album page in the window")
-        compare(page.tracks.length, D.albumTracks(D.heroAlbum).length)
+        compare(page.tracks.length, D.albumTracks(D.albumScene).length)
         var list = findNamed(page, "albumTracksList")
         verify(list, "no track list on the album page")
+        checkHeroTint(page)
+        verify(shown(findNamed(page, "albumTracksHeader")), "the album has no column headings")
+        checkBadges(win, false)
         shoot(win, fileName("store_album"), list)
     }
 
     function test_nowplaying() {
+        // A hi-res record, for the badge with its tier.
+        play(D.hiResHero, 0)
         var win = open(104000)
         win.navigate("nowplaying")
         var page = findWith(win.contentItem, "stackBreakpoint")
         verify(page, "no Now Playing page in the window")
-        // The stub bridge serves no lyrics; this is the page once some arrived.
-        page.lyricsData = D.heroLyrics
-        page.lyricsState = "ready"
+        compare(page.lyricsState, "ready")
+        var badge = checkBadges(win, true)
+        compare(badge.length, 1)
+        compare(badge[0].text, "Max · " + D.streamFormat(D.hiResHero))
         shoot(win, fileName("store_nowplaying"))
     }
 
@@ -222,11 +314,14 @@ TestCase {
         var win = open(131000)
         bridge.setSearchResultsForTest(D.searchTracks(), D.searchAlbums(),
                                        D.searchArtists(), [])
+        bridge.setSearchTopHitForTest(D.searchTopHit())
         win.navigate("search", { requestedQuery: D.searchQuery })
         var page = findWith(win.contentItem, "requestedQuery")
         verify(page, "no search page in the window")
         verify(page.replied, "the search never answered")
         compare(page.sectionOrder[0], page.kArtists)
+        verify(shown(findNamed(page, "searchTopHit")), "the search shows no top result")
+        checkBadges(win, false)
         // A focused field draws a caret, and a caret blinks.
         page.releaseFocus()
         // The query arrives selected. In the app leaving the field clears
