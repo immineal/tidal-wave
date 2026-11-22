@@ -2,6 +2,10 @@ name: Store screenshots
 
 # Started by hand. Draws the five store screenshots, in a dark and a light
 # theme, and hands them back as an artifact. Nothing is committed.
+#
+# To refresh the published screenshots, run this on the branch being released
+# and commit store_<scene>_sea.png as assets/screenshot_<scene>.png. release.yml
+# draws the same set and stops the release while the two differ.
 on:
   workflow_dispatch:
 

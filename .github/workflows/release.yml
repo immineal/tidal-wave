@@ -171,6 +171,66 @@ jobs:
             packaging/validate-store-metadata.sh --no-net --tag "v$ver"
           fi
 
+  # The README and the metainfo show assets/screenshot_*.png at the tag, so
+  # they must be this release's UI. Drawn as screenshots.yml draws them, and
+  # publish waits for this job.
+  store-screenshots:
+    name: The published screenshots show this release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.12.0'
+          modules: 'qtmultimedia'
+
+      # As screenshots.yml, plus Pillow for the comparison. It goes into the
+      # system Python: python3 on PATH is the one install-qt-action set up.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libavahi-client-dev \
+            xvfb libgl1-mesa-dri \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            fonts-inter fonts-dejavu-core python3-pil
+
+      - name: Draw the store set
+        run: tests/visual/run.sh store
+
+      # If a second draw does not match the first, the scene itself varies
+      # and the comparison with assets/ would mean nothing.
+      - name: Draw the Sea set again and compare the two
+        run: |
+          mkdir -p shots/first
+          cp tests/visual/out/store_*_sea.png shots/first/
+          STORE_THEMES=sea tests/visual/run.sh store
+          /usr/bin/python3 -I tests/visual/compare-store.py --label "Two draws of the same scene" \
+            'shots/first/store_{}_sea.png' 'tests/visual/out/store_{}_sea.png'
+
+      - name: Compare with the committed screenshots
+        run: |
+          mkdir -p shots/fresh
+          cp tests/visual/out/store_*.png shots/fresh/
+          if ! /usr/bin/python3 -I tests/visual/compare-store.py --diffs shots/diff \
+               'assets/screenshot_{}.png' 'shots/fresh/store_{}_sea.png'; then
+            echo "::error title=Stale screenshots::Download this run's store-screenshots artifact, copy store_<scene>_sea.png over assets/screenshot_<scene>.png, commit, and move the tag."
+            exit 1
+          fi
+
+      - name: Keep the fresh pictures and the diffs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-screenshots
+          path: shots/
+          if-no-files-found: ignore
+
   # Qt 6.12 and FFmpeg bundled, built on Ubuntu 22.04 for its older glibc.
   appimage:
     name: tidal-wave-x86_64.AppImage
@@ -210,10 +270,10 @@ jobs:
 
   # Runs after a failed build too, so that the missing files are named once
   # here. Nothing is uploaded unless all six are present and the store
-  # metadata passed.
+  # metadata and screenshots passed.
   publish:
     name: Checksums and upload
-    needs: [desktop, deb, appimage, store-metadata]
+    needs: [desktop, deb, appimage, store-metadata, store-screenshots]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
@@ -227,6 +287,14 @@ jobs:
           RESULT: ${{ needs.store-metadata.result }}
         run: |
           echo "::error::The store metadata check did not pass ($RESULT). Nothing is uploaded."
+          exit 1
+
+      - name: Stop if the screenshots are stale
+        if: needs.store-screenshots.result != 'success'
+        env:
+          RESULT: ${{ needs.store-screenshots.result }}
+        run: |
+          echo "::error::The screenshot check did not pass ($RESULT). Nothing is uploaded."
           exit 1
 
       # Allowed to fail: with no artifacts at all, the next step says so.
