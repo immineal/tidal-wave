@@ -1792,6 +1792,16 @@ TestCase {
         verify(visibleTextsSaying(win.page, "Top result").length > 0,
                "the card has no heading")
 
+        // Round as on its card: the corners show the card, not the photo's box.
+        var cover = findByName(card, "searchTopHitCover")
+        verify(cover.round, "the top artist's photo is not round")
+        // grabImage() crops at an item's place in its parent: grab the window.
+        var shot = grabImage(win.contentItem)
+        var at = cover.mapToItem(win.contentItem, 1, 1)
+        var px = shot.pixel(Math.round(at.x), Math.round(at.y))
+        verify(Qt.colorEqual(px, card.color),
+               "a corner of the top artist's photo shows " + px + ", not the card's " + card.color)
+
         // Above every section.
         var tracksHeading = visibleTextsSaying(resultsArea(win.page), "Tracks")
         verify(tracksHeading.length > 0)

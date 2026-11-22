@@ -543,7 +543,8 @@ Rectangle {
                                 Layout.preferredWidth: 96
                                 Layout.preferredHeight: 96
                                 // An artist is a face, round as on its card.
-                                radius: topHitBlock.kind === "artist" ? width / 2 : Theme.radiusArt
+                                round: topHitBlock.kind === "artist"
+                                backdrop: topHitCard.color
                                 source: topHitBlock.hit ? (topHitBlock.hit.coverUrl || "") : ""
                                 glyph: topHitBlock.kind === "artist" ? "artist"
                                      : topHitBlock.kind === "playlist" ? "playlist"

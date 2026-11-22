@@ -17,7 +17,12 @@ Rectangle {
     // So a test can reach the image by the name it always had.
     property alias imageName: img.objectName
 
-    radius: Theme.radiusArt
+    // Round, for a face. Qt clips to the box and not to the rounding, so the
+    // corners are painted out in `backdrop`, the colour behind the cover.
+    property bool round: false
+    property color backdrop: Theme.surface
+
+    radius: round ? Math.min(width, height) / 2 : Theme.radiusArt
     color: Theme.surfaceHigh
     clip: true
 
@@ -39,5 +44,21 @@ Rectangle {
         color: Theme.textDim
         width: Math.round(Math.min(box.width, box.height) * 0.45)
         height: width
+    }
+
+    // A band of (sqrt(2)-1)/2 = 0.2072 of the side covers the corners, as on
+    // MediaCard's round tile.
+    Rectangle {
+        objectName: "coverCorners"
+        visible: box.round
+        anchors.centerIn: parent
+        readonly property int band: Math.ceil(Math.min(box.width, box.height) * 0.2072) + 1
+        width: Math.min(box.width, box.height) + 2 * band
+        height: width
+        radius: width / 2
+        color: "transparent"
+        border.width: band
+        border.color: box.backdrop
+        antialiasing: true
     }
 }
