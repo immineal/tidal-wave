@@ -853,19 +853,24 @@ TestCase {
         var h = openPanel(1280, 1200)
         var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
         verify(toggle && toggle.checked, "a stored on came back off")
-        var rainbow = findByName(toggle, "toggleRainbow")
-        verify(rainbow && rainbow.visible,
-               "the switch is on and its track is not a rainbow")
+        verify(rainbowShown(toggle), "the switch is on and its track is not a rainbow")
         h.panel.close()
 
         prefs.tintedGreys = false
         var h2 = openPanel(1280, 1200)
         var toggle2 = findByName(h2.panel.contentItem, "settingsTintedToggle")
         verify(toggle2 && !toggle2.checked, "a stored off came back on")
-        var rainbow2 = findByName(toggle2, "toggleRainbow")
-        verify(rainbow2 && !rainbow2.visible,
+        verify(findByName(toggle2, "toggleRainbow") && !rainbowShown(toggle2),
                "the switch is off and still painted as a rainbow")
         h2.panel.close()
+    }
+
+    // The rainbow is drawn by the glass shader, or as the plain picture where
+    // there are no shaders (software renderer).
+    function rainbowShown(toggle) {
+        var picture = findByName(toggle, "toggleRainbow")
+        var glass = findByName(toggle, "toggleRainbowGlass")
+        return !!(picture && picture.visible) || !!(glass && glass.visible)
     }
 
     // Every fill a toggle paints, and whether any of it is a gradient.
@@ -894,9 +899,9 @@ TestCase {
         return out
     }
 
-    // Checked, the colour switch is a still glass rainbow with no frame, the
+    // Checked, the colour switch is a glass rainbow with no frame, the
     // white knob on top, and its glow kept clear of the words beside it.
-    function test_the_rainbow_is_a_still_picture_with_no_frame() {
+    function test_the_rainbow_is_a_picture_with_no_frame() {
         app.setReducedMotionForTest(false)
         prefs.theme = "sea"
         prefs.tintedGreys = true
@@ -905,7 +910,7 @@ TestCase {
         verify(toggle && toggle.checked)
         verify(!toggle.activeFocus, "this case assumes the toggle is not focused")
         var rainbow = findByName(toggle, "toggleRainbow")
-        verify(rainbow && rainbow.visible)
+        verify(rainbow && rainbowShown(toggle))
         tryCompare(rainbow, "status", Image.Ready)
         verify(rainbow.sourceSize.width > 0, "the rainbow picture did not load")
 
@@ -916,15 +921,17 @@ TestCase {
         compare(fills[0].border, 0,
                 "the rainbow switch has a " + fills[0].border + "px frame around it")
 
-        // Still: two looks 400ms apart are the same picture, and it is a
-        // picture: more than a handful of colours.
+        // It is a picture: more than a handful of colours. It holds still
+        // where it draws no glass, and anywhere under reduced motion: two
+        // looks 400ms apart are the same picture.
+        if (toggle.glass) app.setReducedMotionForTest(true)
         var first = pixelsOf(toggle, 4)
         var distinct = {}
         for (var k = 0; k < first.length; k++) distinct[first[k]] = true
         verify(Object.keys(distinct).length > 100,
                "the rainbow paints " + Object.keys(distinct).length + " colours")
         wait(400)
-        compare(pixelsOf(toggle, 4), first, "the rainbow is animating")
+        compare(pixelsOf(toggle, 4), first, "the rainbow moves where it must hold still")
 
         // The knob is white in the middle, not tinted by the glass under it.
         var knob = fills[1]
@@ -947,7 +954,8 @@ TestCase {
         app.setReducedMotionForTest(false)
 
         clickItem(h.panel, toggle)
-        verify(!rainbow.visible, "the switch is off and still a rainbow")
+        tryVerify(function() { return !rainbowShown(toggle) }, 2000,
+                  "the switch is off and still a rainbow")
         compare(toggleFills(toggle, [])[0].border, 1,
                 "switched off, the toggle lost the border every other toggle has")
 
@@ -982,11 +990,116 @@ TestCase {
             compare(a[j].border, b[j].border, "border " + j + " differs from the standard switch")
             compare(a[j].visible, b[j].visible, "fill " + j + " shows on one switch only")
         }
-        var rainbow = findByName(tinted, "toggleRainbow")
-        verify(rainbow && !rainbow.visible, "the rainbow shows while the switch is off")
+        verify(findByName(tinted, "toggleRainbow") && !rainbowShown(tinted),
+               "the rainbow shows while the switch is off")
         compare(pixelsOf(tinted, 4), pixelsOf(black, 4),
                 "off, the colour switch does not look like the standard switch")
         h.panel.close()
+    }
+
+    // Switched on, the colour flows in over a few frames and comes to rest on
+    // the very picture the panel opens with; switched off, it drains away and
+    // leaves the standard switch.
+    function test_the_rainbow_flows_in_and_rests_on_the_picture() {
+        app.setReducedMotionForTest(true)
+        prefs.tintedGreys = true
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        scrollTo(h.panel, toggle)
+        var still = pixelsOf(toggle, 4)
+        h.panel.close()
+
+        prefs.tintedGreys = false
+        var h2 = openPanel(1280, 1200)
+        toggle = findByName(h2.panel.contentItem, "settingsTintedToggle")
+        var black = findByName(h2.panel.contentItem, "settingsOledToggle")
+        verify(toggle && !toggle.checked && black && !black.checked)
+        app.setReducedMotionForTest(false)
+        revealSpy.target = toggle
+        revealSpy.clear()
+        clickItem(h2.panel, toggle)
+        verify(toggle.checked)
+        tryCompare(toggle, "reveal", 1, 2000)
+        verify(revealSpy.count > 2, "the colour came in at once, in "
+               + revealSpy.count + " steps")
+
+        // Under reduced motion the idle drift stops and the glass is the
+        // picture, pixel for pixel.
+        app.setReducedMotionForTest(true)
+        tryCompare(toggle, "idle", 0)
+        compare(pixelsOf(toggle, 4), still,
+                "after the flip the rainbow is not the picture it rests on")
+
+        app.setReducedMotionForTest(false)
+        revealSpy.clear()
+        clickItem(h2.panel, toggle)
+        verify(!toggle.checked)
+        tryCompare(toggle, "reveal", 0, 2000)
+        verify(revealSpy.count > 2, "the colour went at once, in "
+               + revealSpy.count + " steps")
+        verify(!rainbowShown(toggle), "the switch is off and still a rainbow")
+        tryVerify(function() { return !toggle.clockRunning }, 2000,
+                  "the idle clock still runs with the switch off")
+        compare(pixelsOf(toggle, 4), pixelsOf(black, 4),
+                "after the flip off the colour switch is not the standard switch")
+        revealSpy.target = null
+        h2.panel.close()
+    }
+
+    SignalSpy { id: revealSpy; signalName: "revealChanged" }
+
+    // Reduced motion: the flip is instant and nothing moves afterwards.
+    function test_reduced_motion_flips_the_rainbow_at_once() {
+        app.setReducedMotionForTest(true)
+        prefs.tintedGreys = false
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        clickItem(h.panel, toggle)
+        compare(toggle.reveal, 1, "under reduced motion the colour did not come in at once")
+        verify(!toggle.idleMotion && !toggle.clockRunning,
+               "under reduced motion the rainbow keeps moving")
+        var first = pixelsOf(toggle, 4)
+        wait(400)
+        compare(pixelsOf(toggle, 4), first, "under reduced motion the rainbow moves")
+        clickItem(h.panel, toggle)
+        compare(toggle.reveal, 0, "under reduced motion the colour did not go at once")
+        h.panel.close()
+    }
+
+    // The idle drift runs only while someone can see it: never behind a
+    // closed panel, a hidden window or with the row scrolled away, and never
+    // where no glass is drawn.
+    function test_the_idle_motion_runs_only_on_screen() {
+        app.setReducedMotionForTest(false)
+        prefs.tintedGreys = true
+        var h = openPanel(1280, 700)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        scrollTo(h.panel, toggle)
+        verify(toggle.onScreen, "the switch in view does not count as on screen")
+        tryCompare(toggle, "clockRunning", toggle.glass, 2000,
+                   toggle.glass ? "the glass is on screen and holds still"
+                                : "the idle clock runs where no glass is drawn")
+
+        var flick = scrollerOf(h.panel)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        settle(h.panel.contentItem)
+        verify(toggle.mapToItem(flick, 0, 0).y + toggle.height <= 0,
+               "this case needs the switch scrolled out of view")
+        verify(!toggle.onScreen, "scrolled away, the switch still counts as on screen")
+        tryCompare(toggle, "clockRunning", false, 2000)
+
+        scrollTo(h.panel, toggle)
+        verify(toggle.onScreen)
+        h.host.visible = false
+        verify(!toggle.onScreen, "in a hidden window the switch counts as on screen")
+        tryCompare(toggle, "clockRunning", false, 2000)
+        h.host.visible = true
+        settle(h.host.contentItem)
+
+        h.panel.close()
+        tryVerify(function() { return !h.panel.visible }, 2000)
+        verify(!toggle.onScreen, "behind a closed panel the switch counts as on screen")
+        tryCompare(toggle, "clockRunning", false, 2000)
     }
 
     // Both switches move the grounds, so the resulting page must not depend

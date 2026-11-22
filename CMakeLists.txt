@@ -295,6 +295,7 @@ qt_add_qml_module(tidalwave_qml
         assets/toggle-rainbow.png
         assets/toggle-rainbow@2x.png
         assets/toggle-rainbow@3x.png
+        assets/toggle-rainbow.frag.qsb
 )
 
 # ── The Controls style: the stock one with the app's own ToolTip ─────────────

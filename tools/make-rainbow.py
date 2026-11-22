@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Regenerate the glass rainbow behind the colour switch (qml/components/Toggle.qml).
 
-The checked track of "Let the colour in" is a picture, not a shader, because
-Qt's software renderer draws no ShaderEffect and a .qsb would need Qt
-ShaderTools at build time. The picture is computed here in floating point and
-dithered once, so its gradients carry no 8-bit bands.
+The checked track of "Let the colour in" is this picture. Where Qt draws
+shaders, assets/toggle-rainbow.frag bends it while the switch flips and
+drifts; at rest it draws it unchanged, and the software renderer shows it as
+it is. The picture is computed here in floating point and dithered once, so
+its gradients carry no 8-bit bands.
 
 Usage:
     tools/make-rainbow.py            # write assets/toggle-rainbow{,@2x,@3x}.png
