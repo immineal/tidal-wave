@@ -380,6 +380,10 @@ works differently now, the entry says what 0.4.2 did.
 - On Qt 6.8 and newer the app runs Qt's garbage collector in whole passes, to
   avoid a crash in its incremental mode. A `QV4_GC_TIMELIMIT` you set yourself
   is left alone.
+- The .deb is built against Qt 6.4 and now follows the Qt it runs on. On
+  Debian 13 and Ubuntu 26.04 it has gapless playback, crossfade, the quick
+  start of lossless tracks and the newer Qt's fixes, which it skipped before
+  as if it ran on Qt 6.4.
 
 ### Removed
 
