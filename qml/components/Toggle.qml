@@ -8,9 +8,6 @@ Item {
     id: tg
     property bool checked: false
     property bool rainbow: false
-    // How the rainbow comes in: 0 a glass bead rides the front, 1 it pours in
-    // with a caustic edge, 2 it opens out of the knob. The rest look is the same.
-    property int rainbowFlip: 0
     // What a screen reader calls the switch: the title beside it.
     property string label: ""
     // A row that takes the keyboard for the switch lights its ring here.
@@ -139,8 +136,6 @@ Item {
                     property real reveal: tg.reveal
                     property real idle: tg.idle
                     property real phase: tg.phase
-                    property real variant: tg.rainbowFlip
-                    property real knob: knobDot.x + knobDot.width / 2
                     property size box: Qt.size(width, height)
                     // Baked by tools/make-rainbow-shader.sh for Qt 6.4 and later.
                     fragmentShader: "../../assets/toggle-rainbow.frag.qsb"
@@ -149,7 +144,6 @@ Item {
         }
 
         Rectangle {
-            id: knobDot
             objectName: "toggleKnob"
             width: parent.height - 6
             height: width

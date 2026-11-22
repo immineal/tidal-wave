@@ -14,10 +14,6 @@ layout(std140, binding = 0) uniform buf {
     // The idle motion's strength, 0 to 1, and its clock in seconds.
     float idle;
     float phase;
-    // 0 lens, 1 pour, 2 bloom.
-    float variant;
-    // The knob's middle along the track, in logical pixels.
-    float knob;
     // The effect's size in logical pixels: the track and PAD on every side.
     vec2 box;
 };
@@ -82,9 +78,9 @@ void main() {
     vec4 c;
     if (r >= 1.0) {
         c = pick(p + d);
-    } else if (variant < 0.5) {
-        // Lens: a thick glass bead rides the front, magnifies the colour
-        // under it and catches the light; small rings run out behind it.
+    } else {
+        // A thick glass bead rides the front, magnifies the colour under it
+        // and catches the light; small rings run out behind it.
         float bead = 6.0;
         float xf = mix(-PAD - 1.0, tw + PAD + bead, r);
         float bow = 2.5 * sq((p.y - rad) / rad);
@@ -98,41 +94,6 @@ void main() {
         mask = smoothstep(1.0, -1.0, (p.x + bow - xf) / 2.5);
         lift += swell * lens * (0.18 + 0.22 * max(-n.y, 0.0));
         c = pick(p + d);
-    } else if (variant < 1.5) {
-        // Pour: the colour runs in from the knob's side with a wobbling
-        // edge, a bright caustic along it and a slosh behind it.
-        float t = r * 10.0;
-        float xf = mix(-PAD - 6.0, tw + PAD + 6.0, r);
-        float edge = xf + 1.6 * swell * sin(0.28 * p.y + 1.3 * t)
-                        + 0.5 * swell * sin(0.5 * p.y - 2.1 * t + 0.8);
-        float behind = max(edge - p.x, 0.0);
-        mask = smoothstep(1.0, -1.0, (p.x - edge) / 3.0);
-        float slosh = exp(-behind / 9.0) * swell;
-        d.y += 2.0 * slosh * sin(0.5 * p.x - 1.7 * t);
-        d.x += 1.5 * slosh * sin(0.35 * p.y + 1.1 * t);
-        lift += 0.7 * swell * exp(-sq((p.x - edge + 1.0) / 1.3))
-              * smoothstep(rad + 2.0, rad - 2.0, s);
-        c = pick(p + d);
-    } else {
-        // Bloom: the colour opens out of the knob as a disc of glass whose
-        // edge splits into a prism fringe and bends what lies inside it.
-        vec2 o = vec2(knob, rad);
-        vec2 off = p - o;
-        float q = length(off);
-        vec2 dir = q > 1e-4 ? off / q : vec2(0.0);
-        float front = mix(7.0, tw + PAD + 6.0, r);
-        float band = exp(-sq((q - front + 2.0) / 5.0));
-        d -= dir * (3.0 * swell * band);
-        float k = 0.9 * swell;
-        vec4 cr = pick(p + d + dir * k);
-        vec4 cg = pick(p + d);
-        vec4 cb = pick(p + d - dir * k);
-        float mr = smoothstep(1.0, -1.0, (q - front - k) / 2.0);
-        float mg = smoothstep(1.0, -1.0, (q - front) / 2.0);
-        float mb = smoothstep(1.0, -1.0, (q - front + k) / 2.0);
-        c = vec4(cr.r * mr, cg.g * mg, cb.b * mb,
-                 max(max(cr.a * mr, cg.a * mg), cb.a * mb));
-        lift += 0.25 * swell * band;
     }
     c *= mask;
     // Lift towards white within the colour's own alpha (premultiplied).
